@@ -28,17 +28,19 @@ async function resolveOwnershipTab(source, gid) {
   return DEFAULT_TAB;
 }
 
-/** Make sure the headers row exists. Safe to call repeatedly. */
+/**
+ * Make sure the tab has a header row of *some* kind. We write our default
+ * headers only if the tab is completely empty. Otherwise we trust whatever
+ * the user typed and use column positions:
+ *   col A → Security (PK)   col B → Investors   col C → Factor   col D → UpdatedAt
+ *
+ * If you want different column meanings, change the column ORDER, not the
+ * header text — the app reads/writes by position, not by name.
+ */
 async function ensureHeaders(source, tabName) {
   const rows = await source.getSheet(tabName);
   if (!rows.length) {
     await source.appendRow(tabName, HEADERS);
-    return;
-  }
-  const first = (rows[0] || []).map((c) => (c || '').toString().trim());
-  if (first[0] !== HEADERS[0] || first[1] !== HEADERS[1]) {
-    // Tab has unrelated content — leave it alone and bail.
-    throw new Error(`Tab "${tabName}" has unexpected headers; refusing to write.`);
   }
 }
 
