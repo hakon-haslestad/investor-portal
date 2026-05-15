@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Data — Geysir Invest</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .data-toolbar {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+      margin-bottom: 14px; background: var(--panel);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 12px 14px;
+    }
+    .data-toolbar label {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--muted); font-size: 0.82rem; text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .data-toolbar select, .data-toolbar input[type="search"] {
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 7px 10px; font-size: 0.9rem;
+    }
+    .data-toolbar .grow { flex: 1; }
+    .data-toolbar .count { color: var(--muted); font-size: 0.85rem; }
+
+    .data-table { font-size: 0.88rem; }
+    .data-table th, .data-table td { padding: 8px 12px; }
+    .data-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+    .data-table th.sortable:hover { color: var(--text); }
+    .data-table th .sort-arrow {
+      display: inline-block; width: 10px; margin-left: 4px;
+      color: var(--muted); font-size: 0.72rem;
+    }
+    .data-table th.sorted .sort-arrow { color: var(--accent); }
+    .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .data-table th.num { text-align: right; }
+    .data-table tfoot td {
+      background: var(--panel-2); border-top: 2px solid var(--border);
+      font-weight: 600; color: var(--text);
+    }
+    .data-table tfoot td.label { color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; font-size: 0.78rem; }
+    .data-table tr:hover td { background: rgba(106, 209, 255, 0.04); }
+
+    .type-pill {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 0.74rem; font-weight: 600; background: var(--panel-2);
+      color: var(--muted); border: 1px solid var(--border);
+    }
+    .type-KJØPT { color: #ff9da4; border-color: rgba(255, 91, 91, 0.35); }
+    .type-SALG, .type-SOLGT { color: var(--positive); border-color: rgba(62, 224, 127, 0.35); }
+    .type-UTBYTTE { color: var(--accent-2); border-color: rgba(255, 201, 79, 0.35); }
+  </style>
+</head>
+<body>
+  <div id="nav-mount"></div>
+  <div class="container">
+    <div class="hero">
+      <h2>Data — Rådata fra Nordnet</h2>
+      <div class="when" id="meta-line"></div>
+    </div>
+
+    <div class="data-toolbar">
+      <label>Mode
+        <select id="mode">
+          <option value="flat">Flat</option>
+          <option value="pivot">Pivot</option>
+        </select>
+      </label>
+      <label id="pivot-group-wrap" hidden>Group by
+        <select id="pivot-group">
+          <option value="security">Security</option>
+          <option value="type">Type</option>
+          <option value="year">Year</option>
+          <option value="month">Year-month</option>
+          <option value="currency">Currency</option>
+        </select>
+      </label>
+      <label id="pivot-measure-wrap" hidden>Measure
+        <select id="pivot-measure">
+          <option value="sum-amount">Σ Amount NOK</option>
+          <option value="sum-qty">Σ Qty</option>
+          <option value="sum-fee">Σ Fee</option>
+          <option value="count">Count</option>
+        </select>
+      </label>
+      <input type="search" id="filter" placeholder="Filter…" />
+      <span class="grow"></span>
+      <span class="count" id="count"></span>
+    </div>
+
+    <div id="root">Loading…</div>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/data.js"></script>
+</body>
+</html>

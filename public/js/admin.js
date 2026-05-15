@@ -10,6 +10,9 @@
   // security → pending payload { memberString, factor }
   const dirty = new Map();
 
+  // Current sort. Click a column header to cycle asc → desc → reset to default.
+  let sortBy = { column: 'security', direction: 'asc' };
+
   const filter = document.getElementById('filter');
   const onlyUnmapped = document.getElementById('only-unmapped');
   const saveAllBtn = document.getElementById('save-all');
@@ -23,7 +26,7 @@
 
   function visibleRows() {
     const f = filter.value.trim().toLowerCase();
-    return state.securities.filter((s) => {
+    const filtered = state.securities.filter((s) => {
       if (onlyUnmapped.checked && s.mapped) return false;
       if (!f) return true;
       return (
@@ -33,6 +36,36 @@
         || (s.type || '').toLowerCase().includes(f)
       );
     });
+    return filtered.sort(compareRows);
+  }
+
+  function compareRows(a, b) {
+    const dir = sortBy.direction === 'asc' ? 1 : -1;
+    const [av, bv] = [sortValue(a), sortValue(b)];
+    if (av < bv) return -dir;
+    if (av > bv) return dir;
+    // Stable fallback: alphabetical by security name
+    return a.security.localeCompare(b.security, 'nb');
+  }
+
+  function sortValue(s) {
+    switch (sortBy.column) {
+      case 'mapped': return s.mapped ? 1 : 0;
+      case 'security': return (s.security || '').toLowerCase();
+      case 'memberString': return (s.memberString || '').toLowerCase();
+      case 'factor': return s.factor == null ? -Infinity : Number(s.factor);
+      case 'currentQty': return s.currentQty == null ? -Infinity : Number(s.currentQty);
+      default: return 0;
+    }
+  }
+
+  function sortArrow(column) {
+    if (sortBy.column !== column) return '<span class="sort-arrow">↕</span>';
+    return `<span class="sort-arrow">${sortBy.direction === 'asc' ? '▲' : '▼'}</span>`;
+  }
+
+  function thClass(column) {
+    return 'sortable' + (sortBy.column === column ? ' sorted' : '');
   }
 
   function render() {
@@ -49,17 +82,28 @@
     root.innerHTML = `
       <table class="admin-table">
         <thead><tr>
-          <th></th>
-          <th>Stock</th>
-          <th>Investors</th>
-          <th>Factor</th>
-          <th class="text-right text-small">Qty now</th>
+          <th class="${thClass('mapped')}" data-sort="mapped">Status${sortArrow('mapped')}</th>
+          <th class="${thClass('security')}" data-sort="security">Stock${sortArrow('security')}</th>
+          <th class="${thClass('memberString')}" data-sort="memberString">Investors${sortArrow('memberString')}</th>
+          <th class="${thClass('factor')}" data-sort="factor">Factor${sortArrow('factor')}</th>
+          <th class="${thClass('currentQty')} text-right text-small" data-sort="currentQty">Qty now${sortArrow('currentQty')}</th>
         </tr></thead>
         <tbody>
           ${rows.map((s, i) => renderRow(s, i)).join('')}
         </tbody>
       </table>
     `;
+    root.querySelectorAll('th.sortable').forEach((th) => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.sort;
+        if (sortBy.column === col) {
+          sortBy.direction = sortBy.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortBy = { column: col, direction: 'asc' };
+        }
+        render();
+      });
+    });
     root.querySelectorAll('tr[data-sec]').forEach((tr) => {
       const sec = tr.dataset.sec;
       tr.querySelectorAll('.investor-chip input').forEach((cb) => {

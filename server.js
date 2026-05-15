@@ -31,6 +31,7 @@ app.use((req, res, next) => {
 app.use('/api', require('./src/routes/dashboard'));
 app.use('/api/competitions', require('./src/routes/competitions'));
 app.use('/api/admin', require('./src/routes/admin'));
+app.use('/api/data', require('./src/routes/data'));
 
 // Protected static pages
 app.use(express.static(path.join(__dirname, 'public')));
