@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Geysir Invest — Sign in</title>
+  <link rel="stylesheet" href="./css/style.css" />
+  <style>
+    .login-card {
+      max-width: 480px; margin: 80px auto; background: var(--panel);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 32px; box-shadow: var(--shadow); text-align: center;
+    }
+    .login-card h1 { margin: 0 0 4px; font-size: 1.4rem; }
+    .login-card p { color: var(--muted); margin: 6px 0 22px; }
+    #sign-in { font-size: 1rem; padding: 12px 22px; }
+    .status { margin-top: 18px; font-size: 0.9rem; }
+    .status pre { background: var(--panel-2); padding: 10px; border-radius: 8px; text-align: left; white-space: pre-wrap; word-break: break-word; }
+    .ok { color: var(--positive); }
+    .err { color: var(--negative); }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <h1>Geysir Invest AS</h1>
+    <p>Investor portal — sign in with your Google account.</p>
+    <button class="btn" id="sign-in">Sign in with Google</button>
+    <div class="status" id="status"></div>
+    <p class="text-small text-muted" style="margin-top:24px">
+      The portal reads from a private Google Sheet shared with the 5 club members.
+      Nothing is stored on a server.
+    </p>
+  </div>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="./js/config.js"></script>
+  <script src="./js/auth.js"></script>
+  <script src="./js/sheet.js"></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    const btn = document.getElementById('sign-in');
+
+    function show(html, kind) {
+      statusEl.innerHTML = `<div class="${kind || ''}">${html}</div>`;
+    }
+
+    async function tryLoad() {
+      if (window.GEYSIR_CONFIG.OAUTH_CLIENT_ID.startsWith('__REPLACE')) {
+        show('<strong>Setup needed:</strong> OAuth Client ID not configured. Edit <code>js/config.js</code>.', 'err');
+        btn.disabled = true;
+        return;
+      }
+      try {
+        await window.Auth.ensureToken();
+        await renderHello();
+      } catch (_e) {
+        // Not signed in yet — wait for click.
+      }
+    }
+
+    async function renderHello() {
+      const email = window.Auth.getEmail() || '(unknown email)';
+      let tabs = [];
+      try {
+        tabs = await window.Sheet.listTabs();
+      } catch (e) {
+        show(`Signed in as <strong>${email}</strong> but Sheets call failed:<br><code>${e.message}</code>`, 'err');
+        return;
+      }
+      const tabList = tabs.map((t) => t.title).join(', ');
+      show(`<strong class="ok">✓ Signed in as ${email}</strong><br>Sheet has ${tabs.length} tabs:<br><pre>${tabList}</pre>`, 'ok');
+      btn.textContent = 'Sign out';
+      btn.onclick = async () => { await window.Auth.signOut(); location.reload(); };
+    }
+
+    btn.addEventListener('click', async () => {
+      try {
+        show('Authorizing…');
+        await window.Auth.signIn();
+        await renderHello();
+      } catch (e) {
+        show(`Sign-in failed: <code>${e.message}</code>`, 'err');
+      }
+    });
+
+    tryLoad();
+  </script>
+</body>
+</html>

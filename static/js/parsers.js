@@ -1,0 +1,267 @@
+// Pure parser functions for Geysir's Google Sheet tabs.
+// Ported from src/excel/normalizer.js + src/parsers/workbook.js + src/excel/manual-attribution.js.
+// No DOM, no fetch — just (sheetMap → JS objects). Safe to unit-test.
+
+(function () {
+  const INVESTOR_CODES = ['HH', 'HS', 'ØS', 'JC', 'HF'];
+
+  // ─── Normalizer ──────────────────────────────────────────────────────────
+
+  function normalizeInvestorCode(raw) {
+    if (raw == null) return null;
+    const s = String(raw).trim();
+    if (!s) return null;
+    if (s === 'ØF') return 'ØS';
+    if (s === 'OS') return 'ØS';
+    return s;
+  }
+
+  function normalizeSecurityName(raw) {
+    if (raw == null) return null;
+    return String(raw).trim() || null;
+  }
+
+  function parseMemberCell(cell) {
+    if (cell == null) return [];
+    const s = String(cell).trim();
+    if (!s) return [];
+    if (s === 'Deposit' || s === 'NA' || s === 'Alle') return [{ code: s, weight: 1.0 }];
+    const codes = s.split(/[\/+]/).map(normalizeInvestorCode).filter(Boolean);
+    if (!codes.length) return [];
+    const weight = 1.0 / codes.length;
+    return codes.map((c) => ({ code: c, weight }));
+  }
+
+  function excelDateToISO(v) {
+    if (v == null || v === '') return null;
+    if (v instanceof Date) return v.toISOString().slice(0, 10);
+    if (typeof v === 'number') {
+      const ms = (v - 25569) * 86400 * 1000;
+      return new Date(ms).toISOString().slice(0, 10);
+    }
+    const s = String(v).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    return null;
+  }
+
+  function numOrNull(v) {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    const n = Number(String(v).replace(/\s/g, '').replace(/,/g, '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // ─── Manual attribution overrides ────────────────────────────────────────
+  // After migrating these rows into Dim-values, this map can shrink to {}.
+  // Left in place as a fallback in case sheet rows are missing.
+  const MANUAL_ATTRIBUTION = {
+    'BEWi': [{ code: 'HF', weight: 1.0 }],
+    'HelloFresh SE': [{ code: 'JC', weight: 1.0 }],
+    'NEXSTIM OYJ  APPLICATION': [{ code: 'HH', weight: 1.0 }],
+    'Ansökan Scibase Holding': [{ code: 'HH', weight: 1.0 }],
+    'Scibase Holding AB BTA': [{ code: 'HH', weight: 1.0 }],
+    'Seafire AB TR': [{ code: 'HS', weight: 1.0 }],
+    'SEAFIRE TR SELL': [{ code: 'HS', weight: 1.0 }],
+    'Seafire AB BTA': [{ code: 'HS', weight: 1.0 }],
+    'KONGSBERG MARITIME ASA': [{ code: 'HH', weight: 1.0 }],
+    'Equinor': [{ code: 'HH', weight: 1.0 }],
+    'Inission B': [{ code: 'HS', weight: 1.0 }],
+    'Smartoptics Group': [{ code: 'HF', weight: 1.0 }],
+  };
+
+  // ─── Tab parsers ─────────────────────────────────────────────────────────
+
+  function parseTransactions(rows) {
+    if (!rows || rows.length < 2) return [];
+    const header = rows[0];
+    const idx = {
+      id: header.indexOf('Id'),
+      book: header.indexOf('Bokføringsdag'),
+      trade: header.indexOf('Handelsdag'),
+      settle: header.indexOf('Oppgjørsdag'),
+      type: header.indexOf('Transaksjonstype'),
+      sec: header.indexOf('Verdipapir'),
+      isin: header.indexOf('ISIN'),
+      qty: header.indexOf('Antall'),
+      price: header.indexOf('Kurs'),
+      fee: header.indexOf('Totale Avgifter'),
+      amount: header.indexOf('Beløp'),
+      saldo: header.indexOf('Saldo'),
+      fx: header.indexOf('Vekslingskurs'),
+      text: header.indexOf('Transaksjonstekst'),
+    };
+    const currencyCol = idx.amount >= 0 && header[idx.amount + 1] === 'Valuta'
+      ? idx.amount + 1
+      : header.indexOf('Valuta');
+
+    const txs = [];
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row || row[idx.id] == null) continue;
+      txs.push({
+        sourceRow: r + 1,
+        nordnetId: row[idx.id] != null ? String(row[idx.id]) : null,
+        bookDate: excelDateToISO(row[idx.book]),
+        tradeDate: excelDateToISO(row[idx.trade]),
+        settleDate: excelDateToISO(row[idx.settle]),
+        type: row[idx.type] ? String(row[idx.type]).trim() : null,
+        security: normalizeSecurityName(row[idx.sec]),
+        isin: row[idx.isin] ? String(row[idx.isin]).trim() : null,
+        qty: numOrNull(row[idx.qty]),
+        price: numOrNull(row[idx.price]),
+        fee: numOrNull(row[idx.fee]),
+        amount: numOrNull(row[idx.amount]),
+        currency: currencyCol >= 0 ? (row[currencyCol] || null) : null,
+        saldo: numOrNull(row[idx.saldo]),
+        fxRate: numOrNull(row[idx.fx]),
+        text: row[idx.text] ? String(row[idx.text]).trim() : null,
+      });
+    }
+    return txs.sort((a, b) => (a.tradeDate || '').localeCompare(b.tradeDate || ''));
+  }
+
+  // Dim-values layout:
+  //   A(0) Name   B(1) Investor (member string)   C(2) Investment factor
+  //   D(3) UpdatedAt  (new — written by the portal)
+  //   E(4) UpdatedBy  (new — written by the portal)
+  function parseDimValues(rows) {
+    const attributions = [];
+    const meta = [];
+    const seenAttr = new Set();
+    const seenMeta = new Set();
+    if (rows) {
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row) continue;
+        const name = normalizeSecurityName(row[0]);
+        const member = row[1];
+        const factor = numOrNull(row[2]);
+        if (!name || !member) continue;
+        const parsed = parseMemberCell(member);
+        if (!parsed.length) continue;
+        const weight = factor != null ? factor : parsed[0].weight;
+        if (!seenMeta.has(name)) {
+          seenMeta.add(name);
+          meta.push({
+            security: name,
+            type: 'Stock', categoryTick: null,
+            memberString: String(member).trim(),
+            factor: weight,
+            isin: null,
+          });
+        }
+        for (const m of parsed) {
+          const code = normalizeInvestorCode(m.code) || m.code;
+          const key = `${name}|${code}`;
+          if (seenAttr.has(key)) continue;
+          seenAttr.add(key);
+          attributions.push({ security: name, isin: null, investorCode: code, weight });
+        }
+      }
+    }
+    // Merge any manual overrides not present in the sheet
+    for (const [security, owners] of Object.entries(MANUAL_ATTRIBUTION)) {
+      const memberCodes = owners.map((o) => o.code).join('/');
+      if (!seenMeta.has(security)) {
+        seenMeta.add(security);
+        meta.push({
+          security, type: 'Stock', categoryTick: null,
+          memberString: memberCodes,
+          factor: owners[0].weight, isin: null,
+        });
+      }
+      for (const { code, weight } of owners) {
+        const key = `${security}|${code}`;
+        if (seenAttr.has(key)) continue;
+        seenAttr.add(key);
+        attributions.push({ security, isin: null, investorCode: code, weight });
+      }
+    }
+    return { attributions, meta };
+  }
+
+  function parseHoldings(rows) {
+    if (!rows || rows.length < 2) return [];
+    const out = [];
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row || row[1] == null) continue;
+      const security = normalizeSecurityName(row[1]);
+      if (!security) continue;
+      out.push({
+        snapshotDate: excelDateToISO(row[0]),
+        security,
+        isin: null,
+        currency: row[2] ? String(row[2]).trim() : null,
+        qty: numOrNull(row[3]),
+        gav: numOrNull(row[4]),
+        currentPrice: numOrNull(row[6]),
+        marketValueNok: numOrNull(row[8]),
+        marginValue: numOrNull(row[7]),
+        returnPct: numOrNull(row[9]),
+        returnNok: numOrNull(row[10]),
+      });
+    }
+    return out;
+  }
+
+  function parseKpis(rows) {
+    if (!rows || rows.length < 4) return [];
+    const out = [];
+    for (let r = 3; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row || row[0] == null || row[1] == null) continue;
+      out.push({
+        year: numOrNull(row[0]),
+        company: String(row[1]).trim(),
+        revenue: row[2] != null ? String(row[2]) : null,
+        ourShareRev: numOrNull(row[3]),
+        eat: row[4] != null ? String(row[4]) : null,
+        ourShareEat: numOrNull(row[5]),
+        price: row[6] != null ? String(row[6]) : null,
+        eps: row[7] != null ? String(row[7]) : null,
+        pe: numOrNull(row[8]),
+      });
+    }
+    return out;
+  }
+
+  function parseMembers(rows) {
+    if (!rows || rows.length < 2) return [];
+    const header = rows[0].map((h) => String(h || '').trim().toLowerCase());
+    const idx = {
+      email: header.indexOf('email'),
+      code: header.indexOf('investorcode'),
+      name: header.indexOf('displayname'),
+      role: header.indexOf('role'),
+    };
+    const out = [];
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row || !row[idx.email]) continue;
+      out.push({
+        email: String(row[idx.email]).trim().toLowerCase(),
+        investorCode: row[idx.code] ? String(row[idx.code]).trim() : null,
+        displayName: row[idx.name] ? String(row[idx.name]).trim() : null,
+        role: row[idx.role] ? String(row[idx.role]).trim() : 'member',
+      });
+    }
+    return out;
+  }
+
+  window.Parsers = {
+    INVESTOR_CODES,
+    parseTransactions,
+    parseDimValues,
+    parseHoldings,
+    parseKpis,
+    parseMembers,
+    parseMemberCell,
+    normalizeInvestorCode,
+    normalizeSecurityName,
+    excelDateToISO,
+    numOrNull,
+  };
+})();
