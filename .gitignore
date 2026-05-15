@@ -1,0 +1,13 @@
+node_modules/
+data/*.db
+data/*.db-journal
+data/google-service-account.json
+geysir-*.json
+uploads/*.xlsx
+uploads/*.xls
+.env
+.DS_Store
+
+# Source financial data — pulled from Google Sheets, no need to commit
+Geysir Invest AS.xlsx
+*.pdf
