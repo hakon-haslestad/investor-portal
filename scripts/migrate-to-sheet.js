@@ -89,7 +89,8 @@ async function migrateMembers(source) {
       console.log(`  skip ${email} (already present)`);
       continue;
     }
-    const role = email === 'haakon.haslestad@gmail.com' ? 'admin' : 'member';
+    const adminEmail = (process.env.GEYSIR_ADMIN_EMAIL || '').trim().toLowerCase();
+    const role = adminEmail && email === adminEmail ? 'admin' : 'member';
     await source.appendRow(TABS.members, [
       email, u.investor_code, u.display_name, role, u.created_at || NOW_ISO,
     ]);
