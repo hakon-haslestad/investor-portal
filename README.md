@@ -55,19 +55,21 @@ the OAuth client's Authorized JavaScript origins.
 
 ## Sheet contract
 
-The portal expects these tabs in the source sheet:
+The portal expects eight tabs in the source sheet:
 
-| Tab                     | Purpose                                          |
-| ----------------------- | ------------------------------------------------ |
-| `Rådata fra nordnet`    | Transaction log (all rows, all time)             |
-| `Beholdningsverdi`      | Current holdings + latest prices (snapshot)      |
-| `Offisielle nøkkeltall` | Per-stock KPIs (revenue, EPS, P/E)               |
-| `Dim-values`            | Default security → investor attribution          |
-| `Members`               | Email → investor code + role (member/admin)      |
-| `Competitions`          | Competition metadata + narrative JSON            |
-| `Competition_Participants` | Per-competition participants and teams        |
-| `Competition_Picks`     | Per-competition stock picks                      |
-| `Ownership`             | Per-stock attribution overrides (managed by app) |
+| Tab                        | Purpose                                          |
+| -------------------------- | ------------------------------------------------ |
+| `Rådata fra nordnet`       | Transaction log (all rows, all time)             |
+| `Beholdningsverdi`         | Current holdings + latest prices (snapshot)      |
+| `Offisielle nøkkeltall`    | Per-stock KPIs (revenue, EPS, P/E)               |
+| `Dim-values`               | Security → investor attribution + overrides     |
+| `Members`                  | Email → investor code + role (member/admin)      |
+| `Competitions`             | Competition metadata + narrative JSON            |
+| `Competition_Participants` | Per-competition participants and teams           |
+| `Competition_Picks`        | Per-competition stock picks                      |
+
+**Full column-level schema**, including data types, special enum
+values, and a replication checklist: see [SCHEMA.md](./SCHEMA.md).
 
 The portfolio calculator uses `Beholdningsverdi` as the source of truth
 for current qty / price, and replays only `KJØPT`/`SALG`/`UTBYTTE`/
@@ -112,12 +114,14 @@ docs/
     ├── competitions-data.js     CRUD against the sheet
     ├── presentation-builder.js  7-slide payload builder
     ├── format.js                Number / currency / date formatters
-    ├── copy.js                  Casual-bro copy bank
+    ├── copy.js                  Commentary phrases (verdict per investor)
     └── pages/                   One file per HTML page
 ```
 
 ## Tone
 
-Copy throughout is casual investment-bro: short, slightly chaotic,
-mostly English with the occasional Norwegian word. See `docs/js/copy.js`
-for the single source of truth.
+Copy throughout aims for a professional investor's register: measured,
+dry, with a touch of sass. Norwegian words show up where the source
+data is Norwegian (transaction types, sheet tab names). See
+`docs/js/copy.js` for the verdict phrases that drive the per-investor
+commentary.

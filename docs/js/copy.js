@@ -1,22 +1,16 @@
-// Casual investment-bro copy bank. Single source of truth for tone.
-// Ported from src/copy.js. NAMES is also derived from the Members tab at
-// runtime if present, but kept here as a fallback.
+// Portfolio commentary copy bank. Single source of truth for tone:
+// measured, dry, with a touch of sass. NAMES is built at runtime from
+// the Members tab — the empty object below is just the fallback shape.
 
 (function () {
-  const NAMES = {
-    HH: 'Haslestad',
-    HS: 'Sundland',
-    ØS: 'Stubberud',
-    JC: 'Curran',
-    HF: 'Førsund',
-  };
+  const NAMES = {};
 
   const verdictPhrases = {
-    bigWinner: (name, pct) => `${name} ate. Up ${pct}%. Pure cooking.`,
-    modestWin: (name, pct) => `${name} grinding — ${pct}% in the green`,
-    flat: (name) => `${name} doing nothing. Neither winning nor losing. Just vibes.`,
-    modestLoss: (name, pct) => `${name} down ${pct}%. It happens.`,
-    bigLoss: (name, pct) => `${name} cooked. ${pct}% down. RIP. 💀`,
+    bigWinner: (name, pct) => `${name} firing — +${pct}%. Take a bow.`,
+    modestWin: (name, pct) => `${name} +${pct}%. Quietly compounding.`,
+    flat: (name) => `${name} flat. Either patience pays or the thesis cracks.`,
+    modestLoss: (name, pct) => `${name} −${pct}%. Goes with the territory.`,
+    bigLoss: (name, pct) => `${name} −${pct}%. Time for an honest re-read.`,
   };
 
   function verdictFromReturn(name, pct) {
@@ -29,7 +23,7 @@
     return verdictPhrases.bigLoss(name, Math.abs(p).toFixed(1));
   }
 
-  // Build a NAMES map from store members (preferred over the hardcoded one).
+  // Build a NAMES map from store members (preferred over the fallback above).
   function namesFromMembers(members) {
     const out = { ...NAMES };
     for (const m of members || []) {

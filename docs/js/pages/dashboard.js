@@ -40,7 +40,7 @@
     root.innerHTML = `
       <div class="hero">
         <div>
-          <h2>Yo ${me.displayName} — what's the bag doing?</h2>
+          <h2>Welcome back, ${me.displayName}. Here's the book.</h2>
           <div class="when">Snapshot: ${d.snapshotDate || '—'}</div>
         </div>
         ${renderPicker(d.window)}
@@ -48,18 +48,18 @@
 
       <div class="section-title">Right now (current snapshot)</div>
       <div class="kpi-grid">
-        <div class="kpi-card"><div class="label">Total bag</div><div class="value">${fmtNok(d.group.totalValue)}</div><div class="sub">stocks + dry powder</div></div>
-        <div class="kpi-card"><div class="label">Holdings MV</div><div class="value">${fmtNok(d.group.marketValue)}</div><div class="sub">what's currently riding</div></div>
-        <div class="kpi-card"><div class="label">Dry powder</div><div class="value">${fmtNok(d.group.cash)}</div><div class="sub">ready to fire</div></div>
-        <div class="kpi-card"><div class="label">Paper money</div><div class="value ${pctClass(d.group.unrealized)}">${fmtNok(d.group.unrealized)}</div><div class="sub">unrealized P/L</div></div>
+        <div class="kpi-card"><div class="label">Total portfolio</div><div class="value">${fmtNok(d.group.totalValue)}</div><div class="sub">positions + cash</div></div>
+        <div class="kpi-card"><div class="label">Holdings MV</div><div class="value">${fmtNok(d.group.marketValue)}</div><div class="sub">active positions</div></div>
+        <div class="kpi-card"><div class="label">Dry powder</div><div class="value">${fmtNok(d.group.cash)}</div><div class="sub">uncommitted cash</div></div>
+        <div class="kpi-card"><div class="label">Unrealized P/L</div><div class="value ${pctClass(d.group.unrealized)}">${fmtNok(d.group.unrealized)}</div><div class="sub">mark-to-market</div></div>
       </div>
 
       <div class="section-title">In this window <span class="text-muted text-small">${prettyRange(d.window)}</span></div>
       <div class="kpi-grid">
         <div class="kpi-card"><div class="label">Period return</div><div class="value ${pctClass(wm.group.periodReturnPct)}">${fmtPct(wm.group.periodReturnPct)}</div><div class="sub">realized + dividends + price delta</div></div>
-        <div class="kpi-card"><div class="label">Banked profit</div><div class="value ${pctClass(wm.group.realizedInWindow)}">${fmtNok(wm.group.realizedInWindow)}</div><div class="sub">${wm.group.sellCount} sells</div></div>
-        <div class="kpi-card"><div class="label">Free money</div><div class="value">${fmtNok(wm.group.dividendsInWindow)}</div><div class="sub">utbytte in window</div></div>
-        <div class="kpi-card"><div class="label">Bought</div><div class="value">${fmtNok(wm.group.buysInWindow)}</div><div class="sub">${wm.group.buyCount} buys</div></div>
+        <div class="kpi-card"><div class="label">Realized P/L</div><div class="value ${pctClass(wm.group.realizedInWindow)}">${fmtNok(wm.group.realizedInWindow)}</div><div class="sub">${wm.group.sellCount} sells</div></div>
+        <div class="kpi-card"><div class="label">Dividends</div><div class="value">${fmtNok(wm.group.dividendsInWindow)}</div><div class="sub">received in window</div></div>
+        <div class="kpi-card"><div class="label">Capital deployed</div><div class="value">${fmtNok(wm.group.buysInWindow)}</div><div class="sub">${wm.group.buyCount} buys</div></div>
         <div class="kpi-card"><div class="label">Net P/L</div><div class="value ${pctClass(wm.group.netPnlInWindow)}">${fmtNok(wm.group.netPnlInWindow)}</div><div class="sub">realized + divs + unrealized Δ</div></div>
       </div>
 
@@ -103,20 +103,20 @@
           `).join('')}
         </div>
         <div class="lb-card">
-          <h3>All-time GOAT 🐐</h3>
+          <h3>All-time, no contest</h3>
           ${d.leaderboards.allTime.map((r, i) => `
             <div class="row"><span class="who">${PODIUM[i]} ${r.code}</span><span class="v ${pctClass(r.value)}">${fmtPct(r.value)}</span></div>
           `).join('')}
         </div>
         <div class="lb-card">
-          <h3>Best single bet (all-time)</h3>
+          <h3>Best single position (all-time)</h3>
           ${d.leaderboards.bestPicks.map((r) => {
             if (!r.pick) return `<div class="row"><span class="who">${r.code}</span><span class="v text-muted">no picks</span></div>`;
             return `<div class="row"><span class="who">${r.code} <span class="text-muted text-small">${r.pick.security}</span></span><span class="v positive">${fmtNok(r.pick.return)} (${fmtPct(r.pick.pct)})</span></div>`;
           }).join('')}
         </div>
         <div class="lb-card">
-          <h3>Last 6 months — who cooked?</h3>
+          <h3>Last 6 months — top of the table</h3>
           ${d.leaderboards.monthly.map((m) => `
             <div class="row"><span class="who">${m.month}</span><span class="v">${m.ranks.slice(0,3).map((r,i)=>`${PODIUM[i]} ${r.code}`).join(' · ')}</span></div>
           `).join('')}
