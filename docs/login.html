@@ -60,17 +60,20 @@
 
     async function renderHello() {
       const email = window.Auth.getEmail() || '(unknown email)';
-      let tabs = [];
+      // Confirm the sheet is reachable before sending the user onward; if
+      // it isn't, surface the error here instead of letting the dashboard
+      // get stuck on its own loading state.
       try {
-        tabs = await window.Sheet.listTabs();
+        await window.Sheet.listTabs();
       } catch (e) {
         show(`Signed in as <strong>${email}</strong> but Sheets call failed:<br><code>${e.message}</code>`, 'err');
         return;
       }
-      const tabList = tabs.map((t) => t.title).join(', ');
-      show(`<strong class="ok">✓ Signed in as ${email}</strong><br>Sheet has ${tabs.length} tabs:<br><pre>${tabList}</pre>`, 'ok');
+      show(`<strong class="ok">✓ Signed in as ${email}</strong><br>Opening dashboard…`, 'ok');
       btn.textContent = 'Sign out';
       btn.onclick = async () => { await window.Auth.signOut(); location.reload(); };
+      // Short delay so the user sees the success state, then redirect.
+      setTimeout(() => { location.href = './index.html'; }, 600);
     }
 
     btn.addEventListener('click', async () => {
