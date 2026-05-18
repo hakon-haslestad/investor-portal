@@ -35,8 +35,7 @@ called from the browser.
 4. **APIs & Services → Credentials → Create credentials → OAuth client
    ID → Web application**.
    - **Authorized JavaScript origins**:
-     `https://<your-gh-user>.github.io` (and `http://localhost:8080` if
-     you want local dev).
+     `https://<your-gh-user>.github.io`
 5. Copy the OAuth client ID into `docs/js/config.js` (`OAUTH_CLIENT_ID`)
    and the Sheet ID into the same file (`SHEET_ID`).
 6. Share the Google Sheet with each investor's Google account (named
@@ -44,14 +43,12 @@ called from the browser.
 
 Visit the Pages URL and click **Sign in with Google**.
 
-## Local dev
+## Making changes
 
-```bash
-npx serve docs        # or any static file server
-```
-
-Open <http://localhost:8080>. Make sure `http://localhost:8080` is in
-the OAuth client's Authorized JavaScript origins.
+Everything in `docs/` is plain HTML/CSS/JS — no build step. Edit a
+file, commit, push, GitHub Pages rebuilds in under a minute. There is
+deliberately no local server: the only supported runtime is GitHub
+Pages + the user's browser + the shared Google Sheet.
 
 ## Sheet contract
 
