@@ -2,6 +2,7 @@
   const me = await fetchMe();
   if (!me) return;
   document.getElementById('nav-mount').innerHTML = buildNav('home', me.displayName);
+  applyChartDefaults();
 
   const PRESETS = [
     { id: '1m',  label: '1M' },
@@ -34,6 +35,10 @@
     }
     localStorage.setItem('geysir.range', JSON.stringify(current));
     paint(d);
+    // Fetch + render timelines in parallel with the rest of the dashboard
+    // (KPIs are already painted; charts slot in once data lands).
+    const tqs = `?from=${d.window.from}&to=${d.window.to}`;
+    api('/api/dashboard/timeline' + tqs).then(paintTimelines).catch(() => {});
   }
 
   function paint(d) {
@@ -96,6 +101,25 @@
         </tbody>
       </table>
 
+      <div class="section-title">Timelines <span class="text-muted text-small">(${prettyRange(d.window)})</span></div>
+      <div class="timeline-grid">
+        <div class="chart-wrap">
+          <div class="chart-title">Equity story <span class="text-muted text-small">— money in vs banked profit</span></div>
+          <div class="chart-canvas-host"><canvas id="chart-equity"></canvas></div>
+          <div class="chart-note">Net deposits vs cumulative realized + dividends. Doesn't include unrealized — those numbers are in the cards above.</div>
+        </div>
+        <div class="chart-wrap">
+          <div class="chart-title">Monthly P/L <span class="text-muted text-small">— realized + dividends</span></div>
+          <div class="chart-canvas-host"><canvas id="chart-monthly"></canvas></div>
+          <div class="chart-note">Green = banked profit. Yellow = dividends. Red = realized losses.</div>
+        </div>
+        <div class="chart-wrap chart-wide">
+          <div class="chart-title">Who's cooking <span class="text-muted text-small">— cumulative net P/L per investor</span></div>
+          <div class="chart-canvas-host"><canvas id="chart-perinvestor"></canvas></div>
+          <div class="chart-note">Realized + dividends only. Lines diverge when someone has a big sell or dividend month.</div>
+        </div>
+      </div>
+
       <div class="section-title">Leaderboards</div>
       <div class="leaderboard">
         <div class="lb-card">
@@ -126,6 +150,24 @@
       </div>
     `;
     wirePicker();
+  }
+
+  function paintTimelines(t) {
+    if (typeof Chart === 'undefined') {
+      document.querySelectorAll('.timeline-grid .chart-canvas-host').forEach((host) => {
+        host.innerHTML = '<div class="text-muted text-small" style="padding:24px 0">Chart library failed to load. Check your connection.</div>';
+      });
+      return;
+    }
+    if (!t || !t.months || !t.months.length) {
+      document.querySelectorAll('.timeline-grid .chart-canvas-host').forEach((host) => {
+        host.innerHTML = '<div class="text-muted text-small" style="padding:24px 0">No transactions in this window.</div>';
+      });
+      return;
+    }
+    renderEquityStory('chart-equity', t);
+    renderMonthlyPnl('chart-monthly', t);
+    renderPerInvestorCumulative('chart-perinvestor', t);
   }
 
   function renderPicker(win) {

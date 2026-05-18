@@ -34,19 +34,17 @@ npm run seed        # creates 5 users + imports the xlsx + seeds Fall 2025
 npm start
 ```
 
-Open <http://localhost:3000>. Log in with any of:
+Open <http://localhost:3000>. The seed script creates one account per
+investor (HH / HS / ØS / JC / HF) using the emails and the default
+password defined in `.env`. Set these before running `npm run seed`:
 
-| Email                          | Password    | Investor      |
-| ------------------------------ | ----------- | ------------- |
-| redacted@example.com     | REDACTED-PASSWORD  | HH Haslestad  |
-| redacted@example.com           | REDACTED-PASSWORD  | HS Sundland   |
-| os@geysir.local                | REDACTED-PASSWORD  | ØS Stubberud  |
-| jc@geysir.local                | REDACTED-PASSWORD  | JC Curran     |
-| hf@geysir.local                | REDACTED-PASSWORD  | HF Førsund    |
+```
+DEFAULT_PASSWORD=<pick something>
+GEYSIR_USER_EMAILS=HH:you@example.com,HS:friend@example.com,...
+```
 
-Change the default password by setting `DEFAULT_PASSWORD` in `.env` before
-running `npm run seed`. The app also reads `PORT` and `SESSION_SECRET`
-from `.env`.
+The app also reads `PORT` and `SESSION_SECRET` from `.env`. Rotate the
+default password after first login.
 
 ## Refreshing the data
 

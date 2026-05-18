@@ -1,5 +1,6 @@
 const express = require('express');
 const { buildDashboard, investorDetail } = require('../portfolio/calculator');
+const { buildTimeline } = require('../portfolio/timeline');
 const copy = require('../copy');
 
 const router = express.Router();
@@ -16,6 +17,15 @@ router.get('/dashboard', (req, res) => {
   }
   const dashboard = buildDashboard(opts);
   res.json({ ...dashboard, names: copy.NAMES });
+});
+
+router.get('/dashboard/timeline', (req, res) => {
+  const { from, to } = req.query;
+  const timeline = buildTimeline({
+    from: from ? String(from) : undefined,
+    to: to ? String(to) : undefined,
+  });
+  res.json({ ...timeline, names: copy.NAMES });
 });
 
 router.get('/investor/:code', (req, res) => {
