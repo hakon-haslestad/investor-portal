@@ -1,7 +1,7 @@
 // Public config. Sheet ID and OAuth Client ID are NOT secrets — both are
 // safe to commit. Auth is enforced by Google Sign-In + sheet share list.
 
-window.GEYSIR_CONFIG = {
+window.PORTAL_CONFIG = {
   // Google Sheet that holds all club data. Same one used by the old portal.
   SHEET_ID: '1RIkvHAojO1E4B622Li04RdQM9lVZJfJ1oMoRg8sWyE4',
 

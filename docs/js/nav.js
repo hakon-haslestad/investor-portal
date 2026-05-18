@@ -4,7 +4,7 @@
   function buildNav(active, displayName) {
     return `
       <nav class="nav">
-        <h1>Geysir Invest AS</h1>
+        <h1>Investor Portal</h1>
         <div class="links">
           <a href="./index.html" class="${active === 'home' ? 'active' : ''}">Dashboard</a>
           <a href="./competitions.html" class="${active === 'comp' ? 'active' : ''}">Competitions</a>
@@ -21,7 +21,7 @@
   // Guards a page: ensure access token, hydrate sheet, look up Member.
   // If not authed → redirect to login. If authed but not in Members → "not authorized".
   async function bootstrap(active, opts = {}) {
-    if (!window.GEYSIR_CONFIG || window.GEYSIR_CONFIG.OAUTH_CLIENT_ID.startsWith('__REPLACE')) {
+    if (!window.PORTAL_CONFIG || window.PORTAL_CONFIG.OAUTH_CLIENT_ID.startsWith('__REPLACE')) {
       document.body.innerHTML =
         '<div class="container"><div class="flash error">Setup needed: edit <code>js/config.js</code> with your OAuth Client ID.</div></div>';
       throw new Error('config not set');
@@ -47,7 +47,7 @@
         <div class="container">
           <div class="flash error" style="max-width:520px;margin:80px auto">
             <strong>Not authorized.</strong> Your Google account
-            (${window.Auth.getEmail() || 'unknown'}) is not in the Members tab of the Geysir sheet.
+            (${window.Auth.getEmail() || 'unknown'}) is not in the Members tab of the portal sheet.
             Ask an admin to add you, then <a href="#" onclick="window.Auth.signOut().then(()=>location.reload())">sign out</a> and try again.
           </div>
         </div>`;

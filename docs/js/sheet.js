@@ -5,7 +5,7 @@
   const BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
   function sheetId() {
-    return window.GEYSIR_CONFIG.SHEET_ID;
+    return window.PORTAL_CONFIG.SHEET_ID;
   }
 
   async function authedFetch(url, opts = {}) {
@@ -20,7 +20,7 @@
     });
     if (r.status === 401) {
       // Token may have expired mid-session — clear cache and bubble up so caller can retry.
-      sessionStorage.removeItem('geysir.token');
+      sessionStorage.removeItem('portal.token');
       throw new Error('unauthenticated');
     }
     if (!r.ok) {

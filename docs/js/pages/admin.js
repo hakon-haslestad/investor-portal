@@ -70,7 +70,7 @@
 
   function renderSheetCard() {
     const mount = document.getElementById('sheet-card');
-    const sheetUrl = `https://docs.google.com/spreadsheets/d/${window.GEYSIR_CONFIG.SHEET_ID}/edit`;
+    const sheetUrl = `https://docs.google.com/spreadsheets/d/${window.PORTAL_CONFIG.SHEET_ID}/edit`;
     mount.innerHTML = `
       <div class="sheet-card">
         <h3>Live from Google Sheets</h3>

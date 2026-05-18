@@ -9,7 +9,7 @@
 //   E(4) UpdatedBy   (new; portal stamps with signed-in email)
 
 (function () {
-  const TAB = window.GEYSIR_CONFIG.TABS.dimValues;
+  const TAB = window.PORTAL_CONFIG.TABS.dimValues;
   const SECURITY_COL = 0;
   const MEMBER_COL = 1;
   const FACTOR_COL = 2;

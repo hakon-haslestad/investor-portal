@@ -1,8 +1,8 @@
-# Geysir Invest AS — Investor Portal
+# Investor Portal
 
-Static frontend for the 5-person Geysir investment club. No backend, no
-server, no passwords — you sign in with Google and the page reads/writes
-a shared Google Sheet on your behalf.
+Static frontend for a small investment club. No backend, no server, no
+passwords — you sign in with Google and the page reads/writes a shared
+Google Sheet on your behalf.
 
 Hosted on GitHub Pages from `docs/`.
 
@@ -28,7 +28,7 @@ called from the browser.
 
 ## One-time setup
 
-1. **Google Cloud Console → New project** (e.g. "Geysir Invest Portal").
+1. **Google Cloud Console → New project** (e.g. "Investor Portal").
 2. **APIs & Services → Library** → enable **Google Sheets API**.
 3. **APIs & Services → OAuth consent screen** → External, add the
    investor emails as test users.
