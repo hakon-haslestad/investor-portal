@@ -14,14 +14,7 @@
   const displayName = names[code] || code;
   const s = detail.summary;
 
-  const verdict = (() => {
-    const p = s.portfolioReturnPct;
-    if (p >= 50) return `${displayName} ate. Up ${p.toFixed(1)}%. Pure cooking. 🔥`;
-    if (p >= 5) return `${displayName} grinding — ${p.toFixed(1)}% in the green 📈`;
-    if (p > -5) return `${displayName} flat. Neither winning nor losing. Just vibes.`;
-    if (p > -20) return `${displayName} down ${Math.abs(p).toFixed(1)}%. It happens.`;
-    return `${displayName} cooked. ${Math.abs(p).toFixed(1)}% down. RIP. 💀`;
-  })();
+  const verdict = window.Copy.verdictFromReturn(displayName, s.portfolioReturnPct);
 
   root.innerHTML = `
     <div class="hero">

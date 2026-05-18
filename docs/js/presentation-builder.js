@@ -114,9 +114,9 @@
     let verdictLine = narrative.verdict || '';
     if (!verdictLine && ranks.length) {
       const top = ranks[0]; const last = ranks[ranks.length - 1];
-      verdictLine = `${top.code} cooked the rest with ${fmtPct(top.pct)}. ${last.code} bringing up the rear at ${fmtPct(last.pct)}.`;
-      if (top.pct > 30) verdictLine += ' Pure cooking. 🔥';
-      if (last.pct < -10) verdictLine += ' RIP 💀';
+      verdictLine = `${top.code} takes the win at ${fmtPct(top.pct)}. ${last.code} brings up the rear at ${fmtPct(last.pct)}.`;
+      if (top.pct > 30) verdictLine += ' A vintage run.';
+      if (last.pct < -10) verdictLine += ' Better luck next round.';
     }
     const verdictSlide = {
       type: 'verdict',
