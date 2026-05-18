@@ -1,4 +1,4 @@
-// Pure parser functions for Geysir's Google Sheet tabs.
+// Pure parser functions for the portal's Google Sheet tabs.
 // Ported from src/excel/normalizer.js + src/parsers/workbook.js + src/excel/manual-attribution.js.
 // No DOM, no fetch — just (sheetMap → JS objects). Safe to unit-test.
 

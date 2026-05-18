@@ -1,7 +1,7 @@
 (async function () {
   // Presentation page has no nav (full-screen deck), but we still need auth + store.
   // Skip nav.bootstrap and do a slim setup.
-  if (window.GEYSIR_CONFIG.OAUTH_CLIENT_ID.startsWith('__REPLACE')) {
+  if (window.PORTAL_CONFIG.OAUTH_CLIENT_ID.startsWith('__REPLACE')) {
     document.getElementById('root').innerHTML = 'Setup needed: edit js/config.js';
     return;
   }

@@ -6,7 +6,7 @@
 
   async function hydrate(opts = {}) {
     if (cached && !opts.force) return cached;
-    const T = window.GEYSIR_CONFIG.TABS;
+    const T = window.PORTAL_CONFIG.TABS;
     const tabs = [T.transactions, T.holdings, T.kpis, T.dimValues, T.members];
     if (opts.includeCompetitions) {
       tabs.push(T.competitions, T.participants, T.picks);

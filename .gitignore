@@ -1,6 +1,16 @@
 .DS_Store
 .env
+
+# Credential safety nets — broad patterns to catch any future key file.
+*service-account*.json
+*credentials*.json
+*-key.json
 geysir-*.json
+
+# Dev-time artefacts from older versions of the project.
+node_modules/
+data/
+uploads/
 
 # Local copies of the source data — sheet is the source of truth.
 *.xlsx

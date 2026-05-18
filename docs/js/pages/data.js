@@ -89,7 +89,7 @@
     { id: 'sum-fee',    label: 'Σ Fee',         type: 'money', sumField: 'sumFee' },
     { id: 'sum-mv',     label: 'Σ MV now',      type: 'money', sumField: 'sumMv',  dedupeBy: 'security' },
   ];
-  const storedMeasures = JSON.parse(localStorage.getItem('geysir.data.measures') || '["count","sum-amount"]');
+  const storedMeasures = JSON.parse(localStorage.getItem('portal.data.measures') || '["count","sum-amount"]');
   const activeMeasures = new Set(storedMeasures);
 
   // Build the measure chip UI
@@ -102,7 +102,7 @@
     cb.addEventListener('change', () => {
       cb.closest('.m-chip').classList.toggle('checked', cb.checked);
       if (cb.checked) activeMeasures.add(cb.value); else activeMeasures.delete(cb.value);
-      localStorage.setItem('geysir.data.measures', JSON.stringify(Array.from(activeMeasures)));
+      localStorage.setItem('portal.data.measures', JSON.stringify(Array.from(activeMeasures)));
       render();
     });
   });
@@ -121,7 +121,7 @@
   if (maxTradeDate) { fromInput.max = maxTradeDate; toInput.max = maxTradeDate; }
 
   // Date-range picker state. Persisted in localStorage (separate key from dashboard).
-  const storedRange = JSON.parse(localStorage.getItem('geysir.data.range') || '{"preset":"all"}');
+  const storedRange = JSON.parse(localStorage.getItem('portal.data.range') || '{"preset":"all"}');
   let range = { preset: storedRange.preset || 'all', from: storedRange.from || null, to: storedRange.to || null };
   if (range.preset === 'custom' && range.from && range.to) {
     fromInput.value = range.from;
@@ -166,7 +166,7 @@
   }
 
   function persistRange() {
-    localStorage.setItem('geysir.data.range', JSON.stringify(range));
+    localStorage.setItem('portal.data.range', JSON.stringify(range));
   }
 
   document.querySelectorAll('#range-picker .preset').forEach((btn) => {

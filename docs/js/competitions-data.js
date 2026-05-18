@@ -2,7 +2,7 @@
 // Each tab is keyed by its first column(s).
 
 (function () {
-  const T = window.GEYSIR_CONFIG.TABS;
+  const T = window.PORTAL_CONFIG.TABS;
 
   // ─── Read all three tabs in parallel ──────────────────────────────────────
 

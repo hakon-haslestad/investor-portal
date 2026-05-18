@@ -3,7 +3,7 @@
 // Re-auth on reload is silent if the user has an active Google session and previously consented.
 
 (function () {
-  const STORAGE_KEY = 'geysir.token';
+  const STORAGE_KEY = 'portal.token';
   let tokenClient = null;
   let cachedToken = null;
   let cachedEmail = null;
@@ -17,12 +17,12 @@
       if (Date.now() >= parsed.expires_at - 60_000) return null;
       // Drop tokens that don't cover the currently configured scopes
       // (so changing config.js OAUTH_SCOPE invalidates stale tokens).
-      const needed = (window.GEYSIR_CONFIG.OAUTH_SCOPE || '').split(/\s+/).filter(Boolean);
+      const needed = (window.PORTAL_CONFIG.OAUTH_SCOPE || '').split(/\s+/).filter(Boolean);
       const have = (parsed.scope || '').split(/\s+/).filter(Boolean);
       const missing = needed.filter((s) => !have.includes(s));
       if (missing.length) {
         sessionStorage.removeItem(STORAGE_KEY);
-        sessionStorage.removeItem('geysir.email');
+        sessionStorage.removeItem('portal.email');
         return null;
       }
       return parsed;
@@ -36,7 +36,7 @@
 
   function clearToken() {
     sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem('geysir.email');
+    sessionStorage.removeItem('portal.email');
     cachedToken = null;
     cachedEmail = null;
   }
@@ -53,8 +53,8 @@
       }, 50);
     });
     tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: window.GEYSIR_CONFIG.OAUTH_CLIENT_ID,
-      scope: window.GEYSIR_CONFIG.OAUTH_SCOPE,
+      client_id: window.PORTAL_CONFIG.OAUTH_CLIENT_ID,
+      scope: window.PORTAL_CONFIG.OAUTH_SCOPE,
       callback: () => {}, // assigned per-request
     });
     return tokenClient;
@@ -84,7 +84,7 @@
     });
     if (!r.ok) throw new Error('userinfo failed: ' + r.status);
     const j = await r.json();
-    sessionStorage.setItem('geysir.email', j.email || '');
+    sessionStorage.setItem('portal.email', j.email || '');
     cachedEmail = j.email || null;
     return j;
   }
@@ -116,7 +116,7 @@
 
     getEmail() {
       if (cachedEmail) return cachedEmail;
-      return sessionStorage.getItem('geysir.email');
+      return sessionStorage.getItem('portal.email');
     },
 
     async accessToken() {

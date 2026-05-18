@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Geysir Invest — Sign in</title>
+  <title>Investor Portal — Sign in</title>
   <link rel="stylesheet" href="./css/style.css" />
   <style>
     .login-card {
@@ -22,7 +22,7 @@
 </head>
 <body>
   <div class="login-card">
-    <h1>Geysir Invest AS</h1>
+    <h1>Investor Portal</h1>
     <p>Investor portal — sign in with your Google account.</p>
     <button class="btn" id="sign-in">Sign in with Google</button>
     <div class="status" id="status"></div>
@@ -45,7 +45,7 @@
     }
 
     async function tryLoad() {
-      if (window.GEYSIR_CONFIG.OAUTH_CLIENT_ID.startsWith('__REPLACE')) {
+      if (window.PORTAL_CONFIG.OAUTH_CLIENT_ID.startsWith('__REPLACE')) {
         show('<strong>Setup needed:</strong> OAuth Client ID not configured. Edit <code>js/config.js</code>.', 'err');
         btn.disabled = true;
         return;

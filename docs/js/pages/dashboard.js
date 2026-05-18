@@ -12,7 +12,7 @@
     { id: 'custom', label: 'Custom' },
   ];
 
-  const stored = JSON.parse(localStorage.getItem('geysir.range') || '{}');
+  const stored = JSON.parse(localStorage.getItem('portal.range') || '{}');
   let current = {
     preset: stored.preset || 'ytd',
     from: stored.from || null,
@@ -30,7 +30,7 @@
       current.from = d.window.from;
       current.to = d.window.to;
     }
-    localStorage.setItem('geysir.range', JSON.stringify(current));
+    localStorage.setItem('portal.range', JSON.stringify(current));
     paint(d);
   }
 
