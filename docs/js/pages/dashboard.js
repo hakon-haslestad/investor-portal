@@ -18,11 +18,20 @@
     from: stored.from || null,
     to: stored.to || null,
   };
+  let selectedCode = localStorage.getItem('portal.filter') || null;
 
   const INVESTOR_COLORS = {
     HH: '#4ade80', HS: '#60a5fa', 'ØS': '#fbbf24', JC: '#f472b6', HF: '#a78bfa',
   };
   const INVESTOR_CODES = ['HH', 'HS', 'ØS', 'JC', 'HF'];
+
+  function toggleFilter(code) {
+    selectedCode = selectedCode === code ? null : code;
+    if (selectedCode) localStorage.setItem('portal.filter', selectedCode);
+    else localStorage.removeItem('portal.filter');
+    refresh();
+  }
+  window.__clearFilter = () => { selectedCode = null; localStorage.removeItem('portal.filter'); refresh(); };
 
   refresh();
 
@@ -79,11 +88,15 @@
   function paintCharts(win) {
     const allTime = window.TimeSeries.buildCumulativePnlSeries(store);
     const tsPnl = windowSlice(allTime, win && win.from, win && win.to);
-    const pnlSeries = INVESTOR_CODES.map((code) => ({
+    const allSeries = INVESTOR_CODES.map((code) => ({
+      code,
       name: `${code} ${names[code] || ''}`.trim(),
       color: INVESTOR_COLORS[code],
       points: tsPnl.map((s) => ({ date: s.date, y: s.perInvestor[code] || 0 })),
     }));
+    const chartSeries = selectedCode
+      ? allSeries.filter((s) => s.code === selectedCode)
+      : allSeries;
 
     const pnlEl = document.getElementById('chart-pnl');
     const legendEl = document.getElementById('chart-legend');
@@ -93,55 +106,69 @@
 
     const isMobile = window.matchMedia('(max-width: 720px)').matches;
     pnlEl.appendChild(window.Charts.multiLine({
-      series: pnlSeries,
+      series: chartSeries,
       width: isMobile ? 540 : 900,
       height: isMobile ? 360 : 320,
-      title: 'Cumulative realized P/L + dividends − fees',
+      title: selectedCode
+        ? `Cumulative P/L · filtered to ${selectedCode}`
+        : 'Cumulative realized P/L + dividends − fees',
       interactive: true,
     }));
 
-    const investorLegend = INVESTOR_CODES.map((code) => {
-      const last = pnlSeries.find((s) => s.name.startsWith(code)).points.slice(-1)[0];
+    const investorLegend = allSeries.map((s) => {
+      const last = s.points.slice(-1)[0];
       return {
-        name: `${code} · ${names[code] || ''}`,
-        color: INVESTOR_COLORS[code],
+        code: s.code,
+        name: `${s.code} · ${names[s.code] || ''}`,
+        color: s.color,
         valueText: last ? fmtNok(last.y) : '',
       };
     });
-    legendEl.appendChild(window.Charts.legend({ series: investorLegend }));
+    legendEl.appendChild(window.Charts.legend({
+      series: investorLegend,
+      selectedCode,
+      onSelect: toggleFilter,
+    }));
   }
 
   function paint(d) {
     const wm = d.windowMetrics;
     const root = document.getElementById('root');
+    const rn = selectedCode && d.perInvestor[selectedCode] ? d.perInvestor[selectedCode] : d.group;
+    const win = selectedCode && wm.perInvestor[selectedCode] ? wm.perInvestor[selectedCode] : wm.group;
+    const filterLabel = selectedCode
+      ? `<span class="filter-chip">Filtered: <strong>${selectedCode}</strong> ${names[selectedCode] || ''} <a href="#" onclick="event.preventDefault(); window.__clearFilter();">clear ×</a></span>`
+      : '';
+    const rnTitle = selectedCode ? `Right now · ${selectedCode}` : 'Right now (current snapshot)';
+    const winTitle = selectedCode ? `In this window · ${selectedCode}` : 'In this window';
     root.innerHTML = `
       <div class="hero">
         <div>
           <h2>Welcome back, ${me.displayName}. Here's the book.</h2>
-          <div class="when">Snapshot: ${d.snapshotDate || '—'}</div>
+          <div class="when">Snapshot: ${d.snapshotDate || '—'} ${filterLabel}</div>
         </div>
         ${renderPicker(d.window)}
       </div>
 
-      <div class="section-title">Right now (current snapshot)</div>
+      <div class="section-title">Cumulative net P/L per investor <span class="text-muted text-small">click an investor to filter</span></div>
+      <div id="chart-legend"></div>
+      <div class="chart-wrap" id="chart-pnl"></div>
+
+      <div class="section-title">${rnTitle}</div>
       <div class="kpi-grid">
-        <div class="kpi-card"><div class="label">Total portfolio</div><div class="value">${fmtNok(d.group.totalValue)}</div><div class="sub">positions + cash</div></div>
-        <div class="kpi-card"><div class="label">Holdings MV</div><div class="value">${fmtNok(d.group.marketValue)}</div><div class="sub">active positions</div></div>
-        <div class="kpi-card"><div class="label">Dry powder</div><div class="value">${fmtNok(d.group.cash)}</div><div class="sub">uncommitted cash</div></div>
-        <div class="kpi-card"><div class="label">Unrealized P/L</div><div class="value ${pctClass(d.group.unrealized)}">${fmtNok(d.group.unrealized)}</div><div class="sub">mark-to-market</div></div>
+        <div class="kpi-card"><div class="label">Total portfolio</div><div class="value">${fmtNok(rn.totalValue)}</div><div class="sub">positions + cash</div></div>
+        <div class="kpi-card"><div class="label">Holdings MV</div><div class="value">${fmtNok(rn.marketValue)}</div><div class="sub">active positions</div></div>
+        <div class="kpi-card"><div class="label">Dry powder</div><div class="value">${fmtNok(rn.cash)}</div><div class="sub">${selectedCode ? 'investor share' : 'uncommitted cash'}</div></div>
+        <div class="kpi-card"><div class="label">Unrealized P/L</div><div class="value ${pctClass(rn.unrealized)}">${fmtNok(rn.unrealized)}</div><div class="sub">mark-to-market</div></div>
       </div>
 
-      <div class="section-title">Cumulative net P/L per investor</div>
-      <div class="chart-wrap" id="chart-pnl"></div>
-      <div id="chart-legend"></div>
-
-      <div class="section-title">In this window <span class="text-muted text-small">${prettyRange(d.window)}</span></div>
+      <div class="section-title">${winTitle} <span class="text-muted text-small">${prettyRange(d.window)}</span></div>
       <div class="kpi-grid">
-        <div class="kpi-card"><div class="label">Period return</div><div class="value ${pctClass(wm.group.periodReturnPct)}">${fmtPct(wm.group.periodReturnPct)}</div><div class="sub">realized + dividends + price delta</div></div>
-        <div class="kpi-card"><div class="label">Realized P/L</div><div class="value ${pctClass(wm.group.realizedInWindow)}">${fmtNok(wm.group.realizedInWindow)}</div><div class="sub">${wm.group.sellCount} sells</div></div>
-        <div class="kpi-card"><div class="label">Dividends</div><div class="value">${fmtNok(wm.group.dividendsInWindow)}</div><div class="sub">received in window</div></div>
-        <div class="kpi-card"><div class="label">Capital deployed</div><div class="value">${fmtNok(wm.group.buysInWindow)}</div><div class="sub">${wm.group.buyCount} buys</div></div>
-        <div class="kpi-card"><div class="label">Net P/L</div><div class="value ${pctClass(wm.group.netPnlInWindow)}">${fmtNok(wm.group.netPnlInWindow)}</div><div class="sub">realized + divs + unrealized Δ</div></div>
+        <div class="kpi-card"><div class="label">Period return</div><div class="value ${pctClass(win.periodReturnPct)}">${fmtPct(win.periodReturnPct)}</div><div class="sub">realized + dividends + price delta</div></div>
+        <div class="kpi-card"><div class="label">Realized P/L</div><div class="value ${pctClass(win.realizedInWindow)}">${fmtNok(win.realizedInWindow)}</div><div class="sub">${win.sellCount || 0} sells</div></div>
+        <div class="kpi-card"><div class="label">Dividends</div><div class="value">${fmtNok(win.dividendsInWindow)}</div><div class="sub">received in window</div></div>
+        <div class="kpi-card"><div class="label">Capital deployed</div><div class="value">${fmtNok(win.buysInWindow)}</div><div class="sub">${win.buyCount || 0} buys</div></div>
+        <div class="kpi-card"><div class="label">Net P/L</div><div class="value ${pctClass(win.netPnlInWindow)}">${fmtNok(win.netPnlInWindow)}</div><div class="sub">realized + divs + unrealized Δ</div></div>
       </div>
 
       <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${prettyRange(d.window)})</span></div>
@@ -159,8 +186,11 @@
         <tbody>
           ${Object.entries(d.perInvestor).map(([code, s]) => {
             const w = wm.perInvestor[code] || {};
+            const rowClass = selectedCode
+              ? (code === selectedCode ? 'row-link selected-row' : 'row-link dimmed-row')
+              : 'row-link';
             return `
-              <tr class="row-link" onclick="location.href='./investor.html?code=${encodeURIComponent(code)}'">
+              <tr class="${rowClass}" onclick="location.href='./investor.html?code=${encodeURIComponent(code)}'">
                 <td><strong>${code}</strong> <span class="text-muted text-small">${names[code] || ''}</span></td>
                 <td class="text-right">${fmtNok(s.totalValue)}</td>
                 <td class="text-right ${pctClass(w.periodReturnPct)}"><strong>${fmtPct(w.periodReturnPct)}</strong></td>

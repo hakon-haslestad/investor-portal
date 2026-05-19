@@ -176,6 +176,24 @@ canvas { max-width: 100%; }
   color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
+.chart-legend .key.clickable { cursor: pointer; transition: opacity 0.15s, border-color 0.15s, box-shadow 0.15s; user-select: none; }
+.chart-legend .key.clickable:hover { border-color: var(--accent); }
+.chart-legend .key.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.chart-legend .key.dimmed { opacity: 0.35; }
+.chart-legend .key.dimmed:hover { opacity: 0.7; }
+
+tr.selected-row td { background: rgba(62, 224, 127, 0.08); }
+tr.dimmed-row { opacity: 0.4; }
+tr.dimmed-row:hover { opacity: 0.85; }
+
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--panel-2); border: 1px solid var(--accent);
+  color: var(--text); border-radius: 999px;
+  padding: 2px 10px; margin-left: 10px; font-size: 0.78rem;
+}
+.filter-chip a { color: var(--muted); margin-left: 4px; font-size: 0.78rem; }
+.filter-chip a:hover { color: var(--danger); text-decoration: none; }
 
 td.links { white-space: nowrap; }
 td.links a { color: var(--muted); margin-right: 2px; font-size: 0.82rem; }

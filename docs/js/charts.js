@@ -390,13 +390,24 @@
     return svg;
   }
 
-  // series: [{ name, color, valueText? }]
-  function legend({ series }) {
+  // series: [{ code?, name, color, valueText? }]
+  // When onSelect + code are provided, each key becomes clickable; the entry
+  // whose code matches selectedCode renders with the "selected" class, others
+  // with "dimmed" — useful for cross-filtering a dashboard.
+  function legend({ series, selectedCode, onSelect }) {
     const wrap = document.createElement('div');
     wrap.className = 'chart-legend';
     for (const s of series) {
       const key = document.createElement('div');
       key.className = 'key';
+      if (s.code) key.dataset.code = s.code;
+      if (selectedCode && s.code) {
+        key.classList.add(s.code === selectedCode ? 'selected' : 'dimmed');
+      }
+      if (onSelect && s.code) {
+        key.classList.add('clickable');
+        key.addEventListener('click', () => onSelect(s.code));
+      }
       const sw = document.createElement('span');
       sw.className = 'swatch';
       sw.style.background = s.color;
