@@ -9,9 +9,11 @@ window.PORTAL_CONFIG = {
   // Paste yours here. See README for setup instructions.
   OAUTH_CLIENT_ID: '872440185175-io8gmos8q04sq7jdt99ubeb16hbopv47.apps.googleusercontent.com',
 
-  // Scopes: read+write Sheets the user already has access to, plus
-  // openid+email so the page can look the signed-in user up in the Members tab.
-  OAUTH_SCOPE: 'openid email https://www.googleapis.com/auth/spreadsheets',
+  // Scopes — read-only by default (members). Admin pages incrementally
+  // request the full read+write scope when needed. openid+email is
+  // needed either way so the page can look the user up in the Members tab.
+  OAUTH_SCOPE: 'openid email https://www.googleapis.com/auth/spreadsheets.readonly',
+  OAUTH_SCOPE_WRITE: 'openid email https://www.googleapis.com/auth/spreadsheets',
 
   // Sheet tab names.
   TABS: {

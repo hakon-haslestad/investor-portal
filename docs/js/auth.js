@@ -41,8 +41,8 @@
     cachedEmail = null;
   }
 
-  async function ensureTokenClient() {
-    if (tokenClient) return tokenClient;
+  async function ensureTokenClient(scope) {
+    if (tokenClient && tokenClient._scope === scope) return tokenClient;
     // Wait for GIS script to load
     await new Promise((resolve) => {
       if (window.google && window.google.accounts && window.google.accounts.oauth2) return resolve();
@@ -54,15 +54,17 @@
     });
     tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: window.PORTAL_CONFIG.OAUTH_CLIENT_ID,
-      scope: window.PORTAL_CONFIG.OAUTH_SCOPE,
+      scope: scope || window.PORTAL_CONFIG.OAUTH_SCOPE,
       callback: () => {}, // assigned per-request
     });
+    tokenClient._scope = scope || window.PORTAL_CONFIG.OAUTH_SCOPE;
     return tokenClient;
   }
 
-  function requestToken({ silent }) {
+  function requestToken({ silent, scope }) {
+    const requestScope = scope || window.PORTAL_CONFIG.OAUTH_SCOPE;
     return new Promise((resolve, reject) => {
-      ensureTokenClient().then((client) => {
+      ensureTokenClient(requestScope).then((client) => {
         client.callback = (resp) => {
           if (resp.error) return reject(new Error(resp.error_description || resp.error));
           const tok = {
@@ -76,6 +78,13 @@
         client.requestAccessToken({ prompt: silent ? '' : 'consent' });
       }).catch(reject);
     });
+  }
+
+  function tokenHasScope(tok, scopeString) {
+    if (!tok) return false;
+    const have = (tok.scope || '').split(/\s+/).filter(Boolean);
+    const want = (scopeString || '').split(/\s+/).filter(Boolean);
+    return want.every((s) => have.includes(s));
   }
 
   async function fetchUserInfo(accessToken) {
@@ -124,6 +133,31 @@
       if (t) { cachedToken = t; return t.access_token; }
       const fresh = await requestToken({ silent: true });
       return fresh.access_token;
+    },
+
+    // Trigger a separate consent prompt that adds the read+write Sheets
+    // scope to the existing token. Members never need this; admin pages
+    // and write-actions call it before issuing a mutation. If the user
+    // already has the broader scope (e.g. cached from a previous session),
+    // this resolves silently.
+    async requestWriteAccess() {
+      const writeScope = window.PORTAL_CONFIG.OAUTH_SCOPE_WRITE;
+      if (!writeScope) throw new Error('OAUTH_SCOPE_WRITE not configured');
+      const existing = cachedToken || loadCachedToken();
+      if (tokenHasScope(existing, writeScope)) {
+        cachedToken = existing; return existing;
+      }
+      // Try silent first (in case the user previously granted write access).
+      try {
+        const silent = await requestToken({ silent: true, scope: writeScope });
+        if (tokenHasScope(silent, writeScope)) return silent;
+      } catch (_e) { /* fall through to interactive */ }
+      return requestToken({ silent: false, scope: writeScope });
+    },
+
+    hasWriteScope() {
+      const writeScope = window.PORTAL_CONFIG.OAUTH_SCOPE_WRITE;
+      return tokenHasScope(cachedToken || loadCachedToken(), writeScope);
     },
   };
 })();

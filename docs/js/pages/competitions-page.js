@@ -113,6 +113,7 @@
         return;
       }
       try {
+        await window.Auth.requestWriteAccess();
         const id = await window.CompetitionsData.createCompetition({
           name: fd.get('name'),
           start_date: fd.get('start_date'),
@@ -136,6 +137,7 @@
         const id = btn.dataset.delete;
         if (!confirm(`Delete competition ${id}? (Empties the Id cell; row stays in the sheet.)`)) return;
         try {
+          await window.Auth.requestWriteAccess();
           await window.CompetitionsData.deleteCompetition(id);
           location.reload();
         } catch (err) {
