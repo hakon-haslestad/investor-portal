@@ -45,16 +45,19 @@
     const w = width - PAD.left - PAD.right;
     const h = height - PAD.top - PAD.bottom;
 
-    // Y gridlines + labels
-    const yTicks = 5;
+    // Y gridlines + labels — 6 ticks, dashed for non-zero, solid for the zero line.
+    const yTicks = 6;
     for (let i = 0; i <= yTicks; i++) {
       const v = yMin + (yMax - yMin) * (i / yTicks);
       const y = PAD.top + h - (h * (v - yMin)) / (yMax - yMin);
+      const isZero = Math.abs(v) < 1e-9 && yMin < 0;
       const line = svgEl('line', {
         x1: PAD.left, x2: PAD.left + w, y1: y, y2: y,
-        stroke: '#262a36', 'stroke-width': 1, 'shape-rendering': 'crispEdges',
+        stroke: isZero ? '#525866' : '#262a36',
+        'stroke-width': isZero ? 1 : 1,
+        'shape-rendering': 'crispEdges',
       });
-      if (v === 0 && yMin < 0) line.setAttribute('stroke', '#8a92a6');
+      if (!isZero) line.setAttribute('stroke-dasharray', '2,4');
       g.appendChild(line);
       const label = svgEl('text', {
         x: PAD.left - 8, y: y + 4, 'text-anchor': 'end',
@@ -249,12 +252,12 @@
       const s = series[i];
       const pts = seriesPts[i];
       const path = svgEl('path', {
-        d: pathD(pts), fill: 'none', stroke: s.color, 'stroke-width': 2,
+        d: pathD(pts), fill: 'none', stroke: s.color, 'stroke-width': 2.5,
         'stroke-linejoin': 'round', 'stroke-linecap': 'round',
       });
       g.appendChild(path);
       const last = pts[pts.length - 1];
-      g.appendChild(svgEl('circle', { cx: last.x, cy: last.y, r: 3.5, fill: s.color }));
+      g.appendChild(svgEl('circle', { cx: last.x, cy: last.y, r: 4, fill: s.color, stroke: '#0e0f13', 'stroke-width': 1.5 }));
     }
 
     if (title) {

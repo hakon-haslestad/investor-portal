@@ -49,29 +49,33 @@
     paintCharts(d.window);
   }
 
-  // Slice the all-time cumulative series down to the selected window and
-  // rebase so the chart starts at 0 on the `from` date — the chart then
-  // shows "P/L gained DURING this period" rather than absolute lifetime totals.
-  function windowSlice(samples, from, to) {
+  // Slice an all-time per-investor series down to the selected window.
+  //   rebase=true  → subtract the baseline-at-`from` so the chart starts at 0
+  //                  (good for cumulative P/L: shows gains DURING this period).
+  //   rebase=false → keep absolute values (good for portfolio value).
+  function windowSlice(samples, from, to, { rebase = true } = {}) {
     if (!from || !to) return samples;
     let baseline = null;
     for (const s of samples) {
       if (s.date <= from) baseline = s;
       else break;
     }
-    const base = baseline ? baseline.perInvestor : {};
+    const base = rebase && baseline ? baseline.perInvestor : null;
     const out = [];
-    if (!samples.length || samples[0].date > from) {
+    if (rebase && (!samples.length || samples[0].date > from)) {
       out.push({ date: from, perInvestor: emptyPerInvestor() });
+    } else if (!rebase && baseline) {
+      out.push({ date: from, perInvestor: { ...baseline.perInvestor } });
     }
     for (const s of samples) {
       if (s.date < from) continue;
       if (s.date > to) break;
-      const rebased = { date: s.date, perInvestor: {} };
+      const next = { date: s.date, perInvestor: {} };
       for (const code of INVESTOR_CODES) {
-        rebased.perInvestor[code] = (s.perInvestor[code] || 0) - (base[code] || 0);
+        const v = s.perInvestor[code] || 0;
+        next.perInvestor[code] = base ? v - (base[code] || 0) : v;
       }
-      out.push(rebased);
+      out.push(next);
     }
     if (out.length && out[out.length - 1].date < to) {
       out.push({ date: to, perInvestor: { ...out[out.length - 1].perInvestor } });
@@ -86,42 +90,56 @@
   }
 
   function paintCharts(win) {
-    const allTime = window.TimeSeries.buildCumulativePnlSeries(store);
-    const tsPnl = windowSlice(allTime, win && win.from, win && win.to);
-    const allSeries = INVESTOR_CODES.map((code) => ({
+    const from = win && win.from, to = win && win.to;
+    const pnlAll = window.TimeSeries.buildCumulativePnlSeries(store);
+    const mvAll = window.TimeSeries.buildPortfolioValueSeries(store);
+    const tsPnl = windowSlice(pnlAll, from, to, { rebase: true });
+    const tsMv = windowSlice(mvAll, from, to, { rebase: false });
+
+    const toSeries = (samples) => INVESTOR_CODES.map((code) => ({
       code,
       name: `${code} ${names[code] || ''}`.trim(),
       color: INVESTOR_COLORS[code],
-      points: tsPnl.map((s) => ({ date: s.date, y: s.perInvestor[code] || 0 })),
+      points: samples.map((s) => ({ date: s.date, y: s.perInvestor[code] || 0 })),
     }));
-    const chartSeries = selectedCode
-      ? allSeries.filter((s) => s.code === selectedCode)
-      : allSeries;
+    const pnlSeriesAll = toSeries(tsPnl);
+    const mvSeriesAll = toSeries(tsMv);
+    const filt = (all) => selectedCode ? all.filter((s) => s.code === selectedCode) : all;
 
     const pnlEl = document.getElementById('chart-pnl');
+    const mvEl = document.getElementById('chart-mv');
     const legendEl = document.getElementById('chart-legend');
-    if (!pnlEl || !legendEl) return;
+    if (!pnlEl || !mvEl || !legendEl) return;
     pnlEl.innerHTML = '';
+    mvEl.innerHTML = '';
     legendEl.innerHTML = '';
 
     const isMobile = window.matchMedia('(max-width: 720px)').matches;
+    const W = isMobile ? 540 : 900;
+    const H = isMobile ? 360 : 320;
+
     pnlEl.appendChild(window.Charts.multiLine({
-      series: chartSeries,
-      width: isMobile ? 540 : 900,
-      height: isMobile ? 360 : 320,
+      series: filt(pnlSeriesAll), width: W, height: H,
       title: selectedCode
-        ? `Cumulative P/L · filtered to ${selectedCode}`
+        ? `Cumulative P/L · ${selectedCode}`
         : 'Cumulative realized P/L + dividends − fees',
       interactive: true,
     }));
+    mvEl.appendChild(window.Charts.multiLine({
+      series: filt(mvSeriesAll), width: W, height: H,
+      title: selectedCode
+        ? `Portfolio value · ${selectedCode}`
+        : 'Portfolio value per investor',
+      interactive: true,
+    }));
 
-    const investorLegend = allSeries.map((s) => {
-      const last = s.points.slice(-1)[0];
+    const investorLegend = pnlSeriesAll.map((s) => {
+      const lastPnl = s.points.slice(-1)[0];
       return {
         code: s.code,
         name: `${s.code} · ${names[s.code] || ''}`,
         color: s.color,
-        valueText: last ? fmtNok(last.y) : '',
+        valueText: lastPnl ? fmtNok(lastPnl.y) : '',
       };
     });
     legendEl.appendChild(window.Charts.legend({
@@ -150,9 +168,10 @@
         ${renderPicker(d.window)}
       </div>
 
-      <div class="section-title">Cumulative net P/L per investor <span class="text-muted text-small">click an investor to filter</span></div>
+      <div class="section-title">Timelines per investor <span class="text-muted text-small">click an investor to filter</span></div>
       <div id="chart-legend"></div>
       <div class="chart-wrap" id="chart-pnl"></div>
+      <div class="chart-wrap" id="chart-mv"></div>
 
       <div class="section-title">${rnTitle}</div>
       <div class="kpi-grid">
