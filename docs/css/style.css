@@ -189,9 +189,78 @@ td.links a:hover { color: var(--accent); }
 .report-table tr.year-header td:first-child { font-size: 1.05rem; }
 .report-table tfoot tr td { border-top: 2px solid var(--border); border-bottom: none; font-weight: 600; padding-top: 10px; }
 
+/* ─── Mobile (≤720px) ─────────────────────────────────────────────────── */
 @media (max-width: 720px) {
-  .container { padding: 14px; }
-  .nav { padding: 10px 14px; }
-  .nav h1 { font-size: 0.92rem; }
-  .kpi-card .value { font-size: 1.3rem; }
+  .container { padding: 12px; }
+
+  /* Nav: wrap links onto a second row, shrink chrome */
+  .nav { padding: 10px 12px; flex-wrap: wrap; gap: 8px; position: static; }
+  .nav h1 { font-size: 0.95rem; flex: 0 0 auto; }
+  .nav .who { font-size: 0.75rem; order: 2; }
+  .nav .links {
+    order: 3; width: 100%; gap: 2px; flex-wrap: wrap;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .nav .links a { padding: 6px 10px; font-size: 0.85rem; white-space: nowrap; }
+
+  /* Hero / section titles */
+  .hero h2 { font-size: 1.2rem; }
+  .hero .when { font-size: 0.78rem; }
+  .section-title { margin: 20px 0 8px; font-size: 0.72rem; }
+
+  /* KPI cards: 2-up on phone, smaller text */
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .kpi-card { padding: 12px; }
+  .kpi-card .label { font-size: 0.7rem; letter-spacing: 1px; }
+  .kpi-card .value { font-size: 1.15rem; }
+  .kpi-card .sub { font-size: 0.72rem; }
+
+  /* Leaderboards: stack */
+  .leaderboard { grid-template-columns: 1fr; gap: 10px; }
+  .lb-card { padding: 12px 14px; }
+  .lb-card h3 { font-size: 0.9rem; }
+
+  /* Tables: horizontal scroll when wider than the viewport. The container
+     itself stays put, the table scrolls inside it. */
+  .container table {
+    display: block; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    max-width: 100%; white-space: nowrap;
+  }
+  table th, table td { padding: 8px 10px; font-size: 0.85rem; }
+
+  /* Range picker: wrap on its own row */
+  .range-picker { width: 100%; }
+  .range-picker .preset { padding: 6px 10px; font-size: 0.82rem; }
+  .range-picker input[type="date"] { width: 100%; }
+
+  /* Charts: tighter padding, denser legend */
+  .chart-wrap { padding: 8px 6px; margin-top: 12px; }
+  .chart-legend { grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 10px 0 18px; }
+  .chart-legend .key { padding: 6px 8px; gap: 8px; }
+  .chart-legend .name { font-size: 0.78rem; }
+  .chart-legend .v { font-size: 0.74rem; }
+
+  /* Reports table: keep the existing horizontal scroll wrapper happy */
+  .report-table th, .report-table td { font-size: 0.78rem; padding: 5px 8px; }
+  .report-table tr.year-header td:first-child { font-size: 0.95rem; }
+
+  /* Competition cards / forms */
+  .competition-card .ranks { grid-template-columns: 1fr 1fr; }
+  .competition-card .actions { flex-wrap: wrap; }
+
+  /* Login card */
+  .login-card { width: auto; max-width: 360px; margin: 0 12px; padding: 24px; }
+
+  /* Flash messages */
+  .flash { font-size: 0.85rem; }
+
+  /* Tags / inline meta */
+  .tag { font-size: 0.72rem; }
+}
+
+/* ─── Tiny phones (≤400px) ───────────────────────────────────────────── */
+@media (max-width: 400px) {
+  .kpi-grid { grid-template-columns: 1fr; }
+  .chart-legend { grid-template-columns: 1fr; }
+  .competition-card .ranks { grid-template-columns: 1fr; }
 }
