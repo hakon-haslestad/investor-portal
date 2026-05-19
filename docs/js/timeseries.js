@@ -148,91 +148,32 @@
   //                      + cost  − cost   (cost cancels)  + unrealized at end
   // …which collapses to deposits − withdrawals − fees + dividends + realized
   // for in-flight points and adds the unrealized lift at the final sample.
-  // Portfolio value over time, computed properly at every sample:
-  //   value(t) = cash(t) + Σ (qty_held(t) × price_at_or_before(t))
-  // Cash balance and per-security qty come from a chronological replay of
-  // every transaction. The price at each historical date is looked up via
-  // window.Portfolio.pricesAtDate, which uses the closest Beholdningsverdi
-  // snapshot on or before that date — so if the sheet only has one snapshot
-  // (today), the historical curve effectively shows "this portfolio valued
-  // at today's prices over time". When multiple snapshots exist, the line
-  // tracks real mark-to-market.
+  // Portfolio value per investor — pulled straight from Beholdningsverdi.
+  // One sample per snapshotDate, summing marketValueNok × investor weight
+  // across every security in that snapshot. No transactions, no derived
+  // cash — this is the authoritative MV the broker recorded on that day.
   function buildPortfolioValueSeries(store) {
     const attrMap = store.attributionMap;
-    const state = {};
-    for (const code of INVESTOR_CODES) state[code] = { cash: 0, qty: new Map() };
-
-    function depositSplit(amount) {
-      for (const { code, weight } of evenSplit()) state[code].cash += amount * weight;
+    const byDate = new Map();
+    for (const h of store.holdings) {
+      if (!h.snapshotDate || h.marketValueNok == null) continue;
+      if (!byDate.has(h.snapshotDate)) byDate.set(h.snapshotDate, []);
+      byDate.get(h.snapshotDate).push(h);
     }
-    function feeOrWithdrawal(amount) {
-      for (const { code, weight } of evenSplit()) state[code].cash -= Math.abs(amount) * weight;
-    }
-    function apply(tx) {
-      const cat = classify(tx.type);
-      const amount = tx.amount || 0;
-      const qty = tx.qty || 0;
-      if (cat === 'DEPOSIT') { depositSplit(amount); return; }
-      if (cat === 'WITHDRAWAL') { feeOrWithdrawal(amount); return; }
-      if (cat === 'FEE') { feeOrWithdrawal(amount); return; }
-      const security = tx.security ? canonicalName(tx.security) : null;
-      if (!security) return;
-      const split = splitForSecurity(attrMap, security);
-      if (!split.length) return;
-      if (cat === 'DIVIDEND' || cat === 'TAX') {
-        for (const { code, weight } of split) state[code].cash += amount * weight;
-        return;
-      }
-      if (cat !== 'BUY' && cat !== 'SELL') return;
-      const cashImpacting = tx.type === 'KJØPT' || isRealizingSell(tx.type);
-      for (const { code, weight } of split) {
-        const bag = state[code].qty;
-        const wq = qty * weight;
-        const wa = amount * weight;
-        if (!bag.has(security)) bag.set(security, 0);
-        if (cat === 'BUY') {
-          bag.set(security, bag.get(security) + wq);
-          if (cashImpacting) state[code].cash -= Math.abs(wa);
-        } else {
-          bag.set(security, Math.max(0, bag.get(security) - Math.abs(wq)));
-          if (cashImpacting) state[code].cash += wa;
-        }
-      }
-    }
-
-    const txs = store.transactions.slice().sort((a, b) => {
-      const ak = a.tradeDate || a.bookDate || '';
-      const bk = b.tradeDate || b.bookDate || '';
-      return ak.localeCompare(bk);
-    });
-
-    function snapshot(date) {
-      const prices = window.Portfolio.pricesAtDate(store, date) || new Map();
+    const dates = Array.from(byDate.keys()).sort();
+    return dates.map((date) => {
       const perInvestor = {};
-      for (const code of INVESTOR_CODES) {
-        const s = state[code];
-        let mv = 0;
-        for (const [security, qty] of s.qty.entries()) {
-          if (qty <= 0) continue;
-          const px = prices.get(security);
-          if (px && px.price) mv += qty * px.price;
+      for (const code of INVESTOR_CODES) perInvestor[code] = 0;
+      for (const h of byDate.get(date)) {
+        const security = canonicalName(h.security);
+        const split = splitForSecurity(attrMap, security);
+        if (!split.length) continue;
+        for (const { code, weight } of split) {
+          perInvestor[code] += (h.marketValueNok || 0) * weight;
         }
-        perInvestor[code] = s.cash + mv;
       }
       return { date, perInvestor };
-    }
-
-    const samples = [];
-    let lastDate = null;
-    for (const tx of txs) {
-      const date = tx.tradeDate || tx.bookDate;
-      if (!date) continue;
-      apply(tx);
-      if (lastDate && date !== lastDate) samples.push(snapshot(lastDate));
-      lastDate = date;
-    }
-    if (lastDate) samples.push(snapshot(lastDate));
-    return samples;
+    });
   }
 
   function buildCumulativePnlSeries(store) {
