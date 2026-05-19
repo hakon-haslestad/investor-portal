@@ -157,9 +157,25 @@ canvas { max-width: 100%; }
 
 .chart-stack { display: grid; gap: 12px; }
 .chart-wrap svg { width: 100%; height: auto; display: block; }
-.chart-legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 10px 0 24px; padding: 8px 4px; }
-.chart-legend .key { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.82rem; }
-.chart-legend .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.chart-wrap svg .crosshair-overlay { cursor: crosshair; }
+.chart-legend {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px; margin: 12px 0 24px;
+}
+.chart-legend .key {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px;
+}
+.chart-legend .swatch {
+  width: 14px; height: 14px; border-radius: 3px; display: inline-block; flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.chart-legend .name { color: var(--text); font-size: 0.85rem; font-weight: 500; flex: 1; }
+.chart-legend .v {
+  color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
 
 td.links { white-space: nowrap; }
 td.links a { color: var(--muted); margin-right: 2px; font-size: 0.82rem; }
