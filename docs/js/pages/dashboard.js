@@ -54,8 +54,11 @@
     pnlEl.innerHTML = '';
     legendEl.innerHTML = '';
 
+    const isMobile = window.matchMedia('(max-width: 720px)').matches;
     pnlEl.appendChild(window.Charts.multiLine({
-      series: pnlSeries, width: 900, height: 320,
+      series: pnlSeries,
+      width: isMobile ? 540 : 900,
+      height: isMobile ? 360 : 320,
       title: 'Cumulative realized P/L + dividends − fees',
       interactive: true,
     }));
