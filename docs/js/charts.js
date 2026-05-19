@@ -64,12 +64,38 @@
       g.appendChild(label);
     }
 
-    // X gridlines: one per year
-    const startYear = tsToDate(xMin).getUTCFullYear();
-    const endYear = tsToDate(xMax).getUTCFullYear();
-    for (let y = startYear; y <= endYear; y++) {
-      const t = Date.parse(`${y}-01-01`);
-      if (t < xMin || t > xMax) continue;
+    // X gridlines: monthly when the span is shorter than ~2 years, otherwise yearly.
+    const yearMs = 365.25 * 24 * 60 * 60 * 1000;
+    const span = xMax - xMin;
+    const ticks = [];
+    if (span <= 2 * yearMs) {
+      const start = tsToDate(xMin);
+      let cursor = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1);
+      // Density: skip months to keep <= ~12 ticks
+      const months = Math.round(span / (yearMs / 12)) + 1;
+      const step = months > 12 ? Math.ceil(months / 8) : 1;
+      let i = 0;
+      while (cursor <= xMax) {
+        if (cursor >= xMin && (i % step === 0)) {
+          const d = new Date(cursor);
+          const lbl = d.toLocaleDateString('en', { month: 'short', year: '2-digit' });
+          ticks.push({ t: cursor, lbl });
+        }
+        i++;
+        const next = new Date(cursor);
+        next.setUTCMonth(next.getUTCMonth() + 1);
+        cursor = next.getTime();
+      }
+    } else {
+      const startYear = tsToDate(xMin).getUTCFullYear();
+      const endYear = tsToDate(xMax).getUTCFullYear();
+      for (let y = startYear; y <= endYear; y++) {
+        const t = Date.parse(`${y}-01-01`);
+        if (t < xMin || t > xMax) continue;
+        ticks.push({ t, lbl: String(y) });
+      }
+    }
+    for (const { t, lbl } of ticks) {
       const xPos = PAD.left + (w * (t - xMin)) / (xMax - xMin);
       const line = svgEl('line', {
         x1: xPos, x2: xPos, y1: PAD.top, y2: PAD.top + h,
@@ -80,7 +106,7 @@
         x: xPos, y: PAD.top + h + 16, 'text-anchor': 'middle',
         fill: '#8a92a6', 'font-size': 10,
       });
-      label.textContent = y;
+      label.textContent = lbl;
       g.appendChild(label);
     }
   }

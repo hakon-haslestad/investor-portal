@@ -228,10 +228,10 @@ td.links a:hover { color: var(--accent); }
   }
   table th, table td { padding: 8px 10px; font-size: 0.85rem; }
 
-  /* Range picker: wrap on its own row */
+  /* Range picker: wrap on its own row, keep date inputs at content width */
   .range-picker { width: 100%; }
   .range-picker .preset { padding: 6px 10px; font-size: 0.82rem; }
-  .range-picker input[type="date"] { width: 100%; }
+  .range-picker input[type="date"] { width: auto; min-width: 130px; flex: 1; }
 
   /* Charts: tighter padding, denser legend */
   .chart-wrap { padding: 8px 6px; margin-top: 12px; }

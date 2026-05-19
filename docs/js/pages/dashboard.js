@@ -37,11 +37,48 @@
     }
     localStorage.setItem('portal.range', JSON.stringify(current));
     paint(d);
-    paintCharts();
+    paintCharts(d.window);
   }
 
-  function paintCharts() {
-    const tsPnl = window.TimeSeries.buildCumulativePnlSeries(store);
+  // Slice the all-time cumulative series down to the selected window and
+  // rebase so the chart starts at 0 on the `from` date — the chart then
+  // shows "P/L gained DURING this period" rather than absolute lifetime totals.
+  function windowSlice(samples, from, to) {
+    if (!from || !to) return samples;
+    let baseline = null;
+    for (const s of samples) {
+      if (s.date <= from) baseline = s;
+      else break;
+    }
+    const base = baseline ? baseline.perInvestor : {};
+    const out = [];
+    if (!samples.length || samples[0].date > from) {
+      out.push({ date: from, perInvestor: emptyPerInvestor() });
+    }
+    for (const s of samples) {
+      if (s.date < from) continue;
+      if (s.date > to) break;
+      const rebased = { date: s.date, perInvestor: {} };
+      for (const code of INVESTOR_CODES) {
+        rebased.perInvestor[code] = (s.perInvestor[code] || 0) - (base[code] || 0);
+      }
+      out.push(rebased);
+    }
+    if (out.length && out[out.length - 1].date < to) {
+      out.push({ date: to, perInvestor: { ...out[out.length - 1].perInvestor } });
+    }
+    return out;
+  }
+
+  function emptyPerInvestor() {
+    const m = {};
+    for (const code of INVESTOR_CODES) m[code] = 0;
+    return m;
+  }
+
+  function paintCharts(win) {
+    const allTime = window.TimeSeries.buildCumulativePnlSeries(store);
+    const tsPnl = windowSlice(allTime, win && win.from, win && win.to);
     const pnlSeries = INVESTOR_CODES.map((code) => ({
       name: `${code} ${names[code] || ''}`.trim(),
       color: INVESTOR_COLORS[code],
