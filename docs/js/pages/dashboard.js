@@ -27,6 +27,24 @@
   const names = window.Copy.namesFromMembers(store.members);
   const { fmtNok, fmtPct, pctClass, PODIUM } = window.Fmt;
 
+  // Look up the currently-active competition (today between start_date and
+  // end_date). The check is best-effort — if the Competitions tab is missing
+  // or the network fails, we just skip the feature.
+  let activeCompetition = null;
+  try {
+    const all = await window.CompetitionsData.listCompetitions();
+    const today = new Date().toISOString().slice(0, 10);
+    const live = all.filter((c) =>
+      c.competition.start_date && c.competition.end_date &&
+      c.competition.start_date <= today && c.competition.end_date >= today
+    );
+    if (live.length) {
+      activeCompetition = live.sort((a, b) =>
+        b.competition.start_date.localeCompare(a.competition.start_date)
+      )[0];
+    }
+  } catch (_e) { /* competitions optional; ignore */ }
+
   const PRESETS = [
     { id: '1m', label: '1M' },
     { id: '6m', label: '6M' },
@@ -44,6 +62,46 @@
   };
   let selectedCodes = (localStorage.getItem('portal.filter') || '')
     .split(',').map((s) => s.trim()).filter(Boolean);
+  let competitionMode = localStorage.getItem('portal.competition_mode') === '1';
+  // Auto-exit if the stored mode was set for a competition that's no longer live.
+  if (competitionMode && !activeCompetition) {
+    competitionMode = false;
+    localStorage.removeItem('portal.competition_mode');
+  }
+  // If we boot already in competition mode, apply the comp filters now so the
+  // first render matches the persisted state.
+  if (competitionMode && activeCompetition) {
+    current = {
+      preset: 'custom',
+      from: activeCompetition.competition.start_date,
+      to: activeCompetition.competition.end_date,
+    };
+    selectedCodes = activeCompetition.participants.map((p) => p.investor_code).filter(Boolean);
+  }
+
+  function toggleCompetitionMode() {
+    if (!activeCompetition) return;
+    if (competitionMode) {
+      competitionMode = false;
+      localStorage.removeItem('portal.competition_mode');
+      // Clear filters back to defaults
+      current = { preset: 'ytd', from: null, to: null };
+      selectedCodes = [];
+      localStorage.removeItem('portal.filter');
+    } else {
+      competitionMode = true;
+      localStorage.setItem('portal.competition_mode', '1');
+      current = {
+        preset: 'custom',
+        from: activeCompetition.competition.start_date,
+        to: activeCompetition.competition.end_date,
+      };
+      selectedCodes = activeCompetition.participants.map((p) => p.investor_code).filter(Boolean);
+      if (selectedCodes.length) localStorage.setItem('portal.filter', selectedCodes.join(','));
+    }
+    refresh();
+  }
+  window.__toggleCompetitionMode = toggleCompetitionMode;
 
   const INVESTOR_COLORS = {
     HH: '#4ade80', HS: '#60a5fa', 'ØS': '#fbbf24', JC: '#f472b6', HF: '#a78bfa',
@@ -231,6 +289,20 @@
     const rnTitle = `Right now (${d.snapshotDate || '—'})`;
     const winTitle = selectedCodes.length ? `In this window · ${selectedCodes.join(', ')}` : 'In this window';
     const dateOrNone = d.snapshotDate || '—';
+    const compBanner = !activeCompetition ? '' : (competitionMode
+      ? `<div class="comp-banner active">
+           <span>🏁 Competition mode: <strong>${activeCompetition.competition.name}</strong>
+             <span class="text-muted text-small">(${activeCompetition.competition.start_date} → ${activeCompetition.competition.end_date})</span>
+           </span>
+           <button class="btn small ghost" onclick="window.__toggleCompetitionMode()">Exit competition mode</button>
+         </div>`
+      : `<div class="comp-banner">
+           <span>🏁 Active competition: <strong>${activeCompetition.competition.name}</strong>
+             <span class="text-muted text-small">(${activeCompetition.competition.start_date} → ${activeCompetition.competition.end_date})</span>
+           </span>
+           <button class="btn small" onclick="window.__toggleCompetitionMode()">Enter competition mode</button>
+         </div>`);
+
     root.innerHTML = `
       <div class="hero">
         <div>
@@ -239,6 +311,8 @@
         </div>
         ${renderPicker(d.window)}
       </div>
+
+      ${compBanner}
 
       <div class="section-title">Leaderboards</div>
       <div class="leaderboard">

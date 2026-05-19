@@ -195,6 +195,17 @@ tr.dimmed-row:hover { opacity: 0.85; }
 .filter-chip a { color: var(--muted); margin-left: 4px; font-size: 0.78rem; }
 .filter-chip a:hover { color: var(--danger); text-decoration: none; }
 
+.comp-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 16px; margin: 12px 0; flex-wrap: wrap;
+}
+.comp-banner.active {
+  background: linear-gradient(135deg, rgba(62, 224, 127, 0.10), rgba(106, 209, 255, 0.06));
+  border-color: var(--accent);
+}
+.comp-banner > span { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
 td.links { white-space: nowrap; }
 td.links a { color: var(--muted); margin-right: 2px; font-size: 0.82rem; }
 td.links a:hover { color: var(--accent); }
