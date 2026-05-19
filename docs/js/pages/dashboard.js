@@ -41,60 +41,33 @@
   }
 
   function paintCharts() {
-    const tsValue = window.TimeSeries.buildPortfolioValueSeries(store);
     const tsPnl = window.TimeSeries.buildCumulativePnlSeries(store);
-    const tsCap = window.TimeSeries.buildCapitalVsReturnSeries(store);
-
-    const valueSeries = INVESTOR_CODES.map((code) => ({
-      name: `${code} ${names[code] || ''}`.trim(),
-      color: INVESTOR_COLORS[code],
-      points: tsValue.map((s) => ({ date: s.date, y: Math.max(0, s.perInvestor[code] || 0) })),
-    }));
     const pnlSeries = INVESTOR_CODES.map((code) => ({
       name: `${code} ${names[code] || ''}`.trim(),
       color: INVESTOR_COLORS[code],
       points: tsPnl.map((s) => ({ date: s.date, y: s.perInvestor[code] || 0 })),
     }));
-    const capSeries = [
-      {
-        name: 'Capital deployed',
-        color: '#8a92a6',
-        points: tsCap.map((s) => ({ date: s.date, y: s.invested })),
-      },
-      {
-        name: 'Net return',
-        color: '#3ee07f',
-        points: tsCap.map((s) => ({ date: s.date, y: s.netReturn })),
-      },
-    ];
 
-    const valueEl = document.getElementById('chart-value');
     const pnlEl = document.getElementById('chart-pnl');
-    const capEl = document.getElementById('chart-capital');
     const legendEl = document.getElementById('chart-legend');
-    if (!valueEl || !pnlEl || !capEl || !legendEl) return;
-    valueEl.innerHTML = '';
+    if (!pnlEl || !legendEl) return;
     pnlEl.innerHTML = '';
-    capEl.innerHTML = '';
     legendEl.innerHTML = '';
 
-    valueEl.appendChild(window.Charts.stackedArea({
-      series: valueSeries, width: 900, height: 240,
-      title: 'Total portfolio value (book + unrealized lift)',
-    }));
     pnlEl.appendChild(window.Charts.multiLine({
-      series: pnlSeries, width: 900, height: 240,
-      title: 'Cumulative net P/L per investor',
-    }));
-    capEl.appendChild(window.Charts.multiLine({
-      series: capSeries, width: 900, height: 200,
-      title: 'Capital deployed vs net return (group)',
+      series: pnlSeries, width: 900, height: 320,
+      title: 'Cumulative realized P/L + dividends − fees',
+      interactive: true,
     }));
 
-    const investorLegend = INVESTOR_CODES.map((code) => ({
-      name: `${code} · ${names[code] || ''}`,
-      color: INVESTOR_COLORS[code],
-    }));
+    const investorLegend = INVESTOR_CODES.map((code) => {
+      const last = pnlSeries.find((s) => s.name.startsWith(code)).points.slice(-1)[0];
+      return {
+        name: `${code} · ${names[code] || ''}`,
+        color: INVESTOR_COLORS[code],
+        valueText: last ? fmtNok(last.y) : '',
+      };
+    });
     legendEl.appendChild(window.Charts.legend({ series: investorLegend }));
   }
 
@@ -118,12 +91,8 @@
         <div class="kpi-card"><div class="label">Unrealized P/L</div><div class="value ${pctClass(d.group.unrealized)}">${fmtNok(d.group.unrealized)}</div><div class="sub">mark-to-market</div></div>
       </div>
 
-      <div class="section-title">Portfolio over time</div>
-      <div class="chart-stack">
-        <div class="chart-wrap" id="chart-value"></div>
-        <div class="chart-wrap" id="chart-pnl"></div>
-        <div class="chart-wrap" id="chart-capital"></div>
-      </div>
+      <div class="section-title">Cumulative net P/L per investor</div>
+      <div class="chart-wrap" id="chart-pnl"></div>
       <div id="chart-legend"></div>
 
       <div class="section-title">In this window <span class="text-muted text-small">${prettyRange(d.window)}</span></div>

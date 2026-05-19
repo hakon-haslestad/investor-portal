@@ -1,6 +1,6 @@
 // Reports — monthly financial ledger. Buckets every transaction by YYYY-MM
 // of its booking date, summarises the headline accounting metrics, and
-// renders a per-year-grouped table that totals at the bottom.
+// renders a per-year-grouped table with a totals row per fiscal year.
 //
 // The "Debt-to-equity proxy" column is the share of capital that is NOT
 // deployed into stocks — cash / (cash + MV). It's our stand-in for the
@@ -13,7 +13,6 @@
   const root = document.getElementById('root');
 
   const months = buildMonthlyLedger(store);
-  const totals = grandTotals(months);
 
   root.innerHTML = `
     <div class="hero">
@@ -44,21 +43,6 @@
         <tbody>
           ${renderRows(months)}
         </tbody>
-        <tfoot>
-          <tr>
-            <td><strong>Total</strong></td>
-            <td class="text-right ${pctClass(totals.netResult)}"><strong>${fmtNok(totals.netResult)}</strong></td>
-            <td class="text-right ${pctClass(totals.realized)}">${fmtNok(totals.realized)}</td>
-            <td class="text-right">${fmtNok(totals.dividends)}</td>
-            <td class="text-right">${fmtNok(totals.fees)}</td>
-            <td class="text-right">${fmtNok(totals.tax)}</td>
-            <td class="text-right">${fmtNok(totals.deposits)}</td>
-            <td class="text-right">${fmtNok(totals.withdrawals)}</td>
-            <td class="text-right">—</td>
-            <td class="text-right">—</td>
-            <td class="text-right">—</td>
-          </tr>
-        </tfoot>
       </table>
     </div>
   `;
@@ -179,7 +163,6 @@
       withdrawals: acc.withdrawals + m.withdrawals,
     }), { netResult: 0, realized: 0, dividends: 0, fees: 0, tax: 0, deposits: 0, withdrawals: 0 });
   }
-  function grandTotals(months) { return sumMonths(months); }
 
   // Pick the most recent month's ending cash/MV/DE for the year — months are
   // sorted newest-first, so the first row of each year IS year-end.

@@ -170,8 +170,15 @@
     return svg;
   }
 
+  function fmtNokFull(n) {
+    if (!Number.isFinite(n)) return '—';
+    return Math.round(n).toLocaleString('nb-NO') + ' kr';
+  }
+
   // series: [{ name, color, points: [{date, y}] }]
-  function multiLine({ series, width = 900, height = 240, title }) {
+  // When interactive=true, hovering the chart shows a crosshair, per-series
+  // dots, and a floating tooltip listing every investor's value at that date.
+  function multiLine({ series, width = 900, height = 240, title, interactive = false }) {
     const svg = svgEl('svg', {
       viewBox: `0 0 ${width} ${height}`, xmlns: NS,
       role: 'img', 'aria-label': title || 'line chart',
@@ -205,24 +212,23 @@
     svg.appendChild(g);
     axes(g, xMin, xMax, yMin, yMax, width, height);
 
-    for (const s of series) {
-      const pts = s.points.map((p) => ({ x: xScale(dateToTs(p.date)), y: yScale(p.y) }));
+    // All series share the same x dates (built from the same replay).
+    const dates = series[0].points.map((p) => p.date);
+    const xCoords = dates.map((d) => xScale(dateToTs(d)));
+    const seriesPts = series.map((s) =>
+      s.points.map((p) => ({ x: xScale(dateToTs(p.date)), y: yScale(p.y), raw: p }))
+    );
+
+    for (let i = 0; i < series.length; i++) {
+      const s = series[i];
+      const pts = seriesPts[i];
       const path = svgEl('path', {
         d: pathD(pts), fill: 'none', stroke: s.color, 'stroke-width': 2,
         'stroke-linejoin': 'round', 'stroke-linecap': 'round',
       });
-      const t = svgEl('title');
-      const lastY = s.points[s.points.length - 1].y;
-      t.textContent = `${s.name}: ${fmtNok(lastY)} kr`;
-      path.appendChild(t);
       g.appendChild(path);
-
-      // End-of-line dot for affordance
       const last = pts[pts.length - 1];
-      const dot = svgEl('circle', {
-        cx: last.x, cy: last.y, r: 3.5, fill: s.color,
-      });
-      g.appendChild(dot);
+      g.appendChild(svgEl('circle', { cx: last.x, cy: last.y, r: 3.5, fill: s.color }));
     }
 
     if (title) {
@@ -232,23 +238,153 @@
       tEl.textContent = title;
       svg.appendChild(tEl);
     }
+
+    if (!interactive) return svg;
+
+    // ─── Hover layer ─────────────────────────────────────────────────────
+    const hover = svgEl('g', { 'pointer-events': 'none', visibility: 'hidden' });
+    svg.appendChild(hover);
+
+    const crosshair = svgEl('line', {
+      x1: 0, x2: 0, y1: PAD.top, y2: PAD.top + h,
+      stroke: '#8a92a6', 'stroke-width': 1, 'stroke-dasharray': '3,3',
+    });
+    hover.appendChild(crosshair);
+
+    const dots = series.map((s) => {
+      const c = svgEl('circle', {
+        cx: 0, cy: 0, r: 5, fill: s.color, stroke: '#0e0f13', 'stroke-width': 2,
+      });
+      hover.appendChild(c);
+      return c;
+    });
+
+    // Tooltip box: date header + one row per investor
+    const TIP_PAD = 8;
+    const TIP_ROW_H = 14;
+    const TIP_W = 200;
+    const TIP_H = TIP_PAD * 2 + TIP_ROW_H * (series.length + 1) + 4;
+
+    const tipBg = svgEl('rect', {
+      x: 0, y: 0, width: TIP_W, height: TIP_H,
+      rx: 6, ry: 6, fill: '#181a22', stroke: '#262a36', 'stroke-width': 1,
+      opacity: 0.97,
+    });
+    hover.appendChild(tipBg);
+
+    const tipDate = svgEl('text', { x: 0, y: 0, fill: '#e7e9ee', 'font-size': 11, 'font-weight': 700 });
+    hover.appendChild(tipDate);
+
+    const rows = series.map((s) => {
+      const sw = svgEl('rect', { x: 0, y: 0, width: 8, height: 8, fill: s.color, rx: 1, ry: 1 });
+      hover.appendChild(sw);
+      const nm = svgEl('text', { x: 0, y: 0, fill: '#e7e9ee', 'font-size': 10 });
+      hover.appendChild(nm);
+      const vl = svgEl('text', { x: 0, y: 0, fill: '#e7e9ee', 'font-size': 10, 'font-weight': 600, 'text-anchor': 'end' });
+      hover.appendChild(vl);
+      return { sw, nm, vl };
+    });
+
+    // Transparent overlay that captures pointer events across the plot area.
+    const overlay = svgEl('rect', {
+      x: PAD.left, y: PAD.top, width: w, height: h,
+      fill: 'transparent', 'pointer-events': 'all',
+    });
+    svg.appendChild(overlay);
+
+    function clientToSvg(evt) {
+      const pt = svg.createSVGPoint();
+      pt.x = evt.clientX; pt.y = evt.clientY;
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return { x: 0, y: 0 };
+      const out = pt.matrixTransform(ctm.inverse());
+      return { x: out.x, y: out.y };
+    }
+    function nearestIndex(xUser) {
+      let best = 0, bestDist = Math.abs(xCoords[0] - xUser);
+      for (let i = 1; i < xCoords.length; i++) {
+        const d = Math.abs(xCoords[i] - xUser);
+        if (d < bestDist) { bestDist = d; best = i; }
+      }
+      return best;
+    }
+    function show(idx) {
+      hover.setAttribute('visibility', 'visible');
+      const x = xCoords[idx];
+      crosshair.setAttribute('x1', x);
+      crosshair.setAttribute('x2', x);
+      for (let i = 0; i < series.length; i++) {
+        const pt = seriesPts[i][idx];
+        dots[i].setAttribute('cx', pt.x);
+        dots[i].setAttribute('cy', pt.y);
+      }
+      // Position tooltip right of crosshair unless that pushes it off-canvas.
+      let tipX = x + 12;
+      if (tipX + TIP_W > width - PAD.right) tipX = x - 12 - TIP_W;
+      if (tipX < PAD.left) tipX = PAD.left;
+      const tipY = PAD.top + 8;
+      tipBg.setAttribute('x', tipX);
+      tipBg.setAttribute('y', tipY);
+      tipDate.setAttribute('x', tipX + TIP_PAD);
+      tipDate.setAttribute('y', tipY + TIP_PAD + 10);
+      tipDate.textContent = dates[idx];
+      for (let i = 0; i < series.length; i++) {
+        const rowY = tipY + TIP_PAD + 10 + TIP_ROW_H * (i + 1) + 2;
+        const r = rows[i];
+        r.sw.setAttribute('x', tipX + TIP_PAD);
+        r.sw.setAttribute('y', rowY - 8);
+        r.nm.setAttribute('x', tipX + TIP_PAD + 14);
+        r.nm.setAttribute('y', rowY);
+        r.nm.textContent = series[i].name;
+        r.vl.setAttribute('x', tipX + TIP_W - TIP_PAD);
+        r.vl.setAttribute('y', rowY);
+        r.vl.textContent = fmtNokFull(series[i].points[idx].y);
+      }
+    }
+    function hide() { hover.setAttribute('visibility', 'hidden'); }
+
+    overlay.addEventListener('mousemove', (evt) => {
+      const { x } = clientToSvg(evt);
+      show(nearestIndex(x));
+    });
+    overlay.addEventListener('mouseleave', hide);
+    overlay.addEventListener('touchstart', (evt) => {
+      if (!evt.touches[0]) return;
+      const { x } = clientToSvg(evt.touches[0]);
+      show(nearestIndex(x));
+    }, { passive: true });
+    overlay.addEventListener('touchmove', (evt) => {
+      if (!evt.touches[0]) return;
+      const { x } = clientToSvg(evt.touches[0]);
+      show(nearestIndex(x));
+    }, { passive: true });
+    overlay.addEventListener('touchend', hide);
+    overlay.style.cursor = 'crosshair';
+
     return svg;
   }
 
-  // series: [{ name, color }]
+  // series: [{ name, color, valueText? }]
   function legend({ series }) {
     const wrap = document.createElement('div');
     wrap.className = 'chart-legend';
     for (const s of series) {
-      const key = document.createElement('span');
+      const key = document.createElement('div');
       key.className = 'key';
       const sw = document.createElement('span');
       sw.className = 'swatch';
       sw.style.background = s.color;
       const lbl = document.createElement('span');
+      lbl.className = 'name';
       lbl.textContent = s.name;
       key.appendChild(sw);
       key.appendChild(lbl);
+      if (s.valueText) {
+        const v = document.createElement('span');
+        v.className = 'v';
+        v.textContent = s.valueText;
+        key.appendChild(v);
+      }
       wrap.appendChild(key);
     }
     return wrap;
