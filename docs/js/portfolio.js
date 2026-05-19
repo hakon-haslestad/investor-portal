@@ -3,7 +3,7 @@
 // Synchronous — pass `store` (from window.Store.hydrate()) and you're done.
 
 (function () {
-  const { INVESTOR_CODES, classify, splitForSecurity } = window.Ledger;
+  const { INVESTOR_CODES, classify, splitForSecurity, isRealizingSell } = window.Ledger;
 
   // Stable canonicalization for stocks that show up under slightly different
   // names across Beholdningsverdi and Rådata. Same map as the original.
@@ -105,7 +105,7 @@
       if (!tx.security) continue;
       const cat = classify(tx.type);
       if (cat !== 'BUY' && cat !== 'SELL') continue;
-      const isPriced = tx.type === 'KJØPT' || tx.type === 'SALG';
+      const isPriced = tx.type === 'KJØPT' || isRealizingSell(tx.type);
       if (!isPriced) continue;
       const split = splitForSecurity(attrMap, tx.security);
       if (!split.length) continue;
@@ -201,7 +201,7 @@
       else if (cat === 'FEE') totalFees += Math.abs(amount);
       else if (cat === 'DIVIDEND' || cat === 'TAX') netDividends += amount;
       else if (cat === 'BUY' && tx.type === 'KJØPT') totalBuys += Math.abs(amount);
-      else if (cat === 'SELL' && tx.type === 'SALG') totalSells += amount;
+      else if (cat === 'SELL' && isRealizingSell(tx.type)) totalSells += amount;
     }
     return { totalDeposits, totalWithdrawals, totalFees, netDividends, totalBuys, totalSells };
   }
@@ -280,7 +280,7 @@
     for (const tx of txs) {
       if (!tx.security) continue;
       if ((tx.tradeDate || '') >= from) break;
-      if (tx.type !== 'KJØPT' && tx.type !== 'SALG') continue;
+      if (tx.type !== 'KJØPT' && !isRealizingSell(tx.type)) continue;
       const split = splitForSecurity(attrMap, tx.security);
       if (!split.length) continue;
       const security = canonicalName(tx.security);
@@ -327,7 +327,7 @@
           slot.divs += amt;
           state.dividendsInWindow += amt;
         }
-      } else if (tx.type === 'KJØPT' || tx.type === 'SALG') {
+      } else if (tx.type === 'KJØPT' || isRealizingSell(tx.type)) {
         const split = splitForSecurity(attrMap, tx.security);
         if (!split.length) continue;
         const security = canonicalName(tx.security);
@@ -521,7 +521,7 @@
         const slot = split.find((s) => s.code === code);
         if (!slot) continue;
         const w = slot.weight;
-        if (cat === 'SELL' && tx.type === 'SALG') realizedYtd += (tx.amount || 0) * w * 0.1;
+        if (cat === 'SELL' && isRealizingSell(tx.type)) realizedYtd += (tx.amount || 0) * w * 0.1;
         else if (cat === 'DIVIDEND' || cat === 'TAX') divsYtd += (tx.amount || 0) * w;
       }
       const base = perInvestor[code].deposits || 1;
@@ -551,7 +551,7 @@
         const amt = (tx.amount || 0) * weight;
         const qty = (tx.qty || 0) * weight;
         if (cat === 'BUY' && tx.type === 'KJØPT') { slot.invested += Math.abs(amt); slot.qty += qty; }
-        else if (cat === 'SELL' && tx.type === 'SALG') { slot.returned += amt; slot.qty = Math.max(0, slot.qty - Math.abs(qty)); }
+        else if (cat === 'SELL' && isRealizingSell(tx.type)) { slot.returned += amt; slot.qty = Math.max(0, slot.qty - Math.abs(qty)); }
         else if (cat === 'DIVIDEND' || cat === 'TAX') { slot.returned += amt; }
       }
     }
@@ -638,7 +638,7 @@
       const m = bySec.get(security);
       const amt = (tx.amount || 0) * w;
       if (cat === 'BUY' && tx.type === 'KJØPT') m.invested += Math.abs(amt);
-      else if (cat === 'SELL' && tx.type === 'SALG') m.proceeds += amt;
+      else if (cat === 'SELL' && isRealizingSell(tx.type)) m.proceeds += amt;
       else if (cat === 'DIVIDEND' || cat === 'TAX') m.dividends += amt;
       if (tx.tradeDate) {
         if (!m.firstDate || tx.tradeDate < m.firstDate) m.firstDate = tx.tradeDate;

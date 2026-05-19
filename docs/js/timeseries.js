@@ -15,7 +15,7 @@
 // of the portfolio module so the numbers reconcile.
 
 (function () {
-  const { INVESTOR_CODES, classify, splitForSecurity, evenSplit } = window.Ledger;
+  const { INVESTOR_CODES, classify, splitForSecurity, evenSplit, isRealizingSell } = window.Ledger;
   const canonicalName = window.Portfolio.canonicalName;
 
   function emptyPerInvestor(init) {
@@ -105,7 +105,7 @@
       return;
     }
     if (cat !== 'BUY' && cat !== 'SELL') return;
-    const isPriced = tx.type === 'KJØPT' || tx.type === 'SALG';
+    const isPriced = tx.type === 'KJØPT' || isRealizingSell(tx.type);
     if (!isPriced) return;
     for (const { code, weight } of split) {
       const bag = state.costPerSec[code];
