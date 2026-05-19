@@ -72,6 +72,46 @@
     </table>
     `}
 
+    ${detail.previous.length === 0 ? '' : `
+    <div class="section-title">Previous holdings (${detail.previous.length}) <span class="text-muted text-small">closed positions</span></div>
+    <table>
+      <thead><tr>
+        <th>Security</th>
+        <th class="text-right">Invested</th>
+        <th class="text-right">Proceeds</th>
+        <th class="text-right">Dividends</th>
+        <th class="text-right">Realized</th>
+        <th class="text-right">Net result</th>
+        <th class="text-right">Return %</th>
+        <th>First → last</th>
+        <th>Research</th>
+      </tr></thead>
+      <tbody>
+        ${detail.previous.map((p) => {
+          const q = encodeURIComponent(p.security);
+          const ir = encodeURIComponent(p.security + ' investor relations');
+          return `
+          <tr>
+            <td>${p.security}</td>
+            <td class="text-right text-muted">${fmtNok(p.invested)}</td>
+            <td class="text-right text-muted">${fmtNok(p.proceeds)}</td>
+            <td class="text-right">${fmtNok(p.dividends)}</td>
+            <td class="text-right ${pctClass(p.realized)}">${fmtNok(p.realized)}</td>
+            <td class="text-right ${pctClass(p.netResult)}"><strong>${fmtNok(p.netResult)}</strong></td>
+            <td class="text-right ${pctClass(p.returnPct)}">${fmtPct(p.returnPct)}</td>
+            <td class="text-small text-muted">${p.firstDate || '—'} → ${p.lastDate || '—'}</td>
+            <td class="links">
+              <a target="_blank" rel="noopener" href="https://www.nordnet.no/market/search?query=${q}">Nordnet</a>
+              · <a target="_blank" rel="noopener" href="https://finance.yahoo.com/lookup?s=${q}">Yahoo</a>
+              · <a target="_blank" rel="noopener" href="https://www.google.com/search?q=${ir}">IR</a>
+            </td>
+          </tr>
+        `;
+        }).join('')}
+      </tbody>
+    </table>
+    `}
+
     <div class="section-title">Recent transactions (last ${detail.recent.length})</div>
     <table>
       <thead><tr>
