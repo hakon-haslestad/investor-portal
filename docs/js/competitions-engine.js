@@ -17,7 +17,7 @@
 // Pure — takes hydrated `store` + competition + participants.
 
 (function () {
-  const { INVESTOR_CODES, classify, splitForSecurity } = window.Ledger;
+  const { INVESTOR_CODES, classify, splitForSecurity, amountNok } = window.Ledger;
   const { canonicalName, pricesAtDate } = window.Portfolio;
 
   function scoreCompetition(store, competition, participants /*, _legacyPicks */) {
@@ -64,7 +64,7 @@
 
         if (tx.type === 'KJØPT') {
           const wq = (tx.qty || 0) * w;
-          const wa = Math.abs((tx.amount || 0) * w);
+          const wa = Math.abs(amountNok(tx) * w);
           const lot = ensure(sec);
           lot.qty += wq;
           lot.costSum += wa;
@@ -75,7 +75,7 @@
           // Pre-window-only positions: nothing to do for the competition.
           if (!lot || !lot.opened || lot.qty <= 0) continue;
           const wq = Math.abs((tx.qty || 0) * w);
-          const wa = (tx.amount || 0) * w; // positive proceeds (Nordnet)
+          const wa = amountNok(tx) * w; // positive proceeds (Nordnet)
           const sold = Math.min(wq, lot.qty);
           // Pro-rate the sell proceeds by how much of the sell hit in-window inventory.
           const proceedsForSold = wq > 0 ? wa * (sold / wq) : 0;
@@ -91,7 +91,7 @@
         } else if (cat === 'DIVIDEND' || cat === 'TAX') {
           const lot = lots.get(sec);
           if (!lot || !lot.opened || lot.qty <= 0) continue;
-          const wa = (tx.amount || 0) * w;
+          const wa = amountNok(tx) * w;
           lot.divs += wa;
           divsInWindow += wa;
         }

@@ -3,7 +3,7 @@
 // Synchronous — pass `store` (from window.Store.hydrate()) and you're done.
 
 (function () {
-  const { INVESTOR_CODES, classify, splitForSecurity, isRealizingSell } = window.Ledger;
+  const { INVESTOR_CODES, classify, splitForSecurity, isRealizingSell, amountNok, feeNok } = window.Ledger;
 
   // Stable canonicalization for stocks that show up under slightly different
   // names across Beholdningsverdi and Rådata. Same map as the original.
@@ -111,7 +111,7 @@
       if (!split.length) continue;
       const security = canonicalName(tx.security);
       const qty = tx.qty || 0;
-      const amount = tx.amount || 0;
+      const amount = amountNok(tx);
       for (const { code, weight } of split) {
         const bag = perInvestor.get(code);
         if (!bag.has(security)) bag.set(security, { qty: 0, costSum: 0, realized: 0, lastSellPrice: 0 });
@@ -144,7 +144,7 @@
       const split = splitForSecurity(attrMap, tx.security);
       if (!split.length) continue;
       for (const { code, weight } of split) {
-        perInvestor.set(code, perInvestor.get(code) + Math.abs(tx.amount || 0) * weight);
+        perInvestor.set(code, perInvestor.get(code) + Math.abs(amountNok(tx)) * weight);
       }
     }
     return perInvestor;
@@ -161,7 +161,7 @@
       const split = splitForSecurity(attrMap, tx.security);
       if (!split.length) continue;
       for (const { code, weight } of split) {
-        perInvestor.set(code, perInvestor.get(code) + (tx.amount || 0) * weight);
+        perInvestor.set(code, perInvestor.get(code) + amountNok(tx) * weight);
       }
     }
     return perInvestor;
@@ -195,7 +195,7 @@
     let totalDeposits = 0, totalWithdrawals = 0, totalFees = 0, netDividends = 0, totalBuys = 0, totalSells = 0;
     for (const tx of txs) {
       const cat = classify(tx.type);
-      const amount = tx.amount || 0;
+      const amount = amountNok(tx);
       if (cat === 'DEPOSIT') totalDeposits += amount;
       else if (cat === 'WITHDRAWAL') totalWithdrawals += Math.abs(amount);
       else if (cat === 'FEE') totalFees += Math.abs(amount);
@@ -287,7 +287,7 @@
       for (const { code, weight } of split) {
         const state = states.get(code);
         const slot = ensureSec(state, security);
-        const amt = (tx.amount || 0) * weight;
+        const amt = amountNok(tx) * weight;
         const q = (tx.qty || 0) * weight;
         if (tx.type === 'KJØPT') {
           slot.qty += q;
@@ -323,7 +323,7 @@
         for (const { code, weight } of split) {
           const state = states.get(code);
           const slot = ensureSec(state, security);
-          const amt = (tx.amount || 0) * weight;
+          const amt = amountNok(tx) * weight;
           slot.divs += amt;
           state.dividendsInWindow += amt;
         }
@@ -334,7 +334,7 @@
         for (const { code, weight } of split) {
           const state = states.get(code);
           const slot = ensureSec(state, security);
-          const amt = (tx.amount || 0) * weight;
+          const amt = amountNok(tx) * weight;
           const q = (tx.qty || 0) * weight;
           if (tx.type === 'KJØPT') {
             slot.qty += q;
@@ -521,8 +521,8 @@
         const slot = split.find((s) => s.code === code);
         if (!slot) continue;
         const w = slot.weight;
-        if (cat === 'SELL' && isRealizingSell(tx.type)) realizedYtd += (tx.amount || 0) * w * 0.1;
-        else if (cat === 'DIVIDEND' || cat === 'TAX') divsYtd += (tx.amount || 0) * w;
+        if (cat === 'SELL' && isRealizingSell(tx.type)) realizedYtd += amountNok(tx) * w * 0.1;
+        else if (cat === 'DIVIDEND' || cat === 'TAX') divsYtd += amountNok(tx) * w;
       }
       const base = perInvestor[code].deposits || 1;
       const value = ((divsYtd + realizedYtd) / base) * 100;
@@ -548,7 +548,7 @@
         const bag = perInvestor.get(code);
         if (!bag.has(security)) bag.set(security, { invested: 0, returned: 0, qty: 0 });
         const slot = bag.get(security);
-        const amt = (tx.amount || 0) * weight;
+        const amt = amountNok(tx) * weight;
         const qty = (tx.qty || 0) * weight;
         if (cat === 'BUY' && tx.type === 'KJØPT') { slot.invested += Math.abs(amt); slot.qty += qty; }
         else if (cat === 'SELL' && isRealizingSell(tx.type)) { slot.returned += amt; slot.qty = Math.max(0, slot.qty - Math.abs(qty)); }
@@ -606,7 +606,7 @@
           if (!split.length) continue;
           const slot = split.find((s) => s.code === code);
           if (!slot) continue;
-          pnl += (tx.amount || 0) * slot.weight;
+          pnl += amountNok(tx) * slot.weight;
         }
         return { code, value: pnl };
       });
@@ -644,7 +644,7 @@
         });
       }
       const m = bySec.get(security);
-      const amt = (tx.amount || 0) * w;
+      const amt = amountNok(tx) * w;
       if (cat === 'BUY' && tx.type === 'KJØPT') m.invested += Math.abs(amt);
       else if (cat === 'SELL' && isRealizingSell(tx.type)) m.proceeds += amt;
       else if (cat === 'DIVIDEND' || cat === 'TAX') m.dividends += amt;
@@ -704,7 +704,7 @@
       recent.push({
         tradeDate: tx.tradeDate, type: tx.type, security: canonicalName(tx.security),
         qty: tx.qty != null ? tx.qty * w : null, price: tx.price,
-        amount: (tx.amount || 0) * w, weight: w,
+        amount: amountNok(tx) * w, weight: w,
       });
       if (recent.length >= 50) break;
     }

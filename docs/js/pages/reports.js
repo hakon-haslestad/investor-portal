@@ -9,7 +9,7 @@
 (async function () {
   const { store } = await window.Nav.bootstrap('reports');
   const { fmtNok, fmtPct, pctClass } = window.Fmt;
-  const { classify, isRealizingSell } = window.Ledger;
+  const { classify, isRealizingSell, amountNok, feeNok } = window.Ledger;
   const root = document.getElementById('root');
 
   const months = buildMonthlyLedger(store);
@@ -56,8 +56,8 @@
       if (!buckets.has(ym)) buckets.set(ym, blank(ym));
       const b = buckets.get(ym);
       const cat = classify(tx.type);
-      const amt = tx.amount || 0;
-      const fee = Math.abs(tx.fee || 0);
+      const amt = amountNok(tx);
+      const fee = Math.abs(feeNok(tx));
       if (cat === 'BUY' || cat === 'SELL') b.fees += fee;
       if (cat === 'FEE') b.fees += Math.abs(amt);
       if (cat === 'DIVIDEND') b.dividends += amt;
@@ -117,7 +117,7 @@
       const security = tx.security;
       if (!security) continue;
       const qty = tx.qty || 0;
-      const amount = tx.amount || 0;
+      const amount = amountNok(tx);
       if (!costMap.has(security)) costMap.set(security, { qty: 0, costSum: 0 });
       const slot = costMap.get(security);
       if (cat === 'BUY') {

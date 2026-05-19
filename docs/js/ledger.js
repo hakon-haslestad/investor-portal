@@ -61,6 +61,28 @@
   ]);
   function isRealizingSell(type) { return REALIZING_SELL_TYPES.has(type); }
 
+  // FX helpers. Nordnet records `Beløp` and `Totale Avgifter` in the
+  // transaction's trading currency (USD, SEK, EUR, …) plus `Vekslingskurs`
+  // — the foreign→NOK rate. Saldo and Beholdningsverdi.marketValueNok are
+  // already NOK, but every other money field needs the multiply. Treats
+  // empty / 'NOK' currency, or a missing fx rate, as a 1:1 NOK figure.
+  function amountNok(tx) {
+    if (!tx) return 0;
+    const a = Number(tx.amount) || 0;
+    const cur = (tx.currency || '').toString().toUpperCase().trim();
+    if (!cur || cur === 'NOK') return a;
+    const fx = Number(tx.fxRate);
+    return Number.isFinite(fx) && fx > 0 ? a * fx : a;
+  }
+  function feeNok(tx) {
+    if (!tx) return 0;
+    const f = Number(tx.fee) || 0;
+    const cur = (tx.currency || '').toString().toUpperCase().trim();
+    if (!cur || cur === 'NOK') return f;
+    const fx = Number(tx.fxRate);
+    return Number.isFinite(fx) && fx > 0 ? f * fx : f;
+  }
+
   function splitForSecurity(map, security) {
     if (!security) return [];
     const list = map.get(security);
@@ -72,5 +94,9 @@
     return INVESTOR_CODES.map((code) => ({ code, weight: 1 / INVESTOR_CODES.length }));
   }
 
-  window.Ledger = { INVESTOR_CODES, classify, splitForSecurity, evenSplit, isRealizingSell, REALIZING_SELL_TYPES };
+  window.Ledger = {
+    INVESTOR_CODES, classify, splitForSecurity, evenSplit,
+    isRealizingSell, REALIZING_SELL_TYPES,
+    amountNok, feeNok,
+  };
 })();

@@ -15,7 +15,7 @@
 // of the portfolio module so the numbers reconcile.
 
 (function () {
-  const { INVESTOR_CODES, classify, splitForSecurity, evenSplit, isRealizingSell } = window.Ledger;
+  const { INVESTOR_CODES, classify, splitForSecurity, evenSplit, isRealizingSell, amountNok } = window.Ledger;
   const canonicalName = window.Portfolio.canonicalName;
 
   function emptyPerInvestor(init) {
@@ -73,7 +73,7 @@
   // Common mutator: updates cost basis, realized, dividends, fees, deposits.
   function applyTx(state, tx, attrMap) {
     const cat = classify(tx.type);
-    const amount = tx.amount || 0;
+    const amount = amountNok(tx);
     const qty = tx.qty || 0;
     const security = tx.security ? canonicalName(tx.security) : null;
 
