@@ -92,7 +92,7 @@
           const ir = encodeURIComponent(p.security + ' investor relations');
           return `
           <tr>
-            <td>${p.security}</td>
+            <td>${p.security} ${p.weight < 1 ? `<span class="tag">${(p.weight*100).toFixed(0)}% share</span>` : ''}</td>
             <td class="text-right text-muted">${fmtNok(p.invested)}</td>
             <td class="text-right text-muted">${fmtNok(p.proceeds)}</td>
             <td class="text-right">${fmtNok(p.dividends)}</td>

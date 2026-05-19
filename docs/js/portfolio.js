@@ -575,6 +575,13 @@
       }
       out.push({ code, pick: best });
     }
+    // Sort by total gain (realized + unrealized) descending so the biggest
+    // single-position win appears first regardless of which investor holds it.
+    out.sort((a, b) => {
+      const ar = a.pick ? a.pick.return : -Infinity;
+      const br = b.pick ? b.pick.return : -Infinity;
+      return br - ar;
+    });
     return out;
   }
 
@@ -606,7 +613,8 @@
       ranks.sort((a, b) => b.value - a.value);
       result.push({ month: ym, ranks });
     }
-    return result;
+    // Newest month on top.
+    return result.reverse();
   }
 
   // Previously-held securities — positions this investor used to own but
@@ -631,7 +639,7 @@
       const security = canonicalName(tx.security);
       if (!bySec.has(security)) {
         bySec.set(security, {
-          security, invested: 0, proceeds: 0, dividends: 0,
+          security, weight: w, invested: 0, proceeds: 0, dividends: 0,
           realized: 0, firstDate: null, lastDate: null,
         });
       }
