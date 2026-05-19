@@ -48,6 +48,19 @@
     return 'OTHER';
   }
 
+  // SELL types that represent a real cash realisation, not just a share-
+  // shuffle corporate action. SALG is the normal investor-initiated sell.
+  // INNLØSN. UTTAK VP fires on mandatory redemptions (Crayon take-private
+  // buyout, etc.) and SLETTING UTTAK VP on delistings / bankruptcies
+  // (Flyr). Both should hit realized P/L and the cash balance the same
+  // way a SALG would.
+  const REALIZING_SELL_TYPES = new Set([
+    'SALG',
+    'INNLØSN. UTTAK VP',
+    'SLETTING UTTAK VP',
+  ]);
+  function isRealizingSell(type) { return REALIZING_SELL_TYPES.has(type); }
+
   function splitForSecurity(map, security) {
     if (!security) return [];
     const list = map.get(security);
@@ -59,5 +72,5 @@
     return INVESTOR_CODES.map((code) => ({ code, weight: 1 / INVESTOR_CODES.length }));
   }
 
-  window.Ledger = { INVESTOR_CODES, classify, splitForSecurity, evenSplit };
+  window.Ledger = { INVESTOR_CODES, classify, splitForSecurity, evenSplit, isRealizingSell, REALIZING_SELL_TYPES };
 })();

@@ -9,7 +9,7 @@
 (async function () {
   const { store } = await window.Nav.bootstrap('reports');
   const { fmtNok, fmtPct, pctClass } = window.Fmt;
-  const { classify } = window.Ledger;
+  const { classify, isRealizingSell } = window.Ledger;
   const root = document.getElementById('root');
 
   const months = buildMonthlyLedger(store);
@@ -113,7 +113,7 @@
     })) {
       const cat = classify(tx.type);
       if (cat !== 'BUY' && cat !== 'SELL') continue;
-      if (tx.type !== 'KJØPT' && tx.type !== 'SALG') continue;
+      if (tx.type !== 'KJØPT' && !isRealizingSell(tx.type)) continue;
       const security = tx.security;
       if (!security) continue;
       const qty = tx.qty || 0;

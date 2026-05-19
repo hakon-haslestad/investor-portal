@@ -162,7 +162,7 @@
 
     const isMobile = window.matchMedia('(max-width: 720px)').matches;
     const W = isMobile ? 540 : 900;
-    const H = isMobile ? 360 : 320;
+    const H = isMobile ? 216 : 192; // 40% shorter than the previous 360/320
 
     const filterTag = selectedCodes.length ? ` · ${selectedCodes.join(', ')}` : '';
     pnlEl.appendChild(window.Charts.multiLine({
