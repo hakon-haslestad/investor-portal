@@ -3,6 +3,16 @@
   const { escapeHtml } = window.Fmt;
   const MEMBER_OPTIONS = ['HH', 'HS', 'ØS', 'JC', 'HF'];
 
+  // Admin needs read+write Sheets access. Triggers a consent prompt the
+  // first time an admin visits this page; silent on subsequent visits
+  // once the broader scope is cached.
+  try { await window.Auth.requestWriteAccess(); }
+  catch (e) {
+    document.getElementById('root').innerHTML =
+      `<div class="flash error">Admin needs write access to the sheet. ${e.message || e} · <a href="#" onclick="location.reload()">Try again</a></div>`;
+    return;
+  }
+
   // Pull a fresh Dim-values index so we have UpdatedAt for the soft-guard.
   let dimIndex = await window.DimValues.readIndex();
   let securities = buildSecuritiesList(store, dimIndex.map);
