@@ -187,16 +187,15 @@
         const sum = sumMonths(yr);
         const end = yearEndSnapshot(yr);
         header = `
-          <tr class="year-header"><td colspan="11">${year}</td></tr>
-          <tr class="year-totals">
-            <td><strong>${year} total</strong></td>
+          <tr class="year-header">
+            <td><strong>${year}</strong></td>
             <td class="text-right ${pctClass(sum.netResult)}"><strong>${fmtNok(sum.netResult)}</strong></td>
             <td class="text-right ${pctClass(sum.realized)}">${fmtNok(sum.realized)}</td>
             <td class="text-right">${fmtNok(sum.dividends)}</td>
-            <td class="text-right text-muted">${fmtNok(sum.fees)}</td>
-            <td class="text-right text-muted">${fmtNok(sum.tax)}</td>
+            <td class="text-right">${fmtNok(sum.fees)}</td>
+            <td class="text-right">${fmtNok(sum.tax)}</td>
             <td class="text-right">${fmtNok(sum.deposits)}</td>
-            <td class="text-right text-muted">${fmtNok(sum.withdrawals)}</td>
+            <td class="text-right">${fmtNok(sum.withdrawals)}</td>
             <td class="text-right">${end.endingCash != null ? fmtNok(end.endingCash) : '—'}</td>
             <td class="text-right">${end.endingMv != null ? fmtNok(end.endingMv) : '—'}</td>
             <td class="text-right">${end.deProxy != null ? fmtPct(end.deProxy * 100, false) : '—'}</td>

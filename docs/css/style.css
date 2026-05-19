@@ -185,8 +185,8 @@ td.links a:hover { color: var(--accent); }
 .report-table th, .report-table td { padding: 6px 10px; text-align: right; font-size: 0.88rem; border-bottom: 1px solid var(--border); }
 .report-table th { font-weight: 500; color: var(--muted); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 1.2px; }
 .report-table th:first-child, .report-table td:first-child { text-align: left; }
-.report-table tr.year-header td { background: var(--panel-2); font-weight: 600; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 0.95rem; padding: 8px 10px; }
-.report-table tr.year-totals td { background: rgba(62, 224, 127, 0.06); font-weight: 600; border-bottom: 1px solid var(--border); }
+.report-table tr.year-header td { background: var(--panel-2); font-weight: 600; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 0.95rem; padding: 10px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.report-table tr.year-header td:first-child { font-size: 1.05rem; }
 .report-table tfoot tr td { border-top: 2px solid var(--border); border-bottom: none; font-weight: 600; padding-top: 10px; }
 
 @media (max-width: 720px) {
