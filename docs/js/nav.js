@@ -9,6 +9,7 @@
           <a href="./index.html" class="${active === 'home' ? 'active' : ''}">Dashboard</a>
           <a href="./competitions.html" class="${active === 'comp' ? 'active' : ''}">Competitions</a>
           <a href="./data.html" class="${active === 'data' ? 'active' : ''}">Data</a>
+          <a href="./reports.html" class="${active === 'reports' ? 'active' : ''}">Reports</a>
           <a href="./admin.html" class="${active === 'admin' ? 'active' : ''}">Admin</a>
         </div>
         <div class="who">
