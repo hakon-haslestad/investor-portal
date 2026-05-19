@@ -1,5 +1,29 @@
 (async function () {
+  // Visible safety net: if anything below throws (or hangs past 15s on the
+  // bootstrap), replace the "Loading…" placeholder with a real error message
+  // so a phone user can see what happened instead of staring at the spinner.
+  const loadingTimer = setTimeout(() => {
+    const root = document.getElementById('root');
+    if (root && /Loading/.test(root.textContent)) {
+      root.innerHTML = '<div class="flash error">Still loading after 15s — likely Google sign-in popup blocked or sheet access denied. Try <a href="./login.html">re-signing in</a>.</div>';
+    }
+  }, 15000);
+  window.addEventListener('error', (e) => {
+    const root = document.getElementById('root');
+    if (root && /Loading/.test(root.textContent)) {
+      root.innerHTML = `<div class="flash error"><strong>Script error:</strong> ${e.message || e.error || 'unknown'}<br><span class="text-small text-muted">${e.filename || ''}:${e.lineno || ''}</span></div>`;
+    }
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    const root = document.getElementById('root');
+    if (root && /Loading/.test(root.textContent)) {
+      const msg = (e.reason && (e.reason.message || e.reason.toString())) || 'unknown';
+      root.innerHTML = `<div class="flash error"><strong>Bootstrap failed:</strong> ${msg}<br><a href="./login.html">Try signing in again</a></div>`;
+    }
+  });
+
   const { store, me } = await window.Nav.bootstrap('home');
+  clearTimeout(loadingTimer);
   const names = window.Copy.namesFromMembers(store.members);
   const { fmtNok, fmtPct, pctClass, PODIUM } = window.Fmt;
 
