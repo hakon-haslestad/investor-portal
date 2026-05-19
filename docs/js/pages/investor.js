@@ -3,6 +3,21 @@
   const { fmtNok, fmtPct, fmtQty, pctClass } = window.Fmt;
   const names = window.Copy.namesFromMembers(store.members);
 
+  // Best-effort slug for Nordnet's /aksjer/kurser/<slug> URL pattern.
+  // Nordnet's full slug is "<name>-<ticker>-<exchange>"; without ticker/
+  // exchange in our data we generate the name part only and let Nordnet's
+  // server-side redirect handle disambiguation. Norwegian/Swedish diacritics
+  // are folded to ASCII so the URL is valid.
+  function nordnetSlug(name) {
+    return String(name || '')
+      .toLowerCase()
+      .replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/å/g, 'a')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
   const params = new URLSearchParams(location.search);
   const code = params.get('code') || me.investorCode;
   const detail = window.Portfolio.investorDetail(store, code);
@@ -49,6 +64,7 @@
       </tr></thead>
       <tbody>
         ${s.holdings.map((h) => {
+          const slug = nordnetSlug(h.security);
           const q = encodeURIComponent(h.security);
           const ir = encodeURIComponent(h.security + ' investor relations');
           return `
@@ -61,7 +77,7 @@
             <td class="text-right ${pctClass(h.unrealized)}">${fmtNok(h.unrealized)}</td>
             <td class="text-right ${pctClass(h.unrealizedPct)}">${fmtPct(h.unrealizedPct)}</td>
             <td class="links">
-              <a target="_blank" rel="noopener" href="https://www.nordnet.no/market/search?query=${q}">Nordnet</a>
+              <a target="_blank" rel="noopener" href="https://www.nordnet.no/aksjer/kurser/${slug}">Nordnet</a>
               · <a target="_blank" rel="noopener" href="https://finance.yahoo.com/lookup?s=${q}">Yahoo</a>
               · <a target="_blank" rel="noopener" href="https://www.google.com/search?q=${ir}">IR</a>
             </td>
@@ -88,6 +104,7 @@
       </tr></thead>
       <tbody>
         ${detail.previous.map((p) => {
+          const slug = nordnetSlug(p.security);
           const q = encodeURIComponent(p.security);
           const ir = encodeURIComponent(p.security + ' investor relations');
           return `
@@ -101,7 +118,7 @@
             <td class="text-right ${pctClass(p.returnPct)}">${fmtPct(p.returnPct)}</td>
             <td class="text-small text-muted">${p.firstDate || '—'} → ${p.lastDate || '—'}</td>
             <td class="links">
-              <a target="_blank" rel="noopener" href="https://www.nordnet.no/market/search?query=${q}">Nordnet</a>
+              <a target="_blank" rel="noopener" href="https://www.nordnet.no/aksjer/kurser/${slug}">Nordnet</a>
               · <a target="_blank" rel="noopener" href="https://finance.yahoo.com/lookup?s=${q}">Yahoo</a>
               · <a target="_blank" rel="noopener" href="https://www.google.com/search?q=${ir}">IR</a>
             </td>
