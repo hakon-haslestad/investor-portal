@@ -148,34 +148,91 @@
   //                      + cost  − cost   (cost cancels)  + unrealized at end
   // …which collapses to deposits − withdrawals − fees + dividends + realized
   // for in-flight points and adds the unrealized lift at the final sample.
+  // Portfolio value over time, computed properly at every sample:
+  //   value(t) = cash(t) + Σ (qty_held(t) × price_at_or_before(t))
+  // Cash balance and per-security qty come from a chronological replay of
+  // every transaction. The price at each historical date is looked up via
+  // window.Portfolio.pricesAtDate, which uses the closest Beholdningsverdi
+  // snapshot on or before that date — so if the sheet only has one snapshot
+  // (today), the historical curve effectively shows "this portfolio valued
+  // at today's prices over time". When multiple snapshots exist, the line
+  // tracks real mark-to-market.
   function buildPortfolioValueSeries(store) {
     const attrMap = store.attributionMap;
-    const samples = replay(store, (state, tx) => applyTx(state, tx, attrMap));
-    const series = samples.map(({ date, state }) => {
-      const perInvestor = {};
-      for (const code of INVESTOR_CODES) {
-        const s = state.perInvestor[code];
-        // Net cash + book value of holdings ≈ deposits − withdrawals + realized
-        // + dividends − fees. Cost of held stock is included implicitly because
-        // sells return cash and divs add cash; buys remove cash and add cost.
-        perInvestor[code] = s.deposits - s.withdrawals + s.realized + s.dividends - s.fees;
-      }
-      return { date, perInvestor };
-    });
+    const state = {};
+    for (const code of INVESTOR_CODES) state[code] = { cash: 0, qty: new Map() };
 
-    // Final-point lift: replace the last sample's per-investor value with
-    // (book value + unrealized P/L). This makes the chart end at today's
-    // mark-to-market total, which matches the "Total portfolio" KPI.
-    if (series.length) {
-      const dash = window.Portfolio.buildDashboard(store);
-      const last = series[series.length - 1];
-      for (const code of INVESTOR_CODES) {
-        const inv = dash.perInvestor[code];
-        if (!inv) continue;
-        last.perInvestor[code] = inv.totalValue;
+    function depositSplit(amount) {
+      for (const { code, weight } of evenSplit()) state[code].cash += amount * weight;
+    }
+    function feeOrWithdrawal(amount) {
+      for (const { code, weight } of evenSplit()) state[code].cash -= Math.abs(amount) * weight;
+    }
+    function apply(tx) {
+      const cat = classify(tx.type);
+      const amount = tx.amount || 0;
+      const qty = tx.qty || 0;
+      if (cat === 'DEPOSIT') { depositSplit(amount); return; }
+      if (cat === 'WITHDRAWAL') { feeOrWithdrawal(amount); return; }
+      if (cat === 'FEE') { feeOrWithdrawal(amount); return; }
+      const security = tx.security ? canonicalName(tx.security) : null;
+      if (!security) return;
+      const split = splitForSecurity(attrMap, security);
+      if (!split.length) return;
+      if (cat === 'DIVIDEND' || cat === 'TAX') {
+        for (const { code, weight } of split) state[code].cash += amount * weight;
+        return;
+      }
+      if (cat !== 'BUY' && cat !== 'SELL') return;
+      const cashImpacting = tx.type === 'KJØPT' || isRealizingSell(tx.type);
+      for (const { code, weight } of split) {
+        const bag = state[code].qty;
+        const wq = qty * weight;
+        const wa = amount * weight;
+        if (!bag.has(security)) bag.set(security, 0);
+        if (cat === 'BUY') {
+          bag.set(security, bag.get(security) + wq);
+          if (cashImpacting) state[code].cash -= Math.abs(wa);
+        } else {
+          bag.set(security, Math.max(0, bag.get(security) - Math.abs(wq)));
+          if (cashImpacting) state[code].cash += wa;
+        }
       }
     }
-    return series;
+
+    const txs = store.transactions.slice().sort((a, b) => {
+      const ak = a.tradeDate || a.bookDate || '';
+      const bk = b.tradeDate || b.bookDate || '';
+      return ak.localeCompare(bk);
+    });
+
+    function snapshot(date) {
+      const prices = window.Portfolio.pricesAtDate(store, date) || new Map();
+      const perInvestor = {};
+      for (const code of INVESTOR_CODES) {
+        const s = state[code];
+        let mv = 0;
+        for (const [security, qty] of s.qty.entries()) {
+          if (qty <= 0) continue;
+          const px = prices.get(security);
+          if (px && px.price) mv += qty * px.price;
+        }
+        perInvestor[code] = s.cash + mv;
+      }
+      return { date, perInvestor };
+    }
+
+    const samples = [];
+    let lastDate = null;
+    for (const tx of txs) {
+      const date = tx.tradeDate || tx.bookDate;
+      if (!date) continue;
+      apply(tx);
+      if (lastDate && date !== lastDate) samples.push(snapshot(lastDate));
+      lastDate = date;
+    }
+    if (lastDate) samples.push(snapshot(lastDate));
+    return samples;
   }
 
   function buildCumulativePnlSeries(store) {
