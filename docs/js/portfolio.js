@@ -631,23 +631,17 @@
     const txs = store.transactions;
     const recent = [];
     for (const tx of txs.slice().reverse()) {
+      if (!tx.security) continue;
       const split = splitForSecurity(attrMap, tx.security);
-      if (!split.length && tx.security) continue;
-      const slot = (split.length ? split.find((s) => s.code === code) : null);
-      if (!slot && tx.security) continue;
-      const w = slot ? slot.weight : 1.0 / INVESTOR_CODES.length;
-      if (!tx.security && classify(tx.type) === 'DEPOSIT') {
-        recent.push({
-          tradeDate: tx.tradeDate, type: tx.type, security: null,
-          qty: null, price: null, amount: (tx.amount || 0) * w, weight: w,
-        });
-      } else if (tx.security) {
-        recent.push({
-          tradeDate: tx.tradeDate, type: tx.type, security: canonicalName(tx.security),
-          qty: tx.qty != null ? tx.qty * w : null, price: tx.price,
-          amount: (tx.amount || 0) * w, weight: w,
-        });
-      }
+      if (!split.length) continue;
+      const slot = split.find((s) => s.code === code);
+      if (!slot) continue;
+      const w = slot.weight;
+      recent.push({
+        tradeDate: tx.tradeDate, type: tx.type, security: canonicalName(tx.security),
+        qty: tx.qty != null ? tx.qty * w : null, price: tx.price,
+        amount: (tx.amount || 0) * w, weight: w,
+      });
       if (recent.length >= 50) break;
     }
     return { code, summary, recent };
