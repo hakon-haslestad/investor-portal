@@ -18,7 +18,8 @@
     from: stored.from || null,
     to: stored.to || null,
   };
-  let selectedCode = localStorage.getItem('portal.filter') || null;
+  let selectedCodes = (localStorage.getItem('portal.filter') || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
 
   const INVESTOR_COLORS = {
     HH: '#4ade80', HS: '#60a5fa', 'ØS': '#fbbf24', JC: '#f472b6', HF: '#a78bfa',
@@ -26,12 +27,57 @@
   const INVESTOR_CODES = ['HH', 'HS', 'ØS', 'JC', 'HF'];
 
   function toggleFilter(code) {
-    selectedCode = selectedCode === code ? null : code;
-    if (selectedCode) localStorage.setItem('portal.filter', selectedCode);
+    const idx = selectedCodes.indexOf(code);
+    if (idx >= 0) selectedCodes.splice(idx, 1);
+    else selectedCodes.push(code);
+    if (selectedCodes.length) localStorage.setItem('portal.filter', selectedCodes.join(','));
     else localStorage.removeItem('portal.filter');
     refresh();
   }
-  window.__clearFilter = () => { selectedCode = null; localStorage.removeItem('portal.filter'); refresh(); };
+  window.__clearFilter = () => { selectedCodes = []; localStorage.removeItem('portal.filter'); refresh(); };
+
+  // Aggregate per-investor values across the current selection. Returns
+  // either the group totals (no selection), a single investor's record
+  // (one code), or summed values (multi).
+  function aggregateRn(d) {
+    if (!selectedCodes.length) return d.group;
+    if (selectedCodes.length === 1 && d.perInvestor[selectedCodes[0]]) return d.perInvestor[selectedCodes[0]];
+    const acc = { marketValue: 0, cash: 0, totalValue: 0, dividends: 0, realized: 0, unrealized: 0, invested: 0, netReturn: 0 };
+    for (const code of selectedCodes) {
+      const inv = d.perInvestor[code]; if (!inv) continue;
+      acc.marketValue += inv.marketValue || 0;
+      acc.cash += inv.cash || 0;
+      acc.totalValue += inv.totalValue || 0;
+      acc.dividends += inv.dividends || 0;
+      acc.realized += inv.realized || 0;
+      acc.unrealized += inv.unrealized || 0;
+      acc.invested += inv.invested || 0;
+      acc.netReturn += inv.netReturn || 0;
+    }
+    acc.portfolioReturnPct = acc.invested > 0 ? (acc.netReturn / acc.invested) * 100 : 0;
+    return acc;
+  }
+  function aggregateWin(wm) {
+    if (!selectedCodes.length) return wm.group;
+    if (selectedCodes.length === 1 && wm.perInvestor[selectedCodes[0]]) return wm.perInvestor[selectedCodes[0]];
+    const acc = { realizedInWindow: 0, dividendsInWindow: 0, buysInWindow: 0, sellsInWindow: 0,
+                  buyCount: 0, sellCount: 0, netPnlInWindow: 0, periodReturnPct: 0 };
+    let n = 0;
+    for (const code of selectedCodes) {
+      const w = wm.perInvestor[code]; if (!w) continue;
+      acc.realizedInWindow += w.realizedInWindow || 0;
+      acc.dividendsInWindow += w.dividendsInWindow || 0;
+      acc.buysInWindow += w.buysInWindow || 0;
+      acc.sellsInWindow += w.sellsInWindow || 0;
+      acc.buyCount += w.buyCount || 0;
+      acc.sellCount += w.sellCount || 0;
+      acc.netPnlInWindow += w.netPnlInWindow || 0;
+      acc.periodReturnPct += w.periodReturnPct || 0;
+      n++;
+    }
+    if (n) acc.periodReturnPct /= n;
+    return acc;
+  }
 
   refresh();
 
@@ -104,7 +150,7 @@
     }));
     const pnlSeriesAll = toSeries(tsPnl);
     const mvSeriesAll = toSeries(tsMv);
-    const filt = (all) => selectedCode ? all.filter((s) => s.code === selectedCode) : all;
+    const filt = (all) => selectedCodes.length ? all.filter((s) => selectedCodes.includes(s.code)) : all;
 
     const pnlEl = document.getElementById('chart-pnl');
     const mvEl = document.getElementById('chart-mv');
@@ -118,17 +164,18 @@
     const W = isMobile ? 540 : 900;
     const H = isMobile ? 360 : 320;
 
+    const filterTag = selectedCodes.length ? ` · ${selectedCodes.join(', ')}` : '';
     pnlEl.appendChild(window.Charts.multiLine({
       series: filt(pnlSeriesAll), width: W, height: H,
-      title: selectedCode
-        ? `Cumulative P/L · ${selectedCode}`
+      title: selectedCodes.length
+        ? `Cumulative P/L${filterTag}`
         : 'Cumulative realized P/L + dividends − fees',
       interactive: true,
     }));
     mvEl.appendChild(window.Charts.multiLine({
       series: filt(mvSeriesAll), width: W, height: H,
-      title: selectedCode
-        ? `Portfolio value · ${selectedCode}`
+      title: selectedCodes.length
+        ? `Portfolio value${filterTag}`
         : 'Portfolio value per investor',
       interactive: true,
     }));
@@ -144,7 +191,7 @@
     });
     legendEl.appendChild(window.Charts.legend({
       series: investorLegend,
-      selectedCode,
+      selectedCodes,
       onSelect: toggleFilter,
     }));
   }
@@ -152,77 +199,22 @@
   function paint(d) {
     const wm = d.windowMetrics;
     const root = document.getElementById('root');
-    const rn = selectedCode && d.perInvestor[selectedCode] ? d.perInvestor[selectedCode] : d.group;
-    const win = selectedCode && wm.perInvestor[selectedCode] ? wm.perInvestor[selectedCode] : wm.group;
-    const filterLabel = selectedCode
-      ? `<span class="filter-chip">Filtered: <strong>${selectedCode}</strong> ${names[selectedCode] || ''} <a href="#" onclick="event.preventDefault(); window.__clearFilter();">clear ×</a></span>`
+    const rn = aggregateRn(d);
+    const win = aggregateWin(wm);
+    const filterLabel = selectedCodes.length
+      ? `<span class="filter-chip">Filtered: <strong>${selectedCodes.join(', ')}</strong> <a href="#" onclick="event.preventDefault(); window.__clearFilter();">clear ×</a></span>`
       : '';
-    const rnTitle = selectedCode ? `Right now · ${selectedCode}` : 'Right now (current snapshot)';
-    const winTitle = selectedCode ? `In this window · ${selectedCode}` : 'In this window';
+    const rnTitle = `Right now (${d.snapshotDate || '—'})`;
+    const winTitle = selectedCodes.length ? `In this window · ${selectedCodes.join(', ')}` : 'In this window';
+    const dateOrNone = d.snapshotDate || '—';
     root.innerHTML = `
       <div class="hero">
         <div>
           <h2>Welcome back, ${me.displayName}. Here's the book.</h2>
-          <div class="when">Snapshot: ${d.snapshotDate || '—'} ${filterLabel}</div>
+          <div class="when">Snapshot: ${dateOrNone} ${filterLabel}</div>
         </div>
         ${renderPicker(d.window)}
       </div>
-
-      <div class="section-title">Timelines per investor <span class="text-muted text-small">click an investor to filter</span></div>
-      <div id="chart-legend"></div>
-      <div class="chart-wrap" id="chart-pnl"></div>
-      <div class="chart-wrap" id="chart-mv"></div>
-
-      <div class="section-title">${rnTitle}</div>
-      <div class="kpi-grid">
-        <div class="kpi-card"><div class="label">Total portfolio</div><div class="value">${fmtNok(rn.totalValue)}</div><div class="sub">positions + cash</div></div>
-        <div class="kpi-card"><div class="label">Holdings MV</div><div class="value">${fmtNok(rn.marketValue)}</div><div class="sub">active positions</div></div>
-        <div class="kpi-card"><div class="label">Dry powder</div><div class="value">${fmtNok(rn.cash)}</div><div class="sub">${selectedCode ? 'investor share' : 'uncommitted cash'}</div></div>
-        <div class="kpi-card"><div class="label">Unrealized P/L</div><div class="value ${pctClass(rn.unrealized)}">${fmtNok(rn.unrealized)}</div><div class="sub">mark-to-market</div></div>
-      </div>
-
-      <div class="section-title">${winTitle} <span class="text-muted text-small">${prettyRange(d.window)}</span></div>
-      <div class="kpi-grid">
-        <div class="kpi-card"><div class="label">Period return</div><div class="value ${pctClass(win.periodReturnPct)}">${fmtPct(win.periodReturnPct)}</div><div class="sub">realized + dividends + price delta</div></div>
-        <div class="kpi-card"><div class="label">Realized P/L</div><div class="value ${pctClass(win.realizedInWindow)}">${fmtNok(win.realizedInWindow)}</div><div class="sub">${win.sellCount || 0} sells</div></div>
-        <div class="kpi-card"><div class="label">Dividends</div><div class="value">${fmtNok(win.dividendsInWindow)}</div><div class="sub">received in window</div></div>
-        <div class="kpi-card"><div class="label">Capital deployed</div><div class="value">${fmtNok(win.buysInWindow)}</div><div class="sub">${win.buyCount || 0} buys</div></div>
-        <div class="kpi-card"><div class="label">Net P/L</div><div class="value ${pctClass(win.netPnlInWindow)}">${fmtNok(win.netPnlInWindow)}</div><div class="sub">realized + divs + unrealized Δ</div></div>
-      </div>
-
-      <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${prettyRange(d.window)})</span></div>
-      <table>
-        <thead><tr>
-          <th>Investor</th>
-          <th class="text-right">Total value <span class="text-muted text-small">(now)</span></th>
-          <th class="text-right">Period return</th>
-          <th class="text-right">Realized</th>
-          <th class="text-right">Dividends</th>
-          <th class="text-right">Bought</th>
-          <th class="text-right">Sold</th>
-          <th class="text-right">All-time return</th>
-        </tr></thead>
-        <tbody>
-          ${Object.entries(d.perInvestor).map(([code, s]) => {
-            const w = wm.perInvestor[code] || {};
-            const rowClass = selectedCode
-              ? (code === selectedCode ? 'row-link selected-row' : 'row-link dimmed-row')
-              : 'row-link';
-            return `
-              <tr class="${rowClass}" onclick="location.href='./investor.html?code=${encodeURIComponent(code)}'">
-                <td><strong>${code}</strong> <span class="text-muted text-small">${names[code] || ''}</span></td>
-                <td class="text-right">${fmtNok(s.totalValue)}</td>
-                <td class="text-right ${pctClass(w.periodReturnPct)}"><strong>${fmtPct(w.periodReturnPct)}</strong></td>
-                <td class="text-right ${pctClass(w.realizedInWindow)}">${fmtNok(w.realizedInWindow)}</td>
-                <td class="text-right">${fmtNok(w.dividendsInWindow)}</td>
-                <td class="text-right text-muted">${fmtNok(w.buysInWindow)}</td>
-                <td class="text-right text-muted">${fmtNok(w.sellsInWindow)}</td>
-                <td class="text-right ${pctClass(s.portfolioReturnPct)}">${fmtPct(s.portfolioReturnPct)}</td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
 
       <div class="section-title">Leaderboards</div>
       <div class="leaderboard">
@@ -252,6 +244,62 @@
           `).join('')}
         </div>
       </div>
+
+      <div class="section-title">Timelines per investor <span class="text-muted text-small">click investors to filter (multi-select)</span></div>
+      <div id="chart-legend"></div>
+      <div class="chart-wrap" id="chart-pnl"></div>
+      <div class="chart-wrap" id="chart-mv"></div>
+
+      <div class="section-title">${rnTitle}</div>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="label">Total portfolio</div><div class="value">${fmtNok(rn.totalValue)}</div><div class="sub">positions + cash</div></div>
+        <div class="kpi-card"><div class="label">Holdings MV</div><div class="value">${fmtNok(rn.marketValue)}</div><div class="sub">active positions</div></div>
+        <div class="kpi-card"><div class="label">Dry powder</div><div class="value">${fmtNok(rn.cash)}</div><div class="sub">${selectedCodes.length ? 'investor share' : 'uncommitted cash'}</div></div>
+        <div class="kpi-card"><div class="label">Unrealized P/L</div><div class="value ${pctClass(rn.unrealized)}">${fmtNok(rn.unrealized)}</div><div class="sub">mark-to-market</div></div>
+      </div>
+
+      <div class="section-title">${winTitle} <span class="text-muted text-small">${prettyRange(d.window)}</span></div>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="label">Period return</div><div class="value ${pctClass(win.periodReturnPct)}">${fmtPct(win.periodReturnPct)}</div><div class="sub">realized + dividends + price delta</div></div>
+        <div class="kpi-card"><div class="label">Realized P/L</div><div class="value ${pctClass(win.realizedInWindow)}">${fmtNok(win.realizedInWindow)}</div><div class="sub">${win.sellCount || 0} sells</div></div>
+        <div class="kpi-card"><div class="label">Dividends</div><div class="value">${fmtNok(win.dividendsInWindow)}</div><div class="sub">received in window</div></div>
+        <div class="kpi-card"><div class="label">Capital deployed</div><div class="value">${fmtNok(win.buysInWindow)}</div><div class="sub">${win.buyCount || 0} buys</div></div>
+        <div class="kpi-card"><div class="label">Net P/L</div><div class="value ${pctClass(win.netPnlInWindow)}">${fmtNok(win.netPnlInWindow)}</div><div class="sub">realized + divs + unrealized Δ</div></div>
+      </div>
+
+      <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${prettyRange(d.window)})</span></div>
+      <table>
+        <thead><tr>
+          <th>Investor</th>
+          <th class="text-right">Total value <span class="text-muted text-small">(now)</span></th>
+          <th class="text-right">Period return</th>
+          <th class="text-right">Realized</th>
+          <th class="text-right">Dividends</th>
+          <th class="text-right">Bought</th>
+          <th class="text-right">Sold</th>
+          <th class="text-right">All-time return</th>
+        </tr></thead>
+        <tbody>
+          ${Object.entries(d.perInvestor).map(([code, s]) => {
+            const w = wm.perInvestor[code] || {};
+            const rowClass = selectedCodes.length
+              ? (selectedCodes.includes(code) ? 'row-link selected-row' : 'row-link dimmed-row')
+              : 'row-link';
+            return `
+              <tr class="${rowClass}" onclick="location.href='./investor.html?code=${encodeURIComponent(code)}'">
+                <td><strong>${code}</strong> <span class="text-muted text-small">${names[code] || ''}</span></td>
+                <td class="text-right">${fmtNok(s.totalValue)}</td>
+                <td class="text-right ${pctClass(w.periodReturnPct)}"><strong>${fmtPct(w.periodReturnPct)}</strong></td>
+                <td class="text-right ${pctClass(w.realizedInWindow)}">${fmtNok(w.realizedInWindow)}</td>
+                <td class="text-right">${fmtNok(w.dividendsInWindow)}</td>
+                <td class="text-right text-muted">${fmtNok(w.buysInWindow)}</td>
+                <td class="text-right text-muted">${fmtNok(w.sellsInWindow)}</td>
+                <td class="text-right ${pctClass(s.portfolioReturnPct)}">${fmtPct(s.portfolioReturnPct)}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
     `;
     wirePicker();
   }

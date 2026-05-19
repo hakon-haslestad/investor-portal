@@ -394,18 +394,20 @@
   }
 
   // series: [{ code?, name, color, valueText? }]
-  // When onSelect + code are provided, each key becomes clickable; the entry
-  // whose code matches selectedCode renders with the "selected" class, others
-  // with "dimmed" — useful for cross-filtering a dashboard.
-  function legend({ series, selectedCode, onSelect }) {
+  // When onSelect + code are provided, each key becomes clickable. Keys whose
+  // code is in selectedCodes get the "selected" class; the rest get "dimmed"
+  // (when there's any selection at all). Supports multi-select.
+  function legend({ series, selectedCodes, onSelect }) {
+    const active = Array.isArray(selectedCodes) ? selectedCodes
+      : (selectedCodes ? [selectedCodes] : []);
     const wrap = document.createElement('div');
     wrap.className = 'chart-legend';
     for (const s of series) {
       const key = document.createElement('div');
       key.className = 'key';
       if (s.code) key.dataset.code = s.code;
-      if (selectedCode && s.code) {
-        key.classList.add(s.code === selectedCode ? 'selected' : 'dimmed');
+      if (active.length && s.code) {
+        key.classList.add(active.includes(s.code) ? 'selected' : 'dimmed');
       }
       if (onSelect && s.code) {
         key.classList.add('clickable');
