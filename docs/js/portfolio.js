@@ -609,6 +609,62 @@
     return result;
   }
 
+  // Previously-held securities — positions this investor used to own but
+  // has fully exited. Walks transactions, attributes per the investor's
+  // weight, and reuses the cost-basis bag for realized P/L.
+  function previousHoldings(store, code) {
+    const attrMap = store.attributionMap;
+    const txs = store.transactions;
+    const heldNow = new Set();
+    for (const h of currentHoldings(store)) heldNow.add(canonicalName(h.security));
+
+    const bySec = new Map();
+    for (const tx of txs) {
+      if (!tx.security) continue;
+      const cat = classify(tx.type);
+      if (cat !== 'BUY' && cat !== 'SELL' && cat !== 'DIVIDEND' && cat !== 'TAX') continue;
+      const split = splitForSecurity(attrMap, tx.security);
+      if (!split.length) continue;
+      const slot = split.find((s) => s.code === code);
+      if (!slot) continue;
+      const w = slot.weight;
+      const security = canonicalName(tx.security);
+      if (!bySec.has(security)) {
+        bySec.set(security, {
+          security, invested: 0, proceeds: 0, dividends: 0,
+          realized: 0, firstDate: null, lastDate: null,
+        });
+      }
+      const m = bySec.get(security);
+      const amt = (tx.amount || 0) * w;
+      if (cat === 'BUY' && tx.type === 'KJØPT') m.invested += Math.abs(amt);
+      else if (cat === 'SELL' && tx.type === 'SALG') m.proceeds += amt;
+      else if (cat === 'DIVIDEND' || cat === 'TAX') m.dividends += amt;
+      if (tx.tradeDate) {
+        if (!m.firstDate || tx.tradeDate < m.firstDate) m.firstDate = tx.tradeDate;
+        if (!m.lastDate || tx.tradeDate > m.lastDate) m.lastDate = tx.tradeDate;
+      }
+    }
+
+    // Pull authoritative realized from the cost-basis replay.
+    const costBag = deriveCostBasis(store).get(code) || new Map();
+    for (const [security, m] of bySec.entries()) {
+      const slot = costBag.get(security);
+      m.realized = slot ? slot.realized : (m.proceeds - m.invested);
+    }
+
+    const out = [];
+    for (const [security, m] of bySec.entries()) {
+      if (heldNow.has(security)) continue;
+      if (m.invested === 0 && m.dividends === 0) continue;
+      m.netResult = m.realized + m.dividends;
+      m.returnPct = m.invested > 0 ? (m.netResult / m.invested) * 100 : 0;
+      out.push(m);
+    }
+    out.sort((a, b) => (b.lastDate || '').localeCompare(a.lastDate || ''));
+    return out;
+  }
+
   // ─── Public entry points ─────────────────────────────────────────────────
 
   function buildDashboard(store, opts = {}) {
@@ -644,7 +700,7 @@
       });
       if (recent.length >= 50) break;
     }
-    return { code, summary, recent };
+    return { code, summary, recent, previous: previousHoldings(store, code) };
   }
 
   window.Portfolio = {
