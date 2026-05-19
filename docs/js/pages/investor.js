@@ -45,9 +45,13 @@
         <th class="text-right">Market value</th>
         <th class="text-right">Unrealized</th>
         <th class="text-right">U/L %</th>
+        <th>Research</th>
       </tr></thead>
       <tbody>
-        ${s.holdings.map((h) => `
+        ${s.holdings.map((h) => {
+          const q = encodeURIComponent(h.security);
+          const ir = encodeURIComponent(h.security + ' investor relations');
+          return `
           <tr>
             <td>${h.security} ${h.weight < 1 ? `<span class="tag">${(h.weight*100).toFixed(0)}% share</span>` : ''}</td>
             <td class="text-right">${fmtQty(h.qty)}</td>
@@ -56,8 +60,14 @@
             <td class="text-right">${fmtNok(h.marketValue)}</td>
             <td class="text-right ${pctClass(h.unrealized)}">${fmtNok(h.unrealized)}</td>
             <td class="text-right ${pctClass(h.unrealizedPct)}">${fmtPct(h.unrealizedPct)}</td>
+            <td class="links">
+              <a target="_blank" rel="noopener" href="https://www.nordnet.no/market/search?query=${q}">Nordnet</a>
+              · <a target="_blank" rel="noopener" href="https://finance.yahoo.com/lookup?s=${q}">Yahoo</a>
+              · <a target="_blank" rel="noopener" href="https://www.google.com/search?q=${ir}">IR</a>
+            </td>
           </tr>
-        `).join('')}
+        `;
+        }).join('')}
       </tbody>
     </table>
     `}

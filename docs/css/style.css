@@ -155,6 +155,23 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
 .chart-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-top: 16px; box-shadow: var(--shadow); }
 canvas { max-width: 100%; }
 
+.chart-stack { display: grid; gap: 12px; }
+.chart-wrap svg { width: 100%; height: auto; display: block; }
+.chart-legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 10px 0 24px; padding: 8px 4px; }
+.chart-legend .key { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.82rem; }
+.chart-legend .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+
+td.links { white-space: nowrap; }
+td.links a { color: var(--muted); margin-right: 2px; font-size: 0.82rem; }
+td.links a:hover { color: var(--accent); }
+
+.report-table { width: 100%; border-collapse: collapse; background: transparent; border: none; }
+.report-table th, .report-table td { padding: 6px 10px; text-align: right; font-size: 0.88rem; border-bottom: 1px solid var(--border); }
+.report-table th { font-weight: 500; color: var(--muted); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 1.2px; }
+.report-table th:first-child, .report-table td:first-child { text-align: left; }
+.report-table tr.year-header td { background: var(--panel-2); font-weight: 600; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 0.95rem; padding: 8px 10px; }
+.report-table tfoot tr td { border-top: 2px solid var(--border); border-bottom: none; font-weight: 600; padding-top: 10px; }
+
 @media (max-width: 720px) {
   .container { padding: 14px; }
   .nav { padding: 10px 14px; }

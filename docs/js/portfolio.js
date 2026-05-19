@@ -167,6 +167,29 @@
     return perInvestor;
   }
 
+  // Nordnet records a running cash balance ("Saldo") on every transaction row.
+  // That balance — not our additive replay — is the authoritative cash figure.
+  function latestSaldo(store) {
+    let best = null;
+    for (const t of store.transactions) {
+      if (t.saldo == null || Number.isNaN(t.saldo)) continue;
+      const key = t.bookDate || t.tradeDate || '';
+      if (!best || key > best.key) best = { key, saldo: t.saldo };
+    }
+    return best ? best.saldo : 0;
+  }
+
+  function saldoOnOrBefore(store, dateStr) {
+    let best = null;
+    for (const t of store.transactions) {
+      if (t.saldo == null || Number.isNaN(t.saldo)) continue;
+      const key = t.bookDate || t.tradeDate || '';
+      if (!key || key > dateStr) continue;
+      if (!best || key > best.key) best = { key, saldo: t.saldo };
+    }
+    return best ? best.saldo : null;
+  }
+
   function deriveCashFlow(store) {
     const txs = store.transactions;
     let totalDeposits = 0, totalWithdrawals = 0, totalFees = 0, netDividends = 0, totalBuys = 0, totalSells = 0;
@@ -400,7 +423,7 @@
     const costByInvestor = deriveCostBasis(store);
     const divsByInvestor = deriveDividends(store);
     const cashFlow = deriveCashFlow(store);
-    const groupCash = cashFlow.totalDeposits - cashFlow.totalWithdrawals + cashFlow.totalSells + cashFlow.netDividends - cashFlow.totalBuys - cashFlow.totalFees;
+    const groupCash = latestSaldo(store);
     const perInvestorCash = groupCash / INVESTOR_CODES.length;
     const perInvestorDeposits = cashFlow.totalDeposits / INVESTOR_CODES.length;
 
@@ -634,5 +657,7 @@
     buildDashboard, investorDetail, canonicalName,
     currentHoldings, snapshotDate,
     pricesAtDate, snapshotForDate,
+    cash: { latestSaldo, saldoOnOrBefore },
+    _debug: { deriveCashFlow, deriveCostBasis, deriveDividends, deriveInvested },
   };
 })();
