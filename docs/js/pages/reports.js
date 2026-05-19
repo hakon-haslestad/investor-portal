@@ -168,7 +168,7 @@
     return d.toISOString().slice(0, 10);
   }
 
-  function grandTotals(months) {
+  function sumMonths(months) {
     return months.reduce((acc, m) => ({
       netResult: acc.netResult + m.netResult,
       realized: acc.realized + m.realized,
@@ -179,14 +179,47 @@
       withdrawals: acc.withdrawals + m.withdrawals,
     }), { netResult: 0, realized: 0, dividends: 0, fees: 0, tax: 0, deposits: 0, withdrawals: 0 });
   }
+  function grandTotals(months) { return sumMonths(months); }
+
+  // Pick the most recent month's ending cash/MV/DE for the year — months are
+  // sorted newest-first, so the first row of each year IS year-end.
+  function yearEndSnapshot(monthsOfYear) {
+    const latest = monthsOfYear[0];
+    return latest ? { endingCash: latest.endingCash, endingMv: latest.endingMv, deProxy: latest.deProxy } : { endingCash: null, endingMv: null, deProxy: null };
+  }
 
   function renderRows(months) {
+    const byYear = new Map();
+    for (const m of months) {
+      const y = m.ym.slice(0, 4);
+      if (!byYear.has(y)) byYear.set(y, []);
+      byYear.get(y).push(m);
+    }
     let lastYear = null;
     return months.map((m) => {
       const year = m.ym.slice(0, 4);
-      const header = year !== lastYear ? `
-        <tr class="year-header"><td colspan="11">${year}</td></tr>
-      ` : '';
+      let header = '';
+      if (year !== lastYear) {
+        const yr = byYear.get(year);
+        const sum = sumMonths(yr);
+        const end = yearEndSnapshot(yr);
+        header = `
+          <tr class="year-header"><td colspan="11">${year}</td></tr>
+          <tr class="year-totals">
+            <td><strong>${year} total</strong></td>
+            <td class="text-right ${pctClass(sum.netResult)}"><strong>${fmtNok(sum.netResult)}</strong></td>
+            <td class="text-right ${pctClass(sum.realized)}">${fmtNok(sum.realized)}</td>
+            <td class="text-right">${fmtNok(sum.dividends)}</td>
+            <td class="text-right text-muted">${fmtNok(sum.fees)}</td>
+            <td class="text-right text-muted">${fmtNok(sum.tax)}</td>
+            <td class="text-right">${fmtNok(sum.deposits)}</td>
+            <td class="text-right text-muted">${fmtNok(sum.withdrawals)}</td>
+            <td class="text-right">${end.endingCash != null ? fmtNok(end.endingCash) : '—'}</td>
+            <td class="text-right">${end.endingMv != null ? fmtNok(end.endingMv) : '—'}</td>
+            <td class="text-right">${end.deProxy != null ? fmtPct(end.deProxy * 100, false) : '—'}</td>
+          </tr>
+        `;
+      }
       lastYear = year;
       return header + `
         <tr>
