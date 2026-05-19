@@ -173,8 +173,89 @@
       current.to = d.window.to;
     }
     localStorage.setItem('portal.range', JSON.stringify(current));
+
+    // In competition mode, override per-investor + window KPI numbers with
+    // values that respect the competition rules (only stocks bought inside
+    // the window count, valuation uses end-of-window snapshot).
+    if (competitionMode && activeCompetition && window.CompetitionEngine) {
+      try {
+        const comp = window.CompetitionEngine.scoreCompetition(
+          store, activeCompetition.competition, activeCompetition.participants
+        );
+        applyCompetitionOverrides(d, comp);
+      } catch (_e) { /* fall back to normal dashboard if scoring blows up */ }
+    }
+
     paint(d);
     paintCharts(d.window);
+  }
+
+  // Replace the relevant fields on d.perInvestor[code] and d.windowMetrics so
+  // every KPI grid + the By-investor table reflects competition-rule numbers.
+  function applyCompetitionOverrides(d, comp) {
+    const byCode = new Map();
+    for (const r of comp.ranks) byCode.set(r.code, r);
+    const wm = d.windowMetrics;
+
+    let gMV = 0, gCash = 0, gUnreal = 0, gReal = 0, gDiv = 0, gInv = 0, gNet = 0;
+    let gBuys = 0, gSells = 0, gBuyCount = 0, gSellCount = 0, gNetPnl = 0;
+
+    for (const code of INVESTOR_CODES) {
+      const p = byCode.get(code);
+      const cash = p ? Math.max(0, (p.buyIn || 0) - (p.amountSpent || 0)) : 0;
+      const sellsProceeds = p ? p.breakdown.reduce((s, b) => s + (b.soldProceeds || 0), 0) : 0;
+      const sellCount = p ? p.breakdown.filter((b) => (b.soldQty || 0) > 0).length : 0;
+      const buyCount = p ? p.breakdown.length : 0;
+      const rn = d.perInvestor[code] || (d.perInvestor[code] = {});
+      rn.marketValue = p ? p.mvAtEnd : 0;
+      rn.cash = cash;
+      rn.totalValue = (rn.marketValue || 0) + (rn.cash || 0);
+      rn.unrealized = p ? p.unrealizedAtEnd : 0;
+      rn.realized = p ? p.realizedInWindow : 0;
+      rn.dividends = p ? p.divsInWindow : 0;
+      rn.invested = p ? p.amountSpent : 0;
+      rn.netReturn = p ? p.netPnl : 0;
+      rn.portfolioReturnPct = p ? p.pct : 0;
+      rn.totalReturnPct = rn.portfolioReturnPct;
+      gMV += rn.marketValue; gCash += rn.cash; gUnreal += rn.unrealized;
+      gReal += rn.realized; gDiv += rn.dividends; gInv += rn.invested;
+      gNet += rn.netReturn;
+
+      const w = wm.perInvestor[code] || (wm.perInvestor[code] = {});
+      w.realizedInWindow = p ? p.realizedInWindow : 0;
+      w.dividendsInWindow = p ? p.divsInWindow : 0;
+      w.buysInWindow = p ? p.amountSpent : 0;
+      w.sellsInWindow = sellsProceeds;
+      w.buyCount = buyCount;
+      w.sellCount = sellCount;
+      w.netPnlInWindow = p ? p.netPnl : 0;
+      w.periodReturnPct = p ? p.pct : 0;
+      gBuys += w.buysInWindow; gSells += w.sellsInWindow;
+      gBuyCount += w.buyCount; gSellCount += w.sellCount;
+      gNetPnl += w.netPnlInWindow;
+    }
+
+    d.group.marketValue = gMV;
+    d.group.cash = gCash;
+    d.group.totalValue = gMV + gCash;
+    d.group.unrealized = gUnreal;
+    d.group.realized = gReal;
+    d.group.dividends = gDiv;
+    d.group.invested = gInv;
+    d.group.netReturn = gNet;
+    d.group.portfolioReturnPct = gInv > 0 ? (gNet / gInv) * 100 : 0;
+
+    wm.group.realizedInWindow = gReal;
+    wm.group.dividendsInWindow = gDiv;
+    wm.group.buysInWindow = gBuys;
+    wm.group.sellsInWindow = gSells;
+    wm.group.buyCount = gBuyCount;
+    wm.group.sellCount = gSellCount;
+    wm.group.netPnlInWindow = gNetPnl;
+    wm.group.periodReturnPct = gInv > 0 ? (gNetPnl / gInv) * 100 : 0;
+
+    // Period leaderboard ranking by competition pct (used in "This period" card).
+    d.leaderboards.period = comp.ranks.map((r) => ({ code: r.code, value: r.pct }));
   }
 
   // Slice an all-time per-investor series down to the selected window.
