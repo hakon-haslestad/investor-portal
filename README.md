@@ -18,6 +18,10 @@ Hosted on GitHub Pages from `docs/`.
   to navigate.
 - Admin tab edits the `Ownership` tab in the sheet directly — no
   out-of-band sync step.
+- Accounting tab — read-only dashboard for the konsolidert bookkeeping
+  workbook (SB net, bilag count, latest DNB/Nordnet dates, realisasjon
+  gevinst). Lives in a **separate** Google Sheet so the share list can
+  be tighter than the portfolio sheet.
 
 ## Stack
 
@@ -40,6 +44,13 @@ called from the browser.
    and the Sheet ID into the same file (`SHEET_ID`).
 6. Share the Google Sheet with each investor's Google account (named
    people only — **not** "Anyone with the link"). Role: Editor.
+7. **Accounting** (optional): create a second Google Sheet for the
+   konsolidert bookkeeping workbook (produced by `build.py` in the
+   companion repo) and paste its ID into `ACCOUNTING_SHEET_ID` in
+   `docs/js/config.js`. Share it with the same investor accounts —
+   Viewer is enough, the portal never writes to this sheet. **No new
+   OAuth scope is needed** — the existing `spreadsheets.readonly` scope
+   covers it, members never grant Drive access to the portal.
 
 Visit the Pages URL and click **Sign in with Google**.
 
@@ -95,6 +106,7 @@ docs/
 ├── competitions.html     Competitions list + edit
 ├── presentation.html     7-slide presentation mode
 ├── data.html             Raw data inspector
+├── accounting.html       Read-only accounting dashboard
 ├── admin.html            Ownership + sheet management
 ├── css/                  style.css, presentation.css
 └── js/
@@ -104,6 +116,7 @@ docs/
     ├── parsers.js               Tab → typed JS objects
     ├── store.js                 In-memory cache across pages
     ├── nav.js                   Top nav bar
+    ├── accounting.js            Parsers + status aggregator for the accounting sheet
     ├── ledger.js                Transaction classification
     ├── portfolio.js             Dashboard math
     ├── dimvalues.js             Attribution helpers

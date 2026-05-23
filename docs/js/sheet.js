@@ -4,8 +4,8 @@
 (function () {
   const BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
-  function sheetId() {
-    return window.PORTAL_CONFIG.SHEET_ID;
+  function sheetId(override) {
+    return override || window.PORTAL_CONFIG.SHEET_ID;
   }
 
   async function authedFetch(url, opts = {}) {
@@ -31,23 +31,25 @@
   }
 
   // Reads a single tab. Returns 2-D array of cells (rows). Empty trailing cells are dropped by Sheets.
+  // Pass opts.sheetId to read from a sheet other than the portfolio one (e.g. the accounting sheet).
   async function getValues(tab, opts = {}) {
     const range = encodeURIComponent(tab);
     const params = new URLSearchParams({
       valueRenderOption: opts.valueRenderOption || 'UNFORMATTED_VALUE',
       dateTimeRenderOption: opts.dateTimeRenderOption || 'SERIAL_NUMBER',
     });
-    const j = await authedFetch(`${BASE}/${sheetId()}/values/${range}?${params}`);
+    const j = await authedFetch(`${BASE}/${sheetId(opts.sheetId)}/values/${range}?${params}`);
     return j.values || [];
   }
 
   // Reads multiple tabs in one round-trip. Returns { [tabName]: rows[] }.
+  // Pass opts.sheetId to target a different sheet (defaults to PORTAL_CONFIG.SHEET_ID).
   async function batchGet(tabs, opts = {}) {
     const params = new URLSearchParams();
     for (const t of tabs) params.append('ranges', t);
     params.append('valueRenderOption', opts.valueRenderOption || 'UNFORMATTED_VALUE');
     params.append('dateTimeRenderOption', opts.dateTimeRenderOption || 'SERIAL_NUMBER');
-    const j = await authedFetch(`${BASE}/${sheetId()}/values:batchGet?${params}`);
+    const j = await authedFetch(`${BASE}/${sheetId(opts.sheetId)}/values:batchGet?${params}`);
     const out = {};
     (j.valueRanges || []).forEach((vr, i) => {
       // vr.range looks like 'TabName!A1:Z' — we just key by the tab the caller asked for
