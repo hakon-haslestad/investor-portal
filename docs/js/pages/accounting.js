@@ -17,7 +17,7 @@
   try {
     [crossYear, tabs] = await Promise.all([
       window.Sheet.batchGet(
-        [cfg.ACCOUNTING_TABS.dnbRaw, cfg.ACCOUNTING_TABS.nordnetRaw, cfg.ACCOUNTING_TABS.nordnetRealisasjon],
+        [cfg.ACCOUNTING_TABS.dnbRaw, cfg.ACCOUNTING_TABS.nordnetRaw],
         { sheetId: accountingSheetId },
       ),
       window.Sheet.listTabs({ sheetId: accountingSheetId }),
@@ -39,7 +39,6 @@
 
   const dnb = A.parseDnbRaw(crossYear[cfg.ACCOUNTING_TABS.dnbRaw] || []);
   const nordnetRaw = A.parseNordnetRaw(crossYear[cfg.ACCOUNTING_TABS.nordnetRaw] || []);
-  const realisasjon = A.parseNordnetRealisasjon(crossYear[cfg.ACCOUNTING_TABS.nordnetRealisasjon] || []);
 
   const years = A.discoverYears(tabs);
   if (!years.length) {
@@ -125,11 +124,18 @@
   let hbFilter = '';
 
   function renderYear({ entry, sb, hb, nordnet }) {
+    // Realisasjon for the year = sum of 'Realisert gevinst/tap' across stocks
+    // in the per-year Nordnet tab. Same number as the (now-removed)
+    // Nordnet_realisasjon tab would have totaled.
+    const realisertSum = (nordnet || []).reduce((acc, r) => acc + (r.realisert || 0), 0);
+    const realisertStocks = (nordnet || []).filter((r) => r.realisert).length;
     const status = A.computeStatus({
-      sb, hb, dnb, nordnet: nordnetRaw, realisasjon,
+      sb, hb, dnb, nordnet: nordnetRaw, realisasjon: [],
       currentYear: entry.year,
       wipTabName: entry.sb,
     });
+    status.realisasjonNet = realisertSum;
+    status.realisasjonCount = realisertStocks;
     hbSort = { column: 'date', direction: 'asc' };
     hbFilter = '';
 
@@ -190,7 +196,7 @@
         <div class="kpi-card">
           <div class="label">Realisasjon (skatt)</div>
           <div class="value ${gevinstClass}">${fmtNok(s.realisasjonNet)}</div>
-          <div class="sub">${s.realisasjonCount} salg ${entry.year}</div>
+          <div class="sub">${s.realisasjonCount} aksjer m/ salg ${entry.year}</div>
         </div>
       </div>
     `;
@@ -276,13 +282,13 @@
     const visible = visibleHbRows(rows);
     if (!visible.length) return '<p class="text-muted">No hovedbok rows match.</p>';
     return `
-      <div class="data-table-wrap"><table class="data-table">
+      <div class="data-table-wrap"><table class="data-table fit">
         <thead><tr>
           <th class="${thClass('bilagsnr')}" data-sort="bilagsnr">Bilag${sortArrow('bilagsnr')}</th>
           <th class="${thClass('date')}" data-sort="date">Dato${sortArrow('date')}</th>
           <th class="${thClass('kontonr', true)}" data-sort="kontonr">Konto${sortArrow('kontonr')}</th>
-          <th>Navn</th>
-          <th>Kommentar</th>
+          <th class="wrap">Navn</th>
+          <th class="wrap">Kommentar</th>
           <th class="${thClass('debet', true)}" data-sort="debet">Debet${sortArrow('debet')}</th>
           <th class="${thClass('kredit', true)}" data-sort="kredit">Kredit${sortArrow('kredit')}</th>
         </tr></thead>
@@ -292,8 +298,8 @@
               <td>${escapeHtml(r.bilagsnr)}</td>
               <td>${r.date || ''}</td>
               <td class="num">${r.kontonr != null ? r.kontonr : ''}</td>
-              <td>${escapeHtml(r.kontonavn || '')}</td>
-              <td>${escapeHtml(r.kommentar || '')}</td>
+              <td class="wrap">${escapeHtml(r.kontonavn || '')}</td>
+              <td class="wrap">${escapeHtml(r.kommentar || '')}</td>
               <td class="num">${r.debet != null ? fmtNok(r.debet) : ''}</td>
               <td class="num">${r.kredit != null ? fmtNok(r.kredit) : ''}</td>
             </tr>

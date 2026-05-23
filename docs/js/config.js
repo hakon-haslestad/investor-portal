@@ -42,7 +42,6 @@ window.PORTAL_CONFIG = {
     index: 'INDEX',
     dnbRaw: 'DNB_raw',
     nordnetRaw: 'Nordnet_raw',
-    nordnetRealisasjon: 'Nordnet_realisasjon',
     shortChart: 'Kort kontoplan',
     fullChart: 'Full kontoplan',
   },

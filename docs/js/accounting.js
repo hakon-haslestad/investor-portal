@@ -201,7 +201,7 @@
     };
     const reSb = /^SB,?\s*(\d{2})\s*$/i;
     const reHb = /^HB,?\s*(\d{2})\s*$/i;
-    const reNo = /^Nordnet\s*(\d{2})\s*$/i;
+    const reNo = /^Nordnet,?\s*(\d{2})\s*$/i;
     const reSbLegacy = /^SB,?\s*(\d{2})\s*\(2\)\s*$/i;
     const reHbLegacy = /^HB,?\s*(\d{2})\s*\(2\)\s*$/i;
     for (const t of titles) {
