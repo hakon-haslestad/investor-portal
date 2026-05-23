@@ -35,26 +35,20 @@ window.PORTAL_CONFIG = {
     picks: 'Competition_Picks',
   },
 
-  // Tab names inside the accounting sheet. The (2) suffix on sbCurrent and
-  // hbCurrent is the existing convention for "current year work-in-progress"
-  // — yearly rollover is a one-line edit here (rename to SB, 25 / HB, 25 in
-  // Google Sheets, then update these strings).
+  // Cross-year tab names inside the accounting sheet. Per-year tabs
+  // (SB, HB, Nordnet) are discovered at runtime by pattern-matching the
+  // sheet's actual tab list — see Accounting.discoverYears.
   ACCOUNTING_TABS: {
     index: 'INDEX',
-    sbCurrent: 'SB, 24 (2)',
-    hbCurrent: 'HB, 24 (2)',
-    nordnetCurrent: 'Nordnet 25',
-    bankCurrent: 'Bank 25',
-    maestro: 'Maestro',
-    shortChart: 'Kort kontoplan',
-    fullChart: 'Full kontoplan',
     dnbRaw: 'DNB_raw',
     nordnetRaw: 'Nordnet_raw',
     nordnetRealisasjon: 'Nordnet_realisasjon',
+    shortChart: 'Kort kontoplan',
+    fullChart: 'Full kontoplan',
   },
 
-  // The year that sbCurrent / hbCurrent / nordnetCurrent / bankCurrent
-  // represent. Used by the accounting page to flag staleness when the
-  // calendar year moves on past this without a tab rename.
+  // Fallback default for the year picker if runtime discovery returns
+  // zero matching year-tabs. Bump this when rolling over to a new year
+  // if the sheet hasn't yet been populated.
   ACCOUNTING_CURRENT_YEAR: 2025,
 };

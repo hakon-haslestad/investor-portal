@@ -90,9 +90,10 @@
   }
 
   // Lists tabs for diagnostics ("which tabs does this sheet have?").
-  async function listTabs() {
+  // Pass opts.sheetId to target a different sheet (defaults to PORTAL_CONFIG.SHEET_ID).
+  async function listTabs(opts = {}) {
     const params = new URLSearchParams({ fields: 'sheets(properties(sheetId,title))' });
-    const j = await authedFetch(`${BASE}/${sheetId()}?${params}`);
+    const j = await authedFetch(`${BASE}/${sheetId(opts.sheetId)}?${params}`);
     return (j.sheets || []).map((s) => ({ id: s.properties.sheetId, title: s.properties.title }));
   }
 
