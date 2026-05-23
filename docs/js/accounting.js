@@ -68,8 +68,10 @@
     if (headerRow < 0) return [];
     const idx = indexHeaders(rows[headerRow]);
     const iKonto = idx['kontonr'];
+    const iNavn = idx['kontonavn'];
     const iBilag = idx['bilagsnr'];
     const iDato = idx['bilagsdato'];
+    const iKommentar = idx['kommentar'];
     const iDebet = idx['debet'];
     const iKredit = idx['kredit'];
     const out = [];
@@ -79,8 +81,10 @@
       if (bilag == null || String(bilag).trim() === '') continue;
       out.push({
         kontonr: numOrNull(row[iKonto]),
+        kontonavn: iNavn != null && row[iNavn] != null ? String(row[iNavn]).trim() : '',
         bilagsnr: String(bilag).trim(),
         date: excelDateToISO(row[iDato]),
+        kommentar: iKommentar != null && row[iKommentar] != null ? String(row[iKommentar]).trim() : '',
         debet: numOrNull(row[iDebet]),
         kredit: numOrNull(row[iKredit]),
       });
@@ -147,6 +151,112 @@
       });
     }
     return out;
+  }
+
+  // ─── Nordnet YY (per-stock, calc-engine tab) ────────────────────────────
+  // Header row 4 starting at column D:
+  //   Kostpris | Urealisert gevinst/tap | Markedsverdi | Realisert gevinst/tap | Utbytte
+  // Security name lives one column to the left of Kostpris (no header label).
+  function parseNordnetYear(rows) {
+    const headerRow = findHeaderRow(rows, ['Kostpris']);
+    if (headerRow < 0) return [];
+    const idx = indexHeaders(rows[headerRow]);
+    const iKost = idx['kostpris'];
+    const iUreal = idx['urealisert gevinst/tap'];
+    const iMv = idx['markedsverdi'];
+    const iReal = idx['realisert gevinst/tap'];
+    const iUtb = idx['utbytte'];
+    if (iKost == null) return [];
+    const iSec = iKost - 1; // security name is the cell immediately left of Kostpris
+    const out = [];
+    for (let r = headerRow + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      const sec = row[iSec];
+      if (sec == null || String(sec).trim() === '') continue;
+      out.push({
+        security: String(sec).trim(),
+        kostpris: numOrNull(row[iKost]),
+        urealisert: iUreal != null ? numOrNull(row[iUreal]) : null,
+        markedsverdi: iMv != null ? numOrNull(row[iMv]) : null,
+        realisert: iReal != null ? numOrNull(row[iReal]) : null,
+        utbytte: iUtb != null ? numOrNull(row[iUtb]) : null,
+      });
+    }
+    return out;
+  }
+
+  // ─── Year discovery ─────────────────────────────────────────────────────
+  // Pattern-matches the live tab list to figure out which years exist:
+  //   SB,YY / HB,YY / Nordnet YY        → year = 2000 + YY
+  //   SB,YY (2) / HB,YY (2)             → year = 2000 + YY + 1  (legacy WIP)
+  // Returns [{year, sb, hb, nordnet}] sorted year-desc, only entries where
+  // both SB and HB exist (Nordnet may be absent for very old years).
+  // If both 'SB, 25' and 'SB, 24 (2)' map to the same year, un-suffixed wins.
+  function discoverYears(tabs) {
+    const titles = (tabs || []).map((t) => (typeof t === 'string' ? t : t && t.title)).filter(Boolean);
+    const byYear = new Map(); // year -> { sb, hb, nordnet, sbIsLegacy, hbIsLegacy }
+    const ensure = (y) => {
+      if (!byYear.has(y)) byYear.set(y, { sb: null, hb: null, nordnet: null, sbIsLegacy: true, hbIsLegacy: true });
+      return byYear.get(y);
+    };
+    const reSb = /^SB,?\s*(\d{2})\s*$/i;
+    const reHb = /^HB,?\s*(\d{2})\s*$/i;
+    const reNo = /^Nordnet\s*(\d{2})\s*$/i;
+    const reSbLegacy = /^SB,?\s*(\d{2})\s*\(2\)\s*$/i;
+    const reHbLegacy = /^HB,?\s*(\d{2})\s*\(2\)\s*$/i;
+    for (const t of titles) {
+      let m;
+      if ((m = reSb.exec(t))) {
+        const y = 2000 + Number(m[1]);
+        const e = ensure(y);
+        // Un-suffixed name beats a previously-stored legacy '(2)' name.
+        if (!e.sb || e.sbIsLegacy) { e.sb = t; e.sbIsLegacy = false; }
+      } else if ((m = reHb.exec(t))) {
+        const y = 2000 + Number(m[1]);
+        const e = ensure(y);
+        if (!e.hb || e.hbIsLegacy) { e.hb = t; e.hbIsLegacy = false; }
+      } else if ((m = reNo.exec(t))) {
+        const y = 2000 + Number(m[1]);
+        ensure(y).nordnet = t;
+      } else if ((m = reSbLegacy.exec(t))) {
+        const y = 2000 + Number(m[1]) + 1;
+        const e = ensure(y);
+        if (!e.sb) { e.sb = t; e.sbIsLegacy = true; } // don't overwrite un-suffixed
+      } else if ((m = reHbLegacy.exec(t))) {
+        const y = 2000 + Number(m[1]) + 1;
+        const e = ensure(y);
+        if (!e.hb) { e.hb = t; e.hbIsLegacy = true; }
+      }
+    }
+    const out = [];
+    for (const [year, e] of byYear.entries()) {
+      if (!e.sb || !e.hb) continue;
+      out.push({ year, sb: e.sb, hb: e.hb, nordnet: e.nordnet });
+    }
+    out.sort((a, b) => b.year - a.year);
+    return out;
+  }
+
+  // ─── CSV download ───────────────────────────────────────────────────────
+  // Universal RFC-4180 CSV with a UTF-8 BOM so Excel/macOS opens æøå
+  // correctly. `rows` is [[header...], [val...], ...]. Numbers go through
+  // as-is (dot decimal); dates assumed to be ISO strings already.
+  function downloadCsv(filename, rows) {
+    const escape = (v) => {
+      if (v == null) return '';
+      const s = String(v);
+      return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const text = '﻿' + (rows || []).map((r) => (r || []).map(escape).join(',')).join('\r\n');
+    const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   // ─── Nordnet_realisasjon ────────────────────────────────────────────────
@@ -220,6 +330,9 @@
     parseDnbRaw,
     parseNordnetRaw,
     parseNordnetRealisasjon,
+    parseNordnetYear,
+    discoverYears,
+    downloadCsv,
     computeStatus,
   };
 })();

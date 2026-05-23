@@ -5,6 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Accounting — Investor Portal</title>
   <link rel="stylesheet" href="./css/style.css" />
+  <style>
+    /* Inline table styles — same shape as docs/data.html. The accounting
+       page needs the same horizontal-scroll wrapper for the HB table. */
+    .data-table-wrap {
+      width: 100%; overflow-x: auto;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--panel); box-shadow: var(--shadow);
+    }
+    .data-table {
+      font-size: 0.85rem; width: max-content; min-width: 100%;
+      border: 0; border-radius: 0; box-shadow: none;
+    }
+    .data-table th, .data-table td { padding: 8px 12px; white-space: nowrap; }
+    .data-table th.sortable { cursor: pointer; user-select: none; }
+    .data-table th.sortable:hover { color: var(--text); }
+    .data-table th .sort-arrow {
+      display: inline-block; width: 10px; margin-left: 4px;
+      color: var(--muted); font-size: 0.72rem;
+    }
+    .data-table th.sorted .sort-arrow { color: var(--accent); }
+    .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .data-table th.num { text-align: right; }
+    .data-table tr:hover td { background: rgba(106, 209, 255, 0.04); }
+    .btn.small { padding: 4px 10px; font-size: 0.78rem; }
+  </style>
 </head>
 <body>
   <div id="nav-mount"></div>
@@ -13,6 +38,7 @@
       <h2>Accounting — Geysir Invest AS</h2>
       <div class="when" id="meta-line"></div>
     </div>
+    <div id="year-picker-mount" style="margin-bottom:14px"></div>
     <div id="root">Loading…</div>
   </div>
 
