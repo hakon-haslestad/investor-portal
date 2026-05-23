@@ -8,6 +8,16 @@
     return override || window.PORTAL_CONFIG.SHEET_ID;
   }
 
+  // Wrap a tab name in single quotes for safe use as a Sheets API range.
+  // Required when the tab name contains commas, parentheses, or other
+  // special chars (e.g. 'SB, 24 (2)'). Embedded single quotes are doubled
+  // per the Sheets quoting rules. Plain names like 'Members' work either
+  // quoted or unquoted, so we always quote — single code path.
+  function quoteRange(tab, a1) {
+    const quoted = "'" + String(tab).replace(/'/g, "''") + "'";
+    return a1 ? `${quoted}!${a1}` : quoted;
+  }
+
   async function authedFetch(url, opts = {}) {
     const token = await window.Auth.accessToken();
     const r = await fetch(url, {
@@ -33,7 +43,7 @@
   // Reads a single tab. Returns 2-D array of cells (rows). Empty trailing cells are dropped by Sheets.
   // Pass opts.sheetId to read from a sheet other than the portfolio one (e.g. the accounting sheet).
   async function getValues(tab, opts = {}) {
-    const range = encodeURIComponent(tab);
+    const range = encodeURIComponent(quoteRange(tab));
     const params = new URLSearchParams({
       valueRenderOption: opts.valueRenderOption || 'UNFORMATTED_VALUE',
       dateTimeRenderOption: opts.dateTimeRenderOption || 'SERIAL_NUMBER',
@@ -46,13 +56,13 @@
   // Pass opts.sheetId to target a different sheet (defaults to PORTAL_CONFIG.SHEET_ID).
   async function batchGet(tabs, opts = {}) {
     const params = new URLSearchParams();
-    for (const t of tabs) params.append('ranges', t);
+    for (const t of tabs) params.append('ranges', quoteRange(t));
     params.append('valueRenderOption', opts.valueRenderOption || 'UNFORMATTED_VALUE');
     params.append('dateTimeRenderOption', opts.dateTimeRenderOption || 'SERIAL_NUMBER');
     const j = await authedFetch(`${BASE}/${sheetId(opts.sheetId)}/values:batchGet?${params}`);
     const out = {};
     (j.valueRanges || []).forEach((vr, i) => {
-      // vr.range looks like 'TabName!A1:Z' — we just key by the tab the caller asked for
+      // vr.range looks like 'TabName!A1:Z' — we key by the tab the caller asked for
       out[tabs[i]] = vr.values || [];
     });
     return out;
@@ -60,7 +70,7 @@
 
   // Appends a row to a tab. Sheets handles row insertion atomically.
   async function appendRow(tab, row) {
-    const range = encodeURIComponent(tab);
+    const range = encodeURIComponent(quoteRange(tab));
     const params = new URLSearchParams({ valueInputOption: 'USER_ENTERED', insertDataOption: 'INSERT_ROWS' });
     return authedFetch(`${BASE}/${sheetId()}/values/${range}:append?${params}`, {
       method: 'POST',
@@ -71,7 +81,7 @@
   // Updates a single row at row index (1-based, matching the sheet UI).
   async function updateRow(tab, rowIndex1Based, row) {
     const endCol = String.fromCharCode(64 + row.length); // 1→A, 2→B, …
-    const range = encodeURIComponent(`${tab}!A${rowIndex1Based}:${endCol}${rowIndex1Based}`);
+    const range = encodeURIComponent(quoteRange(tab, `A${rowIndex1Based}:${endCol}${rowIndex1Based}`));
     const params = new URLSearchParams({ valueInputOption: 'USER_ENTERED' });
     return authedFetch(`${BASE}/${sheetId()}/values/${range}?${params}`, {
       method: 'PUT',
