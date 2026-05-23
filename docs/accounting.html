@@ -28,6 +28,12 @@
     .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
     .data-table th.num { text-align: right; }
     .data-table tr:hover td { background: rgba(106, 209, 255, 0.04); }
+    /* Variant: table that fills the container instead of horizontal-scrolling.
+       Used by Hovedbok so the long Navn + Kommentar columns wrap. */
+    .data-table.fit { width: 100%; min-width: 0; table-layout: auto; }
+    .data-table.fit td.wrap, .data-table.fit th.wrap {
+      white-space: normal; word-break: break-word;
+    }
     .btn.small { padding: 4px 10px; font-size: 0.78rem; }
   </style>
 </head>
