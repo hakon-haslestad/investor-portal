@@ -66,6 +66,15 @@
     .filter(([, rows]) => rows.length >= 2)
     .map(([key, rows]) => ({ company: key, rows }));
 
+  // Per-company comments (Merknad), from the latest period that has one.
+  const notes = Array.from(byCompany.entries())
+    .map(([key, rows]) => {
+      const withNote = rows.slice().reverse().find((r) => r.note);
+      return withNote ? { company: key, period: withNote.period, note: withNote.note } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.company.localeCompare(b.company));
+
   render();
 
   function render() {
@@ -157,6 +166,19 @@
             `).join('')}
           </tbody>
         </table>
+      </div>
+      ` : ''}
+
+      ${notes.length ? `
+      <div class="section-title">Per-company comments</div>
+      <div class="comments">
+        ${notes.map((n) => `
+          <div class="comment-row">
+            <strong>${escapeHtml(n.company)}</strong>
+            <span class="text-muted text-small">${escapeHtml(n.period || '')}</span>
+            <div class="text-muted">${escapeHtml(n.note)}</div>
+          </div>
+        `).join('')}
       </div>
       ` : ''}
 
