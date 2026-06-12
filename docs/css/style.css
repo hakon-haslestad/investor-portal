@@ -253,6 +253,7 @@ tr.dimmed-row:hover { opacity: 0.85; }
 }
 .filter-chip a { color: var(--muted); margin-left: 4px; font-size: 0.78rem; }
 .filter-chip a:hover { color: var(--danger); text-decoration: none; }
+.filter-row { margin: -4px 0 8px; }
 
 .comp-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -298,6 +299,26 @@ td.links a:hover { color: var(--accent); }
 
   /* KPI cards: 2-up on phone, smaller text */
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
+  /* "By investor" table → stacked cards. Hide the header, turn each row into a
+     card, and label each cell from its data-label. */
+  .investor-table thead { display: none; }
+  .investor-table, .investor-table tbody, .investor-table tr, .investor-table td { display: block; width: 100%; }
+  .investor-table tr {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    margin-bottom: 10px; padding: 6px 12px;
+  }
+  .investor-table td {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    text-align: right; border-bottom: 1px solid var(--border); padding: 8px 0;
+  }
+  .investor-table tr td:last-child { border-bottom: none; }
+  .investor-table td::before {
+    content: attr(data-label); color: var(--muted); font-size: 0.72rem;
+    text-transform: uppercase; letter-spacing: 1px; text-align: left;
+  }
+  .investor-table td:first-child { text-align: left; }
+  .investor-table td:first-child::before { content: ''; }
   .kpi-card { padding: 12px; }
   .kpi-card .label { font-size: 0.7rem; letter-spacing: 1px; }
   .kpi-card .value { font-size: 1.15rem; }

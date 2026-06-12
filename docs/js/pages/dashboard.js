@@ -327,7 +327,7 @@
 
     const isMobile = window.matchMedia('(max-width: 720px)').matches;
     const W = isMobile ? 540 : 900;
-    const H = isMobile ? 216 : 192; // 40% shorter than the previous 360/320
+    const H = isMobile ? 260 : 300;
 
     const filterTag = selectedCodes.length ? ` · ${selectedCodes.join(', ')}` : '';
     pnlEl.appendChild(window.Charts.multiLine({
@@ -377,23 +377,24 @@
            <span>🏁 Competition mode: <strong>${activeCompetition.competition.name}</strong>
              <span class="text-muted text-small">(${activeCompetition.competition.start_date} → ${activeCompetition.competition.end_date})</span>
            </span>
-           <button class="btn small ghost" onclick="window.__toggleCompetitionMode()">Exit competition mode</button>
+           <button class="btn small ghost" onclick="window.__toggleCompetitionMode()">Back to all stats</button>
          </div>`
       : `<div class="comp-banner">
            <span>🏁 Active competition: <strong>${activeCompetition.competition.name}</strong>
              <span class="text-muted text-small">(${activeCompetition.competition.start_date} → ${activeCompetition.competition.end_date})</span>
            </span>
-           <button class="btn small" onclick="window.__toggleCompetitionMode()">Enter competition mode</button>
+           <button class="btn small" onclick="window.__toggleCompetitionMode()">View competition stats</button>
          </div>`);
 
     root.innerHTML = `
       <div class="hero">
         <div>
-          <h2>Welcome back, ${me.displayName}. ${sheetName ? `Here is the books for "${escapeHtml(sheetName)}".` : 'Here\'s the book.'}</h2>
-          <div class="when">Snapshot: ${dateOrNone} ${filterLabel}</div>
+          <h2>${sheetName ? `Here is the books for "${escapeHtml(sheetName)}".` : 'Here\'s the book.'}</h2>
+          <div class="when">Snapshot: ${dateOrNone}</div>
         </div>
         ${renderPicker(d.window)}
       </div>
+      ${filterLabel ? `<div class="filter-row">${filterLabel}</div>` : ''}
 
       ${compBanner}
 
@@ -409,6 +410,12 @@
           <h3>All-time, no contest</h3>
           ${d.leaderboards.allTime.map((r, i) => `
             <div class="row"><span class="who">${PODIUM[i]} ${r.code}</span><span class="v ${pctClass(r.value)}">${fmtPct(r.value)}</span></div>
+          `).join('')}
+        </div>
+        <div class="lb-card">
+          <h3>Year to date <span class="text-muted text-small">(realized + dividends)</span></h3>
+          ${d.leaderboards.ytd.map((r, i) => `
+            <div class="row"><span class="who">${PODIUM[i]} ${r.code} <span class="text-muted text-small">${names[r.code] || ''}</span></span><span class="v ${pctClass(r.value)}">${fmtPct(r.value)}</span></div>
           `).join('')}
         </div>
         <div class="lb-card">
@@ -449,7 +456,7 @@
       </div>
 
       <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${prettyRange(d.window)})</span></div>
-      <table>
+      <table class="investor-table">
         <thead><tr>
           <th>Investor</th>
           <th class="text-right">Total value <span class="text-muted text-small">(now)</span></th>
@@ -468,14 +475,14 @@
               : 'row-link';
             return `
               <tr class="${rowClass}" onclick="location.href='./investor.html?code=${encodeURIComponent(code)}'">
-                <td><strong>${code}</strong> <span class="text-muted text-small">${names[code] || ''}</span></td>
-                <td class="text-right">${fmtNok(s.totalValue)}</td>
-                <td class="text-right ${pctClass(w.periodReturnPct)}"><strong>${fmtPct(w.periodReturnPct)}</strong></td>
-                <td class="text-right ${pctClass(w.realizedInWindow)}">${fmtNok(w.realizedInWindow)}</td>
-                <td class="text-right">${fmtNok(w.dividendsInWindow)}</td>
-                <td class="text-right text-muted">${fmtNok(w.buysInWindow)}</td>
-                <td class="text-right text-muted">${fmtNok(w.sellsInWindow)}</td>
-                <td class="text-right ${pctClass(s.portfolioReturnPct)}">${fmtPct(s.portfolioReturnPct)}</td>
+                <td data-label="Investor"><strong>${code}</strong> <span class="text-muted text-small">${names[code] || ''}</span></td>
+                <td class="text-right" data-label="Total value">${fmtNok(s.totalValue)}</td>
+                <td class="text-right ${pctClass(w.periodReturnPct)}" data-label="Period return"><strong>${fmtPct(w.periodReturnPct)}</strong></td>
+                <td class="text-right ${pctClass(w.realizedInWindow)}" data-label="Realized">${fmtNok(w.realizedInWindow)}</td>
+                <td class="text-right" data-label="Dividends">${fmtNok(w.dividendsInWindow)}</td>
+                <td class="text-right text-muted" data-label="Bought">${fmtNok(w.buysInWindow)}</td>
+                <td class="text-right text-muted" data-label="Sold">${fmtNok(w.sellsInWindow)}</td>
+                <td class="text-right ${pctClass(s.portfolioReturnPct)}" data-label="All-time return">${fmtPct(s.portfolioReturnPct)}</td>
               </tr>
             `;
           }).join('')}
