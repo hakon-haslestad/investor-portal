@@ -257,7 +257,7 @@
     // uses the full design opacity; multi-series use a lighter fill so the
     // overlapping areas don't muddy the comparison. Fills are drawn first so
     // all lines stay crisp on top.
-    const fillTopOpacity = series.length === 1 ? '0.16' : '0.10';
+    const fillTopOpacity = series.length === 1 ? '0.18' : '0.16';
     for (let i = 0; i < series.length; i++) {
       const gradId = `mlGrad${mlGradSeq++}`;
       const defs = svgEl('defs');

@@ -32,17 +32,24 @@
     return codes.map((c) => ({ code: c, weight }));
   }
 
+  // Returns the calendar date as YYYY-MM-DD. Timezone-stable: a date cell must
+  // render as the day shown in the sheet regardless of the viewer's timezone.
+  // (The old code ran local-parsed dates through toISOString(), which shifts a
+  // local-midnight date to the previous UTC day for viewers east of UTC.)
   function excelDateToISO(v) {
     if (v == null || v === '') return null;
-    if (v instanceof Date) return v.toISOString().slice(0, 10);
+    const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : ymd(v);
     if (typeof v === 'number') {
-      const ms = (v - 25569) * 86400 * 1000;
+      // Google Sheets serial: day 0 = 1899-12-30. The integer part is the
+      // calendar day; floor() drops any time component so it never drifts.
+      const ms = Date.UTC(1899, 11, 30) + Math.floor(v) * 86400000;
       return new Date(ms).toISOString().slice(0, 10);
     }
     const s = String(v).trim();
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
     const d = new Date(s);
-    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    if (!Number.isNaN(d.getTime())) return ymd(d);
     return null;
   }
 
