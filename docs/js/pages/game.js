@@ -37,6 +37,8 @@
     };
     switch (preset) {
       case '1y': return { from: addYears(today, -1), to: todayStr };
+      case '2y': return { from: addYears(today, -2), to: todayStr };
+      case '3y': return { from: addYears(today, -3), to: todayStr };
       case 'all': return { from: earliest, to: todayStr };
       case 'ytd':
       default: return { from: `${today.getUTCFullYear()}-01-01`, to: todayStr };
@@ -376,6 +378,8 @@
     const periods = [
       { id: 'all', label: 'All time' },
       { id: '1y', label: '1 Year' },
+      { id: '2y', label: '2 Years' },
+      { id: '3y', label: '3 Years' },
       { id: 'ytd', label: 'YTD' },
     ];
     root.innerHTML = `
