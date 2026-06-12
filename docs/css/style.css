@@ -158,8 +158,10 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
 .game-result .verdict { font-size: 2rem; font-weight: 800; letter-spacing: 0.5px; }
 .game-result.win  .verdict { color: var(--positive); }
 .game-result.loss .verdict { color: var(--negative); }
-.game-result .stock { font-size: 1.6rem; font-weight: 700; margin-top: 6px; }
-.game-result .who { color: var(--muted); margin-top: 2px; }
+.game-result .stock { font-size: 1.3rem; font-weight: 600; margin-top: 4px; color: var(--muted); }
+.game-result .who { margin-top: 8px; }
+.game-result .who-name { font-size: 2.1rem; font-weight: 800; color: var(--text); letter-spacing: 0.3px; }
+.game-result .who-state { color: var(--muted); font-size: 0.85rem; font-weight: 400; }
 .game-result .pnl { font-size: 1.3rem; font-weight: 700; margin-top: 10px; }
 .game-result .detail-grid {
   display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-top: 18px;

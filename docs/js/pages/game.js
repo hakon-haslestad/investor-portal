@@ -147,17 +147,42 @@
     return out;
   }
 
+  // Subscription rights / rights-issue artifacts that Nordnet lists as their
+  // own "security" (e.g. "Seafire AB TR", "SEAFIRE TR SELL", emisjon lines).
+  // They aren't real stocks, so keep them out of the game.
+  function isRightsArtifact(name) {
+    const s = String(name || '');
+    return /\bTR\b/.test(s) || /(tegningsrett|tegningsret|emisjon|fortrinnsrett|rettigheter)/i.test(s);
+  }
+
+  // Drop rights artifacts and collapse to unique stocks. When several investors
+  // share a stock, keep the most-invested owner (they're the one who drinks).
+  function refinePool(pool) {
+    const byStock = new Map();
+    for (const e of pool) {
+      if (isRightsArtifact(e.security)) continue;
+      const key = canon(e.security);
+      const cur = byStock.get(key);
+      if (!cur || (e.purchaseAmount || 0) > (cur.purchaseAmount || 0)) byStock.set(key, e);
+    }
+    return [...byStock.values()];
+  }
+
   function buildPool() {
+    let raw;
     if (state.source.startsWith('comp:')) {
       const c = compById.get(state.source.slice(5));
       if (!c) return [];
       const scored = window.CompetitionEngine.scoreCompetition(store, c.competition, c.participants);
       scored.competition = c.competition;
-      return poolFromScored(scored);
+      raw = poolFromScored(scored);
+    } else {
+      const { from, to } = computeWindow(state.source);
+      raw = state.scope === 'lifetime'
+        ? poolFromLifetime(from, to, state.source === 'all')
+        : poolFromPeriodWindow(from, to);
     }
-    const { from, to } = computeWindow(state.source);
-    if (state.scope === 'lifetime') return poolFromLifetime(from, to, state.source === 'all');
-    return poolFromPeriodWindow(from, to);
+    return refinePool(raw);
   }
 
   // ─── price timeline ─────────────────────────────────────────────────────────
@@ -227,8 +252,8 @@
     mount.innerHTML = `
       <div class="game-result ${cls}">
         <div class="verdict">${escapeHtml(verdict)}</div>
-        <div class="stock">${escapeHtml(entry.security)}</div>
-        <div class="who">${escapeHtml(entry.investorName)} · ${entry.sold ? 'sold' : 'holding'}</div>
+        <div class="who"><span class="who-name">${escapeHtml(entry.investorName)}</span></div>
+        <div class="stock">${escapeHtml(entry.security)} <span class="who-state">· ${entry.sold ? 'sold' : 'holding'}</span></div>
         <div class="pnl ${pctClass(entry.pnlNok)}">${fmtNok(entry.pnlNok)} · ${fmtPct(entry.pnlPct, true)}</div>
         <div class="detail-grid">
           <div class="kpi-card"><div class="label">Put in</div><div class="value">${fmtNok(entry.purchaseAmount)}</div></div>
@@ -256,8 +281,8 @@
       mount.innerHTML = `
         <div class="game-result spinning">
           <div class="verdict">🎲</div>
+          <div class="who"><span class="who-name">${escapeHtml(rnd.investorName)}</span></div>
           <div class="stock">${escapeHtml(rnd.security)}</div>
-          <div class="who">${escapeHtml(rnd.investorName)}</div>
         </div>`;
       if (++ticks >= 8) { clearInterval(iv); renderResult(final); }
     }, 70);
