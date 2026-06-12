@@ -19,6 +19,7 @@
   const state = {
     source: 'all',     // 'all' | '1y' | 'ytd' | 'comp:<id>'
     scope: 'window',   // 'window' | 'lifetime' (ignored when a competition is the source)
+    guess: false,      // guess-the-stock-first flow (opt-in)
     lastKey: null,
     picked: new Set(), // keys drawn this round — draw without replacement
   };
@@ -252,7 +253,14 @@
   }
 
   // ─── rendering ────────────────────────────────────────────────────────────────
-  function renderResult(entry) {
+  // A series is worth charting only with at least a couple of points spanning
+  // a real stretch of time — otherwise there's nothing to read (or guess) off.
+  function chartable(series) {
+    return series.points.length >= 2 &&
+      daysBetween(series.points[0].date, series.points[series.points.length - 1].date) >= 30;
+  }
+
+  function renderResult(entry, opts = {}) {
     const mount = document.getElementById('game-mount');
     if (!entry) {
       mount.innerHTML =
@@ -263,11 +271,11 @@
     const verdict = entry.win ? 'Hand out a shot 🥃' : 'Take a shot 🥃';
     const valueLabel = entry.sold ? 'Sold for' : "Today's value";
     const series = priceSeriesForSecurity(entry.security, entry.investor, entry.from, entry.to);
-    const showChart = series.points.length >= 2 &&
-      daysBetween(series.points[0].date, series.points[series.points.length - 1].date) >= 30;
+    const note = opts.note ? `<div class="guess-note">${escapeHtml(opts.note)}</div>` : '';
 
     mount.innerHTML = `
       <div class="game-result ${cls}">
+        ${note}
         <div class="verdict">${escapeHtml(verdict)}</div>
         <div class="who"><span class="who-name">${escapeHtml(entry.investorName)}</span></div>
         <div class="stock">${escapeHtml(entry.security)} <span class="who-state">· ${entry.sold ? 'sold' : 'holding'}</span></div>
@@ -279,18 +287,45 @@
         </div>
         <div id="game-chart"></div>
       </div>`;
-    if (showChart) {
+    if (chartable(series)) {
       document.getElementById('game-chart').appendChild(
         window.Charts.priceChart({ points: series.points, markers: series.markers })
       );
     }
   }
 
-  // A short "spinning" teaser before the real reveal.
+  // Guess-first: show only the price line (no markers, no name/P/L, no win/loss
+  // colour). A Reveal button then renders the full result.
+  function renderGuess(entry) {
+    const mount = document.getElementById('game-mount');
+    const series = priceSeriesForSecurity(entry.security, entry.investor, entry.from, entry.to);
+    mount.innerHTML = `
+      <div class="game-result guess">
+        <div class="guess-prompt">Guess the stock 🤔</div>
+        <div class="who-state">Whose is it? Up or down? Call it before the reveal.</div>
+        <div id="game-chart"></div>
+        <div style="margin-top:16px"><button class="btn game-spin" id="reveal">Reveal 👀</button></div>
+      </div>`;
+    document.getElementById('game-chart').appendChild(
+      window.Charts.priceChart({ points: series.points, markers: [] })
+    );
+    document.getElementById('reveal').addEventListener('click', () => renderResult(entry));
+  }
+
   function doSpin() {
     const pool = buildPool();
     if (!pool.length) { renderResult(null); return; }
     const final = spin(pool);
+
+    if (state.guess) {
+      // Guess mode: skip the name-flashing teaser (it would spoil the answer).
+      const series = priceSeriesForSecurity(final.security, final.investor, final.from, final.to);
+      if (chartable(series)) renderGuess(final);
+      else renderResult(final, { note: 'Not enough price history to guess — here\'s the answer.' });
+      return;
+    }
+
+    // Instant mode: a short "spinning" teaser before the real reveal.
     const mount = document.getElementById('game-mount');
     let ticks = 0;
     const iv = setInterval(() => {
@@ -349,6 +384,12 @@
         </div>
       </div>
 
+      <div class="section-title">Guess first</div>
+      <div class="range-picker" id="guess-picker">
+        <button class="preset ${!state.guess ? 'active' : ''}" data-guess="off">Instant reveal</button>
+        <button class="preset ${state.guess ? 'active' : ''}" data-guess="on">Guess the stock 🤔</button>
+      </div>
+
       <div style="margin:18px 0">
         <button class="btn game-spin" id="spin">🎲 Spin</button>
       </div>
@@ -372,6 +413,12 @@
       btn.addEventListener('click', () => {
         state.scope = btn.getAttribute('data-scope');
         state.lastKey = null; state.picked.clear();
+        render();
+      });
+    });
+    document.querySelectorAll('#guess-picker [data-guess]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.guess = btn.getAttribute('data-guess') === 'on';
         render();
       });
     });

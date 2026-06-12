@@ -180,6 +180,9 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
   background: linear-gradient(180deg, rgba(255, 91, 91, 0.12), var(--panel));
 }
 .game-result.spinning { opacity: 0.6; }
+.game-result.guess { border-color: var(--border); background: var(--panel); }
+.game-result .guess-prompt { font-size: 1.8rem; font-weight: 800; letter-spacing: 0.3px; color: var(--text); }
+.game-result .guess-note { color: var(--muted); font-size: 0.85rem; margin-bottom: 8px; }
 .game-result .verdict { font-size: 2rem; font-weight: 800; letter-spacing: 0.5px; }
 .game-result.win  .verdict { color: var(--positive); }
 .game-result.loss .verdict { color: var(--negative); }
