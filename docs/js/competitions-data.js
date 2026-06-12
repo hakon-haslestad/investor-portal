@@ -1,25 +1,22 @@
-// Read/write the Competitions / Competition_Participants / Competition_Picks tabs.
+// Read/write the Competitions / Competition_Participants tabs.
 // Each tab is keyed by its first column(s).
 
 (function () {
   const T = window.PORTAL_CONFIG.TABS;
 
-  // ─── Read all three tabs in parallel ──────────────────────────────────────
+  // ─── Read both tabs in parallel ───────────────────────────────────────────
 
   async function listCompetitions() {
-    const sheets = await window.Sheet.batchGet([T.competitions, T.participants, T.picks]);
+    const sheets = await window.Sheet.batchGet([T.competitions, T.participants]);
     const compRows = sheets[T.competitions] || [];
     const partRows = sheets[T.participants] || [];
-    const pickRows = sheets[T.picks] || [];
 
     const competitions = parseCompetitions(compRows);
     const participantsByComp = groupParticipants(partRows);
-    const picksByComp = groupPicks(pickRows);
 
     return competitions.map((c) => ({
       competition: c,
       participants: participantsByComp.get(c.id) || [],
-      picks: picksByComp.get(c.id) || [],
     }));
   }
 
@@ -71,11 +68,11 @@
     return id;
   }
 
-  // Hard-delete a competition and cascade to its participant and pick rows.
-  // The competition is keyed by Id (column A) in Competitions; participants and
-  // picks reference it by competition id in their column A.
+  // Hard-delete a competition and cascade to its participant rows.
+  // The competition is keyed by Id (column A) in Competitions; participants
+  // reference it by competition id in their column A.
   async function deleteCompetition(id) {
-    const sheets = await window.Sheet.batchGet([T.competitions, T.participants, T.picks]);
+    const sheets = await window.Sheet.batchGet([T.competitions, T.participants]);
 
     // Sheet row index = array index + 1 (row 0 is the header).
     const rowsMatching = (rows) => {
@@ -91,7 +88,6 @@
 
     await window.Sheet.deleteRows(T.competitions, compRowIdx);
     await window.Sheet.deleteRows(T.participants, rowsMatching(sheets[T.participants]));
-    await window.Sheet.deleteRows(T.picks, rowsMatching(sheets[T.picks]));
     return true;
   }
 
@@ -137,24 +133,6 @@
         investor_code: (r[1] || '').toString().trim(),
         team_label: (r[2] || '').toString().trim() || null,
         buy_in_nok: window.Parsers.numOrNull(r[3]) || 0,
-      });
-    }
-    return map;
-  }
-
-  function groupPicks(rows) {
-    const map = new Map();
-    if (!rows.length) return map;
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i] || [];
-      const compId = (r[0] || '').toString().trim();
-      if (!compId) continue;
-      if (!map.has(compId)) map.set(compId, []);
-      map.get(compId).push({
-        investor_code: (r[1] || '').toString().trim(),
-        security: (r[2] || '').toString().trim(),
-        isin: (r[3] || '').toString().trim() || null,
-        label: (r[4] || '').toString().trim() || null,
       });
     }
     return map;

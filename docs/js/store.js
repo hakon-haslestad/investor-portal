@@ -9,7 +9,7 @@
     const T = window.PORTAL_CONFIG.TABS;
     const tabs = [T.transactions, T.holdings, T.kpis, T.dimValues, T.members];
     if (opts.includeCompetitions) {
-      tabs.push(T.competitions, T.participants, T.picks);
+      tabs.push(T.competitions, T.participants);
     }
 
     let result;

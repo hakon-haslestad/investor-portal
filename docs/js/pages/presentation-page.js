@@ -25,9 +25,8 @@
     root.innerHTML = `<p>Competition <code>${escapeHtml(id)}</code> not found. <a href="./competitions.html">Back</a>.</p>`;
     return;
   }
-  const scored = window.CompetitionEngine.scoreCompetition(store, entry.competition, entry.participants, entry.picks);
+  const scored = window.CompetitionEngine.scoreCompetition(store, entry.competition, entry.participants);
   scored.participants = entry.participants;
-  scored.picks = entry.picks;
   const data = window.PresentationBuilder.buildPresentation(store, scored);
   const slides = data.slides || [];
   let cur = 0;
