@@ -242,7 +242,7 @@
             <h3>${r.code} <span class="text-muted text-small">${escapeHtml(r.name)}${r.teamLabel ? ` · ${escapeHtml(r.teamLabel)}` : ''}</span></h3>
             ${r.breakdown.length === 0 ? '<p class="text-muted">No positions in this window.</p>' : `
             <table>
-              <thead><tr><th>Security</th><th class="text-right">Cost</th><th class="text-right">MV @ end</th><th class="text-right">Unrealized</th><th class="text-right">Divs</th><th class="text-right">P/E</th><th class="text-right">EPS</th></tr></thead>
+              <thead><tr><th>Security</th><th class="text-right">Cost</th><th class="text-right">MV @ end</th><th class="text-right">Unrealized</th><th class="text-right">Realized</th><th class="text-right">Divs</th><th class="text-right">P/E</th><th class="text-right">EPS</th></tr></thead>
               <tbody>
                 ${r.breakdown.map((b) => `
                   <tr>
@@ -250,6 +250,7 @@
                     <td class="text-right">${fmtNok(b.costSum)}</td>
                     <td class="text-right">${fmtNok(b.marketValue)}</td>
                     <td class="text-right ${pctClass(b.unrealized)}">${fmtNok(b.unrealized)}</td>
+                    <td class="text-right ${pctClass(b.realized)}">${fmtNok(b.realized)}</td>
                     <td class="text-right">${fmtNok(b.divs)}</td>
                     <td class="text-right text-muted">${fmtNum(b.pe)}</td>
                     <td class="text-right text-muted">${fmtNum(b.eps)}</td>
@@ -260,6 +261,7 @@
                   <td class="text-right">${fmtNok(r.total.costSum)}</td>
                   <td class="text-right">${fmtNok(r.total.mv)}</td>
                   <td class="text-right ${pctClass(r.total.unrealized)}">${fmtNok(r.total.unrealized)}</td>
+                  <td class="text-right ${pctClass(r.total.realized)}">${fmtNok(r.total.realized)}</td>
                   <td class="text-right">${fmtNok(r.total.divs)}</td>
                   <td class="text-right"></td>
                   <td class="text-right"></td>
