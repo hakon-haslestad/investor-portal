@@ -477,7 +477,15 @@
     } = opts || {};
     const PADP = { top: 30, right: 70, bottom: 48, left: 12 };
     const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const fmtDate = (iso) => { const d = new Date(iso); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`; };
+    // When the series spans more than one calendar year, tack a 2-digit year
+    // onto each date label (e.g. "3 Mar '24") so the axis isn't ambiguous.
+    const yearOf = (iso) => Number(String(iso).slice(0, 4));
+    const crossesYears = points.length >= 2 && yearOf(points[0].date) !== yearOf(points[points.length - 1].date);
+    const fmtDate = (iso) => {
+      const d = new Date(iso);
+      const base = `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
+      return crossesYears ? `${base} '${String(d.getUTCFullYear()).slice(2)}` : base;
+    };
     const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, xmlns: NS, role: 'img', 'aria-label': 'Price chart' });
 
     if (points.length < 2) {
