@@ -60,7 +60,11 @@
   function currentPrices(store) {
     const map = new Map();
     for (const h of currentHoldings(store)) {
-      if (h.current_price != null) map.set(canonicalName(h.security), { price: h.current_price });
+      if (h.current_price != null) {
+        map.set(canonicalName(h.security), {
+          price: h.current_price, marketValueNok: h.market_value_nok, qty: h.qty,
+        });
+      }
     }
     return map;
   }
@@ -78,6 +82,14 @@
   }
 
   // Price map for a specific date, using the closest snapshot on or before it.
+  // NOK market value per share for a pricesAtDate entry. currentPrice is in the
+  // security's native currency (USD/SEK/…); marketValueNok is already converted,
+  // so prefer marketValueNok / qty and fall back to the raw price only if absent.
+  function nokPerShare(px) {
+    if (!px) return 0;
+    return (px.marketValueNok != null && px.qty) ? px.marketValueNok / px.qty : (px.price || 0);
+  }
+
   // Falls back to currentPrices if no historical snapshot is available.
   function pricesAtDate(store, date) {
     const snap = snapshotForDate(store, date);
@@ -306,7 +318,7 @@
       for (const [security, slot] of state.perSec.entries()) {
         cost += slot.costSum;
         const px = prices.get(security);
-        mv += slot.qty * ((px && px.price) || 0);
+        mv += slot.qty * nokPerShare(px);
       }
       state.costAtStart = cost; state.mvAtStart = mv;
     }
@@ -365,7 +377,7 @@
       for (const [security, slot] of state.perSec.entries()) {
         cost += slot.costSum;
         const px = prices.get(security);
-        mv += slot.qty * ((px && px.price) || 0);
+        mv += slot.qty * nokPerShare(px);
       }
       state.costAtEnd = cost; state.mvAtEnd = mv;
     }

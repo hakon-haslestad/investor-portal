@@ -108,7 +108,14 @@
       for (const [sec, lot] of lots.entries()) {
         if (!lot.opened) continue;
         const px = endPrices.get(sec);
-        const endPrice = px ? px.price : 0;
+        // Value in NOK. Beholdningsverdi.currentPrice is in the security's
+        // native currency (USD/SEK/…), but marketValueNok is already converted,
+        // so derive a NOK-per-share (marketValueNok / qty) — otherwise foreign
+        // holdings get marked ~FX-rate too low against their NOK cost basis.
+        // Fall back to the raw price only when the snapshot lacks MV/qty.
+        const endPrice = px
+          ? ((px.marketValueNok != null && px.qty) ? px.marketValueNok / px.qty : (px.price || 0))
+          : 0;
         const mv = lot.qty * (endPrice || 0);
         const unrealized = mv - lot.costSum;
         mvAtEnd += mv;
