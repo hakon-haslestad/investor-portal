@@ -713,7 +713,7 @@
 
   window.Portfolio = {
     buildDashboard, investorDetail, canonicalName,
-    currentHoldings, snapshotDate,
+    currentHoldings, previousHoldings, snapshotDate,
     pricesAtDate, snapshotForDate,
     cash: { latestSaldo, saldoOnOrBefore },
     _debug: { deriveCashFlow, deriveCostBasis, deriveDividends, deriveInvested },
