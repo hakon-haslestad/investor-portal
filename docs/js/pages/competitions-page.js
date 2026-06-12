@@ -27,6 +27,47 @@
         <a href="#new" class="btn small" onclick="document.getElementById('new-form').scrollIntoView({behavior:'smooth'}); return false;">+ New competition</a>
       </div>
 
+      <details class="rules-info">
+        <summary><span class="info-icon">i</span> How scoring works</summary>
+        <div class="rules-body">
+          <h4>Setting up</h4>
+          <ul>
+            <li>Pick a <strong>name</strong>, a <strong>start</strong> and an <strong>end date</strong> — that window is what gets scored.</li>
+            <li>Up to 5 teams. A team is one person (solo) or several investors sharing one budget; each investor is on one team only.</li>
+          </ul>
+          <h4>What counts</h4>
+          <ul>
+            <li>A position enters the competition only when a <strong>buy (KJØPT) lands inside the window</strong>. A stock held from before doesn't count — even if it's sold during the window.</li>
+            <li>Only plain buys and sells open and close positions; corporate actions (BYTTE, SPLITT, emisjon / rights issues) don't.</li>
+            <li>Buys are attributed per investor by the Dim-values weights — only your share of a split stock counts for you.</li>
+          </ul>
+          <h4>Selling</h4>
+          <ul>
+            <li>A sell reduces only your in-window shares; the part that exceeds them (selling older shares) is ignored. Proceeds are pro-rated.</li>
+          </ul>
+          <h4>Dividends</h4>
+          <ul>
+            <li>A dividend (UTBYTTE) or withholding tax (KUPONGSKATT) counts only when the stock was <strong>bought during the window</strong>, you <strong>still hold</strong> those shares when it's paid, and it's <strong>paid before the window ends</strong>.</li>
+            <li>Dividends on stock held from before the window, or paid after the end date, don't count.</li>
+          </ul>
+          <h4>Scoring</h4>
+          <ul>
+            <li><strong>Net P/L = realized + dividends + unrealized at the end.</strong></li>
+            <li>End-of-window value uses the closest price snapshot on or before the end date — period-correct, not today's price.</li>
+          </ul>
+          <h4>Budget — recyclable pool</h4>
+          <ul>
+            <li>Tracks actual cash, so <strong>fees are included</strong>: a buy consumes <em>price × qty + purchase fee</em>; a sell returns <em>price × qty − sale fee</em>.</li>
+            <li><strong>Capital used = buys (incl. fees) − sell proceeds (net of fees)</strong>. Selling frees up budget to redeploy.</li>
+            <li>Going over budget is flagged on net invested, not gross buys. Fees are only counted once.</li>
+          </ul>
+          <h4>Ranking</h4>
+          <ul>
+            <li><strong>Return % = net P/L ÷ net invested</strong>, highest first. Teams aggregate by label, with the shared budget counted once.</li>
+          </ul>
+        </div>
+      </details>
+
       ${scored.length === 0 ? `
         <div class="flash">No competitions running. Start one — make this interesting.</div>
       ` : scored.map(renderCompetition).join('')}
