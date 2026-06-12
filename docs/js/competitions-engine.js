@@ -11,8 +11,11 @@
 //     holds in-window inventory at that time.
 //   • End-of-window valuation uses the closest Beholdningsverdi snapshot
 //     on-or-before end_date (period-correct, not "now").
-//   • Per-participant return % = netPnl / amountSpent (denominator =
-//     KJØPT total in window). Teams aggregate by team_label.
+//   • Budget is a recyclable pool: SALG proceeds free up capital to redeploy,
+//     so capital used = net invested = gross KJØPT − in-window SALG proceeds.
+//     Over-budget is flagged on net invested, not gross buys.
+//   • Per-participant return % = netPnl / net invested. Teams aggregate by
+//     team_label.
 //
 // Pure — takes hydrated `store` + competition + participants.
 
@@ -48,7 +51,8 @@
         return lots.get(sec);
       };
 
-      let amountSpent = 0;
+      let grossBought = 0;   // sum of all KJØPT in window
+      let sellProceeds = 0;  // sum of in-window SALG proceeds (frees up budget)
       let realized = 0;
       let divsInWindow = 0;
 
@@ -69,7 +73,7 @@
           lot.qty += wq;
           lot.costSum += wa;
           lot.opened = true;
-          amountSpent += wa;
+          grossBought += wa;
         } else if (tx.type === 'SALG') {
           const lot = lots.get(sec);
           // Pre-window-only positions: nothing to do for the competition.
@@ -88,6 +92,7 @@
           lot.costSum -= costForSold;
           lot.soldQty += sold;
           lot.soldProceeds += proceedsForSold;
+          sellProceeds += proceedsForSold;
         } else if (cat === 'DIVIDEND' || cat === 'TAX') {
           const lot = lots.get(sec);
           if (!lot || !lot.opened || lot.qty <= 0) continue;
@@ -126,8 +131,13 @@
       }
 
       const netPnl = realized + divsInWindow + unrealizedAtEnd;
-      // Return % is on what they actually spent, not buy-in.
-      const base = Math.max(amountSpent, 1);
+      // Budget is a recyclable pool: selling returns proceeds you can redeploy,
+      // so capital used = gross buys − sell proceeds (net invested). This is also
+      // the return-% denominator. Floor at 0; if a participant net-sold (proceeds
+      // exceeded buys, e.g. exited at a gain), fall back to gross buys for the
+      // denominator so the return % stays meaningful instead of exploding.
+      const amountSpent = Math.max(grossBought - sellProceeds, 0);
+      const base = amountSpent > 0 ? amountSpent : (grossBought > 0 ? grossBought : 1);
       const pct = (netPnl / base) * 100;
 
       perParticipant.push({
@@ -135,6 +145,8 @@
         teamLabel: p.team_label || code,
         buyIn: p.buy_in_nok || 0,
         amountSpent,
+        grossBought,
+        sellProceeds,
         breakdown,
         realizedInWindow: realized,
         divsInWindow,
@@ -155,14 +167,15 @@
       if (!teamMap.has(key)) {
         teamMap.set(key, {
           label: key, members: [],
-          buyIn: 0, amountSpent: 0, netPnl: 0,
+          buyIn: 0, amountSpent: 0, grossBought: 0, netPnl: 0,
           realized: 0, divs: 0, unrealized: 0, mvAtEnd: 0,
         });
       }
       const t = teamMap.get(key);
       t.members.push(p.code);
       t.buyIn = Math.max(t.buyIn, p.buyIn || 0); // de-double team budget
-      t.amountSpent += p.amountSpent;
+      t.amountSpent += p.amountSpent; // net invested (buys − sell proceeds)
+      t.grossBought += p.grossBought;
       t.netPnl += p.netPnl;
       t.realized += p.realizedInWindow;
       t.divs += p.divsInWindow;
@@ -170,12 +183,15 @@
       t.mvAtEnd += p.mvAtEnd;
     }
     const teams = Array.from(teamMap.values())
-      .map((t) => ({
-        ...t,
-        pct: t.amountSpent > 0 ? (t.netPnl / t.amountSpent) * 100 : 0,
-        overSpent: t.buyIn > 0 && t.amountSpent > t.buyIn,
-        overSpentBy: t.buyIn > 0 ? Math.max(0, t.amountSpent - t.buyIn) : 0,
-      }))
+      .map((t) => {
+        const teamBase = t.amountSpent > 0 ? t.amountSpent : (t.grossBought > 0 ? t.grossBought : 1);
+        return {
+          ...t,
+          pct: (t.netPnl / teamBase) * 100,
+          overSpent: t.buyIn > 0 && t.amountSpent > t.buyIn,
+          overSpentBy: t.buyIn > 0 ? Math.max(0, t.amountSpent - t.buyIn) : 0,
+        };
+      })
       .sort((a, b) => b.pct - a.pct);
 
     return { competition, ranks, teams, snapshotUsed };
