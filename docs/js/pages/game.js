@@ -20,6 +20,7 @@
     source: 'all',     // 'all' | '1y' | 'ytd' | 'comp:<id>'
     scope: 'window',   // 'window' | 'lifetime' (ignored when a competition is the source)
     lastKey: null,
+    picked: new Set(), // keys drawn this round — draw without replacement
   };
 
   // ─── date helpers ──────────────────────────────────────────────────────────
@@ -231,14 +232,21 @@
   }
 
   // ─── selection ───────────────────────────────────────────────────────────────
+  // Draw without replacement: never pick a stock that's already come up this
+  // round. When every entry has been drawn, the round resets and the full pool
+  // is available again (avoiding an immediate repeat of the very last pick).
   function spin(pool) {
     if (!pool.length) return null;
-    if (pool.length === 1) { state.lastKey = pool[0].investor + '|' + pool[0].security; return pool[0]; }
-    let pick, key, guard = 0;
-    do {
-      pick = pool[Math.floor(Math.random() * pool.length)];
-      key = pick.investor + '|' + pick.security;
-    } while (key === state.lastKey && ++guard < 12);
+    const keyOf = (e) => e.investor + '|' + e.security;
+    let available = pool.filter((e) => !state.picked.has(keyOf(e)));
+    if (!available.length) {
+      state.picked.clear();
+      available = pool.filter((e) => keyOf(e) !== state.lastKey);
+      if (!available.length) available = pool; // pool of 1
+    }
+    const pick = available[Math.floor(Math.random() * available.length)];
+    const key = keyOf(pick);
+    state.picked.add(key);
     state.lastKey = key;
     return pick;
   }
@@ -350,20 +358,20 @@
     document.querySelectorAll('#source-picker [data-period]').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.source = btn.getAttribute('data-period');
-        state.lastKey = null;
+        state.lastKey = null; state.picked.clear();
         render();
       });
     });
     const sel = document.getElementById('comp-select');
     if (sel) {
       sel.addEventListener('change', () => {
-        if (sel.value) { state.source = sel.value; state.lastKey = null; render(); }
+        if (sel.value) { state.source = sel.value; state.lastKey = null; state.picked.clear(); render(); }
       });
     }
     document.querySelectorAll('#scope-picker [data-scope]').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.scope = btn.getAttribute('data-scope');
-        state.lastKey = null;
+        state.lastKey = null; state.picked.clear();
         render();
       });
     });
