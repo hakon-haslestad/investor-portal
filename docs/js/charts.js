@@ -312,7 +312,7 @@
     // Tooltip box: date header + one row per investor
     const TIP_PAD = 8;
     const TIP_ROW_H = 14;
-    const TIP_W = 200;
+    const TIP_W = 250;
     const TIP_H = TIP_PAD * 2 + TIP_ROW_H * (series.length + 1) + 4;
 
     const tipBg = svgEl('rect', {
@@ -388,7 +388,17 @@
         r.nm.textContent = series[i].name;
         r.vl.setAttribute('x', tipX + TIP_W - TIP_PAD);
         r.vl.setAttribute('y', rowY);
-        r.vl.textContent = fmtNokFull(series[i].points[idx].y);
+        // Value + % change since the start of the visible series. When the
+        // series is rebased to 0 at the start (cumulative P/L), the value is
+        // itself the change, so the % is meaningless — show value only.
+        const yv = series[i].points[idx].y;
+        const base = series[i].points[0].y;
+        let txt = fmtNokFull(yv);
+        if (Math.abs(base) >= 1) {
+          const pc = ((yv - base) / Math.abs(base)) * 100;
+          txt += `  ${pc >= 0 ? '+' : ''}${pc.toFixed(1)}%`;
+        }
+        r.vl.textContent = txt;
       }
     }
     function hide() { hover.setAttribute('visibility', 'hidden'); }
@@ -564,6 +574,63 @@
       svg.appendChild(svgEl('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: '11', fill: color, opacity: '0.25' }));
       svg.appendChild(svgEl('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: '7', fill: color, stroke: '#fff', 'stroke-width': '1.5' }));
     }
+
+    // ─── Hover: crosshair + dot + tooltip (value & % change since start) ────
+    const xs = points.map((p) => xAt(dateToTs(p.date)));
+    const base = points[0].price;
+    const hover = svgEl('g', { 'pointer-events': 'none', visibility: 'hidden' });
+    svg.appendChild(hover);
+    const cross = svgEl('line', { y1: PADP.top, y2: PADP.top + plotH, stroke: '#8a8a8a', 'stroke-width': '1', 'stroke-dasharray': '4,4' });
+    hover.appendChild(cross);
+    const dot = svgEl('circle', { r: '6', fill: line, stroke: '#fff', 'stroke-width': '1.5' });
+    hover.appendChild(dot);
+    const TIPW = 240, TIPH = 96;
+    const bg = svgEl('rect', { width: TIPW, height: TIPH, rx: '8', ry: '8', fill: '#181a22', stroke: '#262a36', 'stroke-width': '1', opacity: '0.97' });
+    hover.appendChild(bg);
+    const tDate = svgEl('text', { fill: '#8a8a8a', 'font-size': '20' }); hover.appendChild(tDate);
+    const tPrice = svgEl('text', { fill: '#e7e9ee', 'font-size': '26', 'font-weight': '700' }); hover.appendChild(tPrice);
+    const tPct = svgEl('text', { 'font-size': '22', 'font-weight': '600' }); hover.appendChild(tPct);
+    const overlay = svgEl('rect', { x: PADP.left, y: PADP.top, width: plotW, height: plotH, fill: 'transparent', 'pointer-events': 'all' });
+    svg.appendChild(overlay);
+
+    const toSvgX = (evt) => {
+      const pt = svg.createSVGPoint();
+      pt.x = evt.clientX; pt.y = evt.clientY;
+      const m = svg.getScreenCTM();
+      if (!m) return 0;
+      return pt.matrixTransform(m.inverse()).x;
+    };
+    const nearest = (xu) => {
+      let b = 0, bd = Math.abs(xs[0] - xu);
+      for (let i = 1; i < xs.length; i++) { const d = Math.abs(xs[i] - xu); if (d < bd) { bd = d; b = i; } }
+      return b;
+    };
+    const show = (i) => {
+      hover.setAttribute('visibility', 'visible');
+      const p = points[i]; const x = xs[i]; const y = yAt(p.price);
+      cross.setAttribute('x1', x); cross.setAttribute('x2', x);
+      dot.setAttribute('cx', x); dot.setAttribute('cy', y);
+      let tx = x + 14;
+      if (tx + TIPW > width - PADP.right) tx = x - 14 - TIPW;
+      if (tx < PADP.left) tx = PADP.left;
+      const ty = PADP.top + 6;
+      bg.setAttribute('x', tx); bg.setAttribute('y', ty);
+      tDate.setAttribute('x', tx + 14); tDate.setAttribute('y', ty + 26); tDate.textContent = fmtDate(p.date);
+      tPrice.setAttribute('x', tx + 14); tPrice.setAttribute('y', ty + 56);
+      tPrice.textContent = Math.round(p.price).toLocaleString('en-US').replace(/,/g, ' ');
+      const pct = base ? ((p.price - base) / Math.abs(base)) * 100 : 0;
+      tPct.setAttribute('x', tx + 14); tPct.setAttribute('y', ty + 82);
+      tPct.setAttribute('fill', pct > 0.05 ? '#3ee07f' : pct < -0.05 ? '#ff7a7a' : '#8a8a8a');
+      tPct.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% since start`;
+    };
+    const hide = () => hover.setAttribute('visibility', 'hidden');
+    overlay.addEventListener('mousemove', (e) => show(nearest(toSvgX(e))));
+    overlay.addEventListener('mouseleave', hide);
+    overlay.addEventListener('touchstart', (e) => { if (e.touches[0]) show(nearest(toSvgX(e.touches[0]))); }, { passive: true });
+    overlay.addEventListener('touchmove', (e) => { if (e.touches[0]) show(nearest(toSvgX(e.touches[0]))); }, { passive: true });
+    overlay.addEventListener('touchend', hide);
+    overlay.style.cursor = 'crosshair';
+
     return svg;
   }
 
