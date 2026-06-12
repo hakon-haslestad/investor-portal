@@ -176,9 +176,8 @@ Delete: removing a competition in the portal hard-deletes its row here
 and cascades to its rows in `Competition_Participants` (matched by
 competition id).
 
-The 7-slide presentation mode generates all of its copy from the
-competition data and standings — there is no per-competition narrative
-override field.
+The presentation mode generates all of its copy from the competition
+data and standings — there is no per-competition narrative override field.
 
 ---
 

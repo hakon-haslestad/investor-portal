@@ -44,13 +44,16 @@
       </div>
       <div class="slide slide-${s.type}">${renderSlide(s, data.competition)}</div>
     `;
+    mount(s); // some slides (charts) need real DOM nodes after innerHTML is set
   }
 
   function renderSlide(s) {
     switch (s.type) {
       case 'title': return renderTitle(s);
+      case 'summary': return renderSummary(s);
       case 'setup': return renderSetup(s);
       case 'early': return renderEarly(s);
+      case 'curve': return renderCurve(s);
       case 'pivot': return renderPivot(s);
       case 'positions': return renderPositions(s);
       case 'standings': return renderStandings(s);
@@ -59,12 +62,64 @@
     }
   }
 
+  // Post-innerHTML hook: inject SVG charts into their mount point.
+  function mount(s) {
+    if (s.type !== 'curve') return;
+    const el = document.getElementById('chart-mount');
+    if (!el) return;
+    const flat = !s.series || !s.series.length
+      || s.series.every((ser) => (ser.points || []).every((p) => Math.abs(p.y || 0) < 0.01));
+    if (s.noActivity || flat) return; // empty-state banner already rendered
+    el.appendChild(window.Charts.multiLine({
+      series: s.series,
+      width: 960,
+      height: 360,
+      title: 'Cumulative return % by participant',
+      interactive: true,
+    }));
+  }
+
   function renderTitle(s) {
     return `
       <h1>${escapeHtml(s.title)}</h1>
       <p class="lead">${escapeHtml(s.subtitle)}</p>
       <div class="chips">${(s.chips || []).map((c) => `<div class="chip">${escapeHtml(c)}</div>`).join('')}</div>
       <div class="participants">${escapeHtml(s.participantsLine)}</div>
+    `;
+  }
+  function renderSummary(s) {
+    const banner = s.noActivity
+      ? `<p class="empty-note">${escapeHtml(s.emptyNote)}</p>` : '';
+    return `
+      <h2>${escapeHtml(s.title)}</h2>
+      ${banner}
+      <div class="kpi-grid">
+        ${s.cards.map((card) => `
+          <div class="kpi-card">
+            <div class="label">${escapeHtml(card.label)}</div>
+            <div class="value ${card.cls || ''}">${escapeHtml(String(card.value))}</div>
+            ${card.sub ? `<div class="sub">${escapeHtml(card.sub)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+  function renderCurve(s) {
+    const flat = !s.series || !s.series.length
+      || s.series.every((ser) => (ser.points || []).every((p) => Math.abs(p.y || 0) < 0.01));
+    if (s.noActivity || flat) {
+      return `
+        <h2>${escapeHtml(s.title)}</h2>
+        <p class="empty-note">${escapeHtml(s.emptyNote)}</p>
+      `;
+    }
+    const legend = s.series.map((ser) => `
+      <span class="legend-key"><span class="swatch" style="background:${ser.color}"></span>${escapeHtml(ser.name)}</span>
+    `).join('');
+    return `
+      <h2>${escapeHtml(s.title)}</h2>
+      <div class="curve-legend">${legend}</div>
+      <div id="chart-mount" class="chart-wrap"></div>
     `;
   }
   function renderSetup(s) {
@@ -135,6 +190,13 @@
     `;
   }
   function renderPositions(s) {
+    if (s.noActivity) {
+      return `
+        <h2>${escapeHtml(s.title)}</h2>
+        <p class="empty-note">${escapeHtml(s.emptyNote)}</p>
+      `;
+    }
+    const fmtNum = (v) => (v == null || v === '' ? '—' : escapeHtml(String(v)));
     return `
       <h2>${escapeHtml(s.title)}</h2>
       <p class="lead">${escapeHtml(s.teaser)}</p>
@@ -144,7 +206,7 @@
             <h3>${r.code} <span class="text-muted text-small">${escapeHtml(r.name)}${r.teamLabel ? ` · ${escapeHtml(r.teamLabel)}` : ''}</span></h3>
             ${r.breakdown.length === 0 ? '<p class="text-muted">No positions in this window.</p>' : `
             <table>
-              <thead><tr><th>Security</th><th class="text-right">Cost</th><th class="text-right">MV @ end</th><th class="text-right">Unrealized</th><th class="text-right">Divs</th></tr></thead>
+              <thead><tr><th>Security</th><th class="text-right">Cost</th><th class="text-right">MV @ end</th><th class="text-right">Unrealized</th><th class="text-right">Divs</th><th class="text-right">P/E</th><th class="text-right">EPS</th></tr></thead>
               <tbody>
                 ${r.breakdown.map((b) => `
                   <tr>
@@ -153,6 +215,8 @@
                     <td class="text-right">${fmtNok(b.marketValue)}</td>
                     <td class="text-right ${pctClass(b.unrealized)}">${fmtNok(b.unrealized)}</td>
                     <td class="text-right">${fmtNok(b.divs)}</td>
+                    <td class="text-right text-muted">${fmtNum(b.pe)}</td>
+                    <td class="text-right text-muted">${fmtNum(b.eps)}</td>
                   </tr>
                 `).join('')}
                 <tr class="summary-row">
@@ -161,6 +225,8 @@
                   <td class="text-right">${fmtNok(r.total.mv)}</td>
                   <td class="text-right ${pctClass(r.total.unrealized)}">${fmtNok(r.total.unrealized)}</td>
                   <td class="text-right">${fmtNok(r.total.divs)}</td>
+                  <td class="text-right"></td>
+                  <td class="text-right"></td>
                 </tr>
               </tbody>
             </table>
