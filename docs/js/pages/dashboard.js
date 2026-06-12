@@ -415,6 +415,38 @@
     const totalVal = holds.reduce((a, h) => a + (h.marketValueNok || 0), 0);
     const totalGain = holds.reduce((a, h) => a + (h.returnNok || 0), 0);
     const asOf = holds[0].snapshotDate ? ` · as of ${holds[0].snapshotDate}` : '';
+
+    // Per-security price history across Beholdningsverdi snapshots → YTD and
+    // 12-month rolling price return (currency cancels in the ratio). Needs a
+    // snapshot on-or-before the period start; otherwise the cell shows —.
+    const canon = window.Portfolio.canonicalName;
+    const hist = new Map();
+    for (const h of store.holdings || []) {
+      if (!h.snapshotDate || h.currentPrice == null) continue;
+      const k = canon(h.security);
+      if (!hist.has(k)) hist.set(k, []);
+      hist.get(k).push({ date: h.snapshotDate, price: h.currentPrice });
+    }
+    for (const a of hist.values()) a.sort((x, y) => x.date.localeCompare(y.date));
+    const priceOnOrBefore = (sec, date) => {
+      const a = hist.get(sec); if (!a) return null;
+      let best = null;
+      for (const p of a) { if (p.date <= date) best = p; else break; }
+      return best;
+    };
+    const periodReturn = (h, fromDate) => {
+      const base = priceOnOrBefore(canon(h.security), fromDate);
+      if (!base || !(base.price > 0) || h.currentPrice == null) return null;
+      return ((h.currentPrice - base.price) / base.price) * 100;
+    };
+    const now = new Date();
+    const ytdStart = `${now.getUTCFullYear()}-01-01`;
+    const y12 = new Date(now); y12.setUTCFullYear(y12.getUTCFullYear() - 1);
+    const y12Start = y12.toISOString().slice(0, 10);
+    const pctCell = (v, label) => v == null
+      ? `<td class="text-right text-muted" data-label="${label}">—</td>`
+      : `<td class="text-right ${pctClass(v)}" data-label="${label}">${fmtPct(v)}</td>`;
+
     const rows = holds.map((h) => {
       const wgt = totalVal > 0 ? ((h.marketValueNok || 0) / totalVal) * 100 : 0;
       return `
@@ -426,17 +458,20 @@
           <td class="text-right" data-label="Value">${fmtNok(h.marketValueNok)}</td>
           <td class="text-right ${pctClass(h.returnNok)}" data-label="Gain/loss">${fmtNok(h.returnNok)}</td>
           <td class="text-right ${pctClass(h.returnPct)}" data-label="Return">${fmtPct(h.returnPct)}</td>
+          ${pctCell(periodReturn(h, ytdStart), 'YTD')}
+          ${pctCell(periodReturn(h, y12Start), '12m')}
           <td class="text-right text-muted" data-label="Weight">${wgt.toFixed(1)}%</td>
         </tr>`;
     }).join('');
     return `
-      <div class="section-title">Current portfolio <span class="text-muted text-small">(${holds.length} positions${asOf})</span></div>
+      <div class="section-title">Current portfolio <span class="text-muted text-small">(${holds.length} positions${asOf}; YTD/12m are price return from snapshots)</span></div>
       <div style="overflow-x:auto">
         <table class="investor-table">
           <thead><tr>
             <th>Security</th><th class="text-right">Qty</th><th class="text-right">Avg cost</th>
             <th class="text-right">Price</th><th class="text-right">Value</th>
-            <th class="text-right">Gain/loss</th><th class="text-right">Return</th><th class="text-right">Weight</th>
+            <th class="text-right">Gain/loss</th><th class="text-right">Return</th>
+            <th class="text-right">YTD</th><th class="text-right">12m</th><th class="text-right">Weight</th>
           </tr></thead>
           <tbody>
             ${rows}
@@ -444,7 +479,7 @@
               <td data-label="">Total</td><td></td><td></td><td></td>
               <td class="text-right" data-label="Value">${fmtNok(totalVal)}</td>
               <td class="text-right ${pctClass(totalGain)}" data-label="Gain/loss">${fmtNok(totalGain)}</td>
-              <td></td><td></td>
+              <td></td><td></td><td></td><td></td>
             </tr>
           </tbody>
         </table>
