@@ -97,5 +97,37 @@
     return (j.sheets || []).map((s) => ({ id: s.properties.sheetId, title: s.properties.title }));
   }
 
-  window.Sheet = { getValues, batchGet, appendRow, updateRow, listTabs };
+  // Resolve a tab's numeric sheetId (gid) by title. Needed for batchUpdate
+  // requests (deleteDimension etc.), which key on gid rather than range.
+  async function getSheetId(tab) {
+    const tabs = await listTabs();
+    const match = tabs.find((t) => t.title === tab);
+    if (!match) throw new Error(`Tab not found: ${tab}`);
+    return match.id;
+  }
+
+  // Hard-deletes rows from a tab. rowIndices1Based match the sheet UI (1-based;
+  // row 1 is the header). Unlike updateRow's blanking, this physically removes
+  // the rows via spreadsheets.batchUpdate / deleteDimension so nothing is left
+  // behind. No-op when given an empty list.
+  async function deleteRows(tab, rowIndices1Based) {
+    const indices = (rowIndices1Based || []).filter((n) => n > 0);
+    if (!indices.length) return;
+    const gid = await getSheetId(tab);
+    // Sort descending so each delete doesn't shift the indices of rows still to come.
+    const requests = indices
+      .map((n) => n - 1) // 0-based for the API
+      .sort((a, b) => b - a)
+      .map((start) => ({
+        deleteDimension: {
+          range: { sheetId: gid, dimension: 'ROWS', startIndex: start, endIndex: start + 1 },
+        },
+      }));
+    return authedFetch(`${BASE}/${sheetId()}:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ requests }),
+    });
+  }
+
+  window.Sheet = { getValues, batchGet, appendRow, updateRow, listTabs, getSheetId, deleteRows };
 })();

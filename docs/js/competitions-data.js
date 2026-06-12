@@ -36,14 +36,14 @@
   //   Each member becomes a Competition_Participants row with team_label=label
   //   and buy_in_nok=amount.
   // Legacy `participants` shape (flat list of investor rows) is still accepted.
-  async function createCompetition({ name, description, start_date, end_date, teams = [], participants = [], narrative }) {
+  async function createCompetition({ name, start_date, end_date, teams = [], participants = [] }) {
     const id = newId();
     const now = new Date().toISOString();
+    // Column order must match the Competitions tab header:
+    // Id | Name | StartDate | EndDate | CreatedBy | CreatedAt
     const compRow = [
-      id, name, description || '',
-      '', '', '', // type / mode / metric — kept for sheet compat, no longer used
+      id, name,
       start_date || '', end_date || '',
-      narrative ? JSON.stringify(narrative) : '',
       window.Auth.getEmail() || '',
       now,
     ];
@@ -71,19 +71,27 @@
     return id;
   }
 
+  // Hard-delete a competition and cascade to its participant and pick rows.
+  // The competition is keyed by Id (column A) in Competitions; participants and
+  // picks reference it by competition id in their column A.
   async function deleteCompetition(id) {
-    // We can't easily delete rows mid-sheet via values.update without batchUpdate
-    // (which requires sheetId not range). Easier UX: blank out the Id cell so it
-    // stops appearing. The user can manually delete the row in the sheet if they
-    // want a clean removal.
-    const compRows = await window.Sheet.getValues(T.competitions);
-    let targetRow = -1;
-    for (let i = 1; i < compRows.length; i++) {
-      if ((compRows[i][0] || '').toString().trim() === id) { targetRow = i + 1; break; }
-    }
-    if (targetRow < 0) throw new Error('Competition not found in sheet');
-    // Overwrite Id column with empty so listCompetitions skips this row.
-    await window.Sheet.updateRow(T.competitions, targetRow, ['']);
+    const sheets = await window.Sheet.batchGet([T.competitions, T.participants, T.picks]);
+
+    // Sheet row index = array index + 1 (row 0 is the header).
+    const rowsMatching = (rows) => {
+      const out = [];
+      for (let i = 1; i < (rows || []).length; i++) {
+        if (((rows[i][0] || '').toString().trim()) === id) out.push(i + 1);
+      }
+      return out;
+    };
+
+    const compRowIdx = rowsMatching(sheets[T.competitions]);
+    if (!compRowIdx.length) throw new Error('Competition not found in sheet');
+
+    await window.Sheet.deleteRows(T.competitions, compRowIdx);
+    await window.Sheet.deleteRows(T.participants, rowsMatching(sheets[T.participants]));
+    await window.Sheet.deleteRows(T.picks, rowsMatching(sheets[T.picks]));
     return true;
   }
 
@@ -95,13 +103,8 @@
     const idx = {
       id: header.indexOf('Id'),
       name: header.indexOf('Name'),
-      desc: header.indexOf('Description'),
-      type: header.indexOf('Type'),
-      mode: header.indexOf('Mode'),
-      metric: header.indexOf('Metric'),
       start: header.indexOf('StartDate'),
       end: header.indexOf('EndDate'),
-      narrative: header.indexOf('NarrativeJson'),
       createdBy: header.indexOf('CreatedBy'),
       createdAt: header.indexOf('CreatedAt'),
     };
@@ -113,13 +116,8 @@
       out.push({
         id,
         name: r[idx.name] || '',
-        description: r[idx.desc] || '',
-        type: r[idx.type] || 'individual',
-        mode: r[idx.mode] || 'full_portfolio',
-        metric: r[idx.metric] || 'return_pct',
         start_date: window.Parsers.excelDateToISO(r[idx.start]) || (r[idx.start] || ''),
         end_date: window.Parsers.excelDateToISO(r[idx.end]) || (r[idx.end] || ''),
-        narrative_json: r[idx.narrative] || '',
         created_by: r[idx.createdBy] || '',
         created_at: r[idx.createdAt] || '',
       });

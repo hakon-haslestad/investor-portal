@@ -24,7 +24,6 @@
     const c = scored.competition;
     const ranks = scored.ranks;
     const names = namesFromMembers(store.members);
-    const narrative = c.narrative_json ? safeParseJson(c.narrative_json) : {};
 
     const participantsLine = ranks
       .map((r) => `${r.code}${r.teamLabel ? ` (${r.teamLabel})` : ''}`)
@@ -35,7 +34,7 @@
     const titleSlide = {
       type: 'title',
       title: c.name,
-      subtitle: (narrative.subtitle || `${c.start_date} → ${c.end_date}`) + snapNote,
+      subtitle: `${c.start_date} → ${c.end_date}` + snapNote,
       chips: hasMultiMember ? ['Mixed team / solo'] : ['Solo'],
       participantsLine,
     };
@@ -44,7 +43,7 @@
     const setupSlide = {
       type: 'setup',
       title: 'The setup',
-      teaser: narrative.setup_teaser || 'Each crew brings their bag. The market does its thing. Numbers don\'t lie.',
+      teaser: 'Each crew brings their bag. The market does its thing. Numbers don\'t lie.',
       rows: (scored.teams || []).map((t) => ({
         label: t.label,
         members: t.members,
@@ -60,7 +59,7 @@
     const earlySlide = {
       type: 'early',
       title: 'First 30 days',
-      teaser: narrative.early_teaser || 'Who came out swinging? Who needed time?',
+      teaser: 'Who came out swinging? Who needed time?',
       asOf: earlyEnd,
       ranks: earlyRanks.map((r) => ({
         code: r.code, teamLabel: r.teamLabel, pct: r.pct, netPnl: r.netPnl,
@@ -69,8 +68,8 @@
 
     const pivotSlide = {
       type: 'pivot',
-      title: narrative.pivot_title || 'The plot twist',
-      teaser: narrative.pivot_teaser || 'Some pivot. Some don\'t. Some pivots actually work.',
+      title: 'The plot twist',
+      teaser: 'Some pivot. Some don\'t. Some pivots actually work.',
       trades: extractPivotTrades(store, c, scored),
     };
 
@@ -111,8 +110,8 @@
       })) : null,
     };
 
-    let verdictLine = narrative.verdict || '';
-    if (!verdictLine && ranks.length) {
+    let verdictLine = '';
+    if (ranks.length) {
       const top = ranks[0]; const last = ranks[ranks.length - 1];
       verdictLine = `${top.code} takes the win at ${fmtPct(top.pct)}. ${last.code} brings up the rear at ${fmtPct(last.pct)}.`;
       if (top.pct > 30) verdictLine += ' A vintage run.';
@@ -164,10 +163,6 @@
     }
     out.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
     return out.slice(0, 12);
-  }
-
-  function safeParseJson(s) {
-    try { return JSON.parse(s); } catch (_e) { return {}; }
   }
 
   window.PresentationBuilder = { buildPresentation };
