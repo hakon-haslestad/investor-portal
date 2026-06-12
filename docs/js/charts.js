@@ -474,6 +474,7 @@
       width = 1180, height = 440,
       line = '#1FE0CE', fillTop = 'rgba(31,224,206,0.16)', fillBottom = 'rgba(31,224,206,0)',
       buy = '#2D5BFF', sell = '#FF3B3B',
+      yUnit = '', invested = null,
     } = opts || {};
     const PADP = { top: 30, right: 70, bottom: 48, left: 12 };
     const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -546,6 +547,11 @@
       t.textContent = Math.round(v).toString();
       svg.appendChild(t);
     }
+    if (yUnit) {
+      const u = svgEl('text', { x: width - PADP.right + 14, y: (PADP.top - 8).toFixed(1), fill: '#8a8a8a', 'font-size': '17', 'font-weight': '600' });
+      u.textContent = yUnit;
+      svg.appendChild(u);
+    }
 
     // X-axis labels (time): up to 5 evenly spaced dates along the bottom.
     const nLabels = Math.min(5, points.length);
@@ -592,12 +598,15 @@
     hover.appendChild(cross);
     const dot = svgEl('circle', { r: '6', fill: line, stroke: '#fff', 'stroke-width': '1.5' });
     hover.appendChild(dot);
-    const TIPW = 240, TIPH = 96;
+    const hasInvested = invested != null && Number.isFinite(invested);
+    const TIPW = 240, TIPH = hasInvested ? 128 : 96;
     const bg = svgEl('rect', { width: TIPW, height: TIPH, rx: '8', ry: '8', fill: '#181a22', stroke: '#262a36', 'stroke-width': '1', opacity: '0.97' });
     hover.appendChild(bg);
     const tDate = svgEl('text', { fill: '#8a8a8a', 'font-size': '20' }); hover.appendChild(tDate);
     const tPrice = svgEl('text', { fill: '#e7e9ee', 'font-size': '26', 'font-weight': '700' }); hover.appendChild(tPrice);
     const tPct = svgEl('text', { 'font-size': '22', 'font-weight': '600' }); hover.appendChild(tPct);
+    const tInv = hasInvested ? svgEl('text', { fill: '#8a8a8a', 'font-size': '19', 'font-weight': '500' }) : null;
+    if (tInv) hover.appendChild(tInv);
     const overlay = svgEl('rect', { x: PADP.left, y: PADP.top, width: plotW, height: plotH, fill: 'transparent', 'pointer-events': 'all' });
     svg.appendChild(overlay);
 
@@ -630,6 +639,7 @@
       tPct.setAttribute('x', tx + 14); tPct.setAttribute('y', ty + 82);
       tPct.setAttribute('fill', pct > 0.05 ? '#3ee07f' : pct < -0.05 ? '#ff7a7a' : '#8a8a8a');
       tPct.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% since start`;
+      if (tInv) { tInv.setAttribute('x', tx + 14); tInv.setAttribute('y', ty + 110); tInv.textContent = `Invested ${fmtNok(invested)}`; }
     };
     const hide = () => hover.setAttribute('visibility', 'hidden');
     overlay.addEventListener('mousemove', (e) => show(nearest(toSvgX(e))));
