@@ -109,6 +109,7 @@ docs/
 ├── investor.html         Per-investor drill-down
 ├── competitions.html     Competitions list + edit
 ├── presentation.html     Competition presentation deck
+├── portfolio-report.html Account-wide portfolio report (holdings + your-share KPIs)
 ├── data.html             Raw data inspector
 ├── accounting.html       Read-only accounting dashboard
 ├── admin.html            Ownership + sheet management

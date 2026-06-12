@@ -90,21 +90,30 @@ Per-year fundamentals for each held security. The header occupies
 rows 1–3 (yes, three rows — they were stylistic in the original
 sheet); data starts at **row 4**. Columns by position:
 
-| Pos | Field          | Type            | Example         |
-| --- | -------------- | --------------- | --------------- |
-| A   | `year`         | number          | `2024`          |
-| B   | `company`      | string          | `Equinor`       |
-| C   | `revenue`      | string (raw)    | `1 089 000 MUSD`|
-| D   | `ourShareRev`  | number          | `0.0001`        |
-| E   | `eat`          | string (raw)    | `8 700 MUSD`    |
-| F   | `ourShareEat`  | number          | `0.0001`        |
-| G   | `price`        | string (raw)    | `345.5`         |
-| H   | `eps`          | string (raw)    | `23.4`          |
-| I   | `pe`           | number          | `14.8`          |
+| Pos | Field           | Type            | Example          |
+| --- | --------------- | --------------- | ---------------- |
+| A   | `year`          | number          | `2025`           |
+| B   | `company`       | string          | `DNB Bank`       |
+| C   | `revenue`       | string (raw)    | `NOK 21 900m`    |
+| D   | `yourRevNok`    | number          | `3465`           |
+| E   | `eat`           | string (raw)    | `NOK 9 860m`     |
+| F   | `yourProfitNok` | number          | `1560`           |
+| G   | `price`         | string (raw)    | `345.5`          |
+| H   | `eps`           | string (raw)    | `23.4`           |
+| I   | `pe`            | number          | `14.8`           |
+| J   | `period`        | string          | `Q1 2026`        |
 
 The raw-string columns (revenue, EAT, price, EPS) are passed through
-verbatim so they can carry units (`MUSD`, `MNOK`). The portal does not
-do unit math on these — they're displayed as-is in the data inspector.
+verbatim so they can carry units (`MUSD`, `MNOK`). The portal does **not**
+do unit/FX math on these.
+
+**`yourRevNok` / `yourProfitNok` (cols D, F)** hold *your share* of the
+company's revenue / profit as a final **NOK** value, precomputed in the
+sheet — the portfolio report displays them directly. **`period` (col J)**
+labels the reporting period (`2025`, `Q1 2026`, …); when blank it falls
+back to the `year` cell. One row per company × period; the Portfolio
+report uses the latest period per company and compares periods where more
+than one exists.
 
 ---
 

@@ -217,12 +217,19 @@
         year: numOrNull(row[0]),
         company: String(row[1]).trim(),
         revenue: row[2] != null ? String(row[2]) : null,
-        ourShareRev: numOrNull(row[3]),
+        // Cols D/F now carry the user's share of revenue/profit as final NOK
+        // values (precomputed in the sheet — the portal does no FX/unit math).
+        yourRevNok: numOrNull(row[3]),
         eat: row[4] != null ? String(row[4]) : null,
-        ourShareEat: numOrNull(row[5]),
+        yourProfitNok: numOrNull(row[5]),
         price: row[6] != null ? String(row[6]) : null,
         eps: row[7] != null ? String(row[7]) : null,
         pe: numOrNull(row[8]),
+        // Col J (optional): reporting period label, e.g. "2025" or "Q1 2026".
+        // Falls back to the year cell when the column is absent.
+        period: row[9] != null && String(row[9]).trim() !== ''
+          ? String(row[9]).trim()
+          : (row[0] != null ? String(row[0]).trim() : ''),
       });
     }
     return out;
