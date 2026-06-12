@@ -124,6 +124,7 @@
     `).join('');
     return `
       <h2>${escapeHtml(s.title)}</h2>
+      <p class="lead">Cumulative return % — realised (sells + dividends) and unrealised (mark-to-market) combined, competition stocks only.</p>
       <div class="curve-legend">${legend}</div>
       <div id="chart-mount" class="chart-wrap"></div>
     `;
@@ -179,12 +180,15 @@
     return `
       <h2>${escapeHtml(s.title)}</h2>
       <p class="lead">${escapeHtml(s.teaser)}</p>
-      <div class="text-muted text-small" style="margin-bottom:10px">As of ${s.asOf}</div>
+      <div class="text-muted text-small" style="margin-bottom:10px">As of ${s.asOf} · realised (sells + dividends) and unrealised (mark-to-market) combined, competition stocks only</div>
       <div class="standings"><div class="col">
         ${s.ranks.map((r, i) => `
           <div class="rank-row">
             <div class="badge">${PODIUM[i] || ''}</div>
-            <div class="who"><div class="name">${r.code}${r.teamLabel ? ` <span class="text-muted">(${escapeHtml(r.teamLabel)})</span>` : ''}</div><div class="meta">${fmtNok(r.netPnl)}</div></div>
+            <div class="who">
+              <div class="name">${r.code}${r.teamLabel ? ` <span class="text-muted">(${escapeHtml(r.teamLabel)})</span>` : ''}</div>
+              <div class="meta">Realised ${fmtNok((r.realized || 0) + (r.divs || 0))} · Unrealised ${fmtNok(r.unrealized || 0)} · Net ${fmtNok(r.netPnl)}</div>
+            </div>
             <div class="pct ${pctClass(r.pct)}">${fmtPct(r.pct)}</div>
           </div>
         `).join('')}
@@ -269,42 +273,33 @@
     `;
   }
   function renderStandings(s) {
+    const teams = s.teams || [];
     return `
       <h2>${escapeHtml(s.title)}</h2>
-      <p class="lead">All in. Receipts below.</p>
-      <div class="standings">
-        <div class="col">
-          <h3>Individual</h3>
-          ${s.individual.map((r) => `
-            <div class="rank-row">
-              <div class="badge">${r.podium}</div>
-              <div class="who"><div class="name">${r.code} <span class="text-muted text-small">${escapeHtml(r.name)}${r.teamLabel ? ` · ${escapeHtml(r.teamLabel)}` : ''}</span></div>
-              <div class="meta">${fmtNok(r.netPnl)} P/L · MV @ end ${fmtNok(r.mv)}</div></div>
-              <div class="pct ${pctClass(r.pct)}">${fmtPct(r.pct)}</div>
-            </div>
-          `).join('')}
-        </div>
-        ${s.teams ? `
-        <div class="col">
-          <h3>Teams</h3>
-          ${s.teams.map((t) => {
-            const spentLine = t.buyIn > 0
-              ? `spent ${fmtNok(t.amountSpent)} / ${fmtNok(t.buyIn)}`
-              : `spent ${fmtNok(t.amountSpent)}`;
-            const spentCls = t.overSpent ? 'overspent' : 'text-muted';
-            return `
-              <div class="rank-row">
-                <div class="badge">${t.podium}</div>
-                <div class="who">
-                  <div class="name">${escapeHtml(t.label)}</div>
-                  <div class="meta">${(t.members||[]).join(' + ')} · <span class="${spentCls}">${spentLine}${t.overSpent ? ` ⚠ +${fmtNok(t.overSpentBy)}` : ''}</span></div>
-                </div>
-                <div class="pct ${pctClass(t.pct)}">${fmtPct(t.pct)}</div>
+      <p class="lead">Team standings. Winner takes the glory — last place takes the shots.</p>
+      <div class="standings-final">
+        ${teams.map((t, i) => {
+          const isWinner = i === 0;
+          const isLoser = teams.length > 1 && i === teams.length - 1;
+          const cls = isWinner ? 'winner' : (isLoser ? 'loser' : '');
+          const tag = isWinner ? '<span class="standing-tag">🏆 Winner</span>'
+            : (isLoser ? '<span class="standing-tag">🥄 Last place — drinks are on them</span>' : '');
+          const spentLine = t.buyIn > 0
+            ? `spent ${fmtNok(t.amountSpent)} / ${fmtNok(t.buyIn)}`
+            : `spent ${fmtNok(t.amountSpent)}`;
+          const spentCls = t.overSpent ? 'overspent' : 'text-muted';
+          const badge = isWinner ? '🏆' : (t.podium || '');
+          return `
+            <div class="rank-row ${cls}">
+              <div class="badge">${badge}</div>
+              <div class="who">
+                <div class="name">${escapeHtml(t.label)} ${tag}</div>
+                <div class="meta">${(t.members||[]).join(' + ')} · <span class="${spentCls}">${spentLine}${t.overSpent ? ` ⚠ +${fmtNok(t.overSpentBy)}` : ''}</span> · ${fmtNok(t.netPnl)} P/L</div>
               </div>
-            `;
-          }).join('')}
-        </div>
-        ` : ''}
+              <div class="pct ${pctClass(t.pct)}">${fmtPct(t.pct)}</div>
+            </div>
+          `;
+        }).join('')}
       </div>
     `;
   }

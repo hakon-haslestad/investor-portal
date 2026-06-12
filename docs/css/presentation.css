@@ -44,6 +44,35 @@
 .standings .rank-row .who .meta { color: var(--muted); font-size: 0.8rem; }
 .standings .rank-row .pct { font-size: 1.4rem; font-weight: 700; }
 
+/* Final standings — teams only, winner emphasised, loser flagged */
+.standings-final { margin-top: 20px; max-width: 760px; }
+.standings-final .rank-row {
+  background: var(--panel); border: 1px solid var(--border); padding: 14px 16px;
+  border-radius: var(--radius); margin-bottom: 10px; display: flex; align-items: center; gap: 14px;
+}
+.standings-final .rank-row .badge { font-size: 1.6rem; }
+.standings-final .rank-row .who { flex: 1; }
+.standings-final .rank-row .who .name { font-weight: 600; font-size: 1.1rem; }
+.standings-final .rank-row .who .meta { color: var(--muted); font-size: 0.82rem; margin-top: 2px; }
+.standings-final .rank-row .pct { font-size: 1.5rem; font-weight: 700; }
+.standing-tag {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted);
+  vertical-align: middle; margin-left: 6px;
+}
+.standings-final .rank-row.winner {
+  border: 2px solid var(--accent); padding: 22px 20px;
+  background: linear-gradient(180deg, rgba(62, 224, 127, 0.14), var(--panel));
+}
+.standings-final .rank-row.winner .badge { font-size: 2.4rem; }
+.standings-final .rank-row.winner .who .name { font-size: 1.9rem; font-weight: 800; }
+.standings-final .rank-row.winner .pct { font-size: 2.2rem; }
+.standings-final .rank-row.winner .standing-tag { background: var(--accent); color: #051a0a; }
+.standings-final .rank-row.loser {
+  border: 1px solid var(--danger); background: rgba(255, 91, 91, 0.07);
+}
+.standings-final .rank-row.loser .standing-tag { background: var(--danger); color: #fff; }
+
 .pivot-trades { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
 .pivot-trades table { background: transparent; border: none; }
 .pivot-trades th { background: var(--panel-2); }
