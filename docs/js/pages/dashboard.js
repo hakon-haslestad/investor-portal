@@ -455,6 +455,7 @@
           <td class="text-right" data-label="Qty">${fmtQty(h.qty)}</td>
           <td class="text-right text-muted" data-label="Avg cost">${fmtNok(h.gav)}</td>
           <td class="text-right" data-label="Price">${fmtNok(h.currentPrice)}</td>
+          <td class="text-right text-muted" data-label="Invested">${fmtNok((h.marketValueNok || 0) - (h.returnNok || 0))}</td>
           <td class="text-right" data-label="Value">${fmtNok(h.marketValueNok)}</td>
           <td class="text-right ${pctClass(h.returnNok)}" data-label="Gain/loss">${fmtNok(h.returnNok)}</td>
           <td class="text-right ${pctClass(h.returnPct)}" data-label="Return">${fmtPct(h.returnPct)}</td>
@@ -469,7 +470,7 @@
         <table class="investor-table">
           <thead><tr>
             <th>Security</th><th class="text-right">Qty</th><th class="text-right">Avg cost</th>
-            <th class="text-right">Price</th><th class="text-right">Value</th>
+            <th class="text-right">Price</th><th class="text-right">Invested</th><th class="text-right">Value</th>
             <th class="text-right">Gain/loss</th><th class="text-right">Return</th>
             <th class="text-right">YTD</th><th class="text-right">12m</th><th class="text-right">Weight</th>
           </tr></thead>
@@ -477,6 +478,7 @@
             ${rows}
             <tr class="summary-row">
               <td data-label="">Total</td><td></td><td></td><td></td>
+              <td class="text-right" data-label="Invested">${fmtNok(totalVal - totalGain)}</td>
               <td class="text-right" data-label="Value">${fmtNok(totalVal)}</td>
               <td class="text-right ${pctClass(totalGain)}" data-label="Gain/loss">${fmtNok(totalGain)}</td>
               <td></td><td></td><td></td><td></td>
