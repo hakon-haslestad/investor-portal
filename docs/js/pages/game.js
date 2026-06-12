@@ -327,17 +327,33 @@
 
     // Instant mode: a short "spinning" teaser before the real reveal.
     const mount = document.getElementById('game-mount');
-    let ticks = 0;
-    const iv = setInterval(() => {
+    const btn = document.getElementById('spin');
+    if (btn) { btn.disabled = true; }
+
+    mount.innerHTML = `
+      <div class="game-result spinning">
+        <div class="verdict"><span class="spin-dice">🎲</span></div>
+        <div class="who"><span class="who-name" id="spin-name"></span></div>
+        <div class="stock" id="spin-stock"></div>
+      </div>`;
+    const nameEl = document.getElementById('spin-name');
+    const stockEl = document.getElementById('spin-stock');
+
+    // Intervals grow → the cycle visibly slows before landing (~1.6s total).
+    const delays = [55, 55, 60, 70, 85, 105, 130, 160, 195, 235, 280, 330];
+    let i = 0;
+    const tick = () => {
       const rnd = pool[Math.floor(Math.random() * pool.length)];
-      mount.innerHTML = `
-        <div class="game-result spinning">
-          <div class="verdict">🎲</div>
-          <div class="who"><span class="who-name">${escapeHtml(rnd.investorName)}</span></div>
-          <div class="stock">${escapeHtml(rnd.security)}</div>
-        </div>`;
-      if (++ticks >= 8) { clearInterval(iv); renderResult(final); }
-    }, 70);
+      if (nameEl) nameEl.textContent = rnd.investorName;
+      if (stockEl) stockEl.textContent = rnd.security;
+      if (i >= delays.length) {
+        renderResult(final);
+        if (btn) { btn.disabled = false; }
+        return;
+      }
+      setTimeout(tick, delays[i++]);
+    };
+    tick();
   }
 
   function compOptions() {
