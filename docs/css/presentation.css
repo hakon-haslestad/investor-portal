@@ -80,6 +80,15 @@
 .curve-legend .legend-key { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--muted); }
 .curve-legend .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 
+/* Picks price-chart grid (teal card look from the supplied design) */
+.picks-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-top: 8px; }
+.chart-card { background: #141414; border-radius: 12px; padding: 8px 4px; width: 100%; box-sizing: border-box; }
+.pick-card { padding: 12px 12px 8px; }
+.pick-head { display: flex; align-items: baseline; gap: 10px; padding: 2px 6px 8px; }
+.pick-head .pick-sec { font-weight: 600; font-size: 1rem; }
+.pick-head .pick-gain { margin-left: auto; font-weight: 700; }
+.pick-chart svg { display: block; width: 100%; height: auto; }
+
 /* Shared empty-state note */
 .empty-note {
   background: var(--panel); border: 1px solid var(--border);

@@ -54,6 +54,7 @@
       case 'setup': return renderSetup(s);
       case 'early': return renderEarly(s);
       case 'curve': return renderCurve(s);
+      case 'picks': return renderPicks(s);
       case 'pivot': return renderPivot(s);
       case 'positions': return renderPositions(s);
       case 'standings': return renderStandings(s);
@@ -62,21 +63,26 @@
     }
   }
 
-  // Post-innerHTML hook: inject SVG charts into their mount point.
+  // Post-innerHTML hook: inject SVG charts into their mount points.
   function mount(s) {
-    if (s.type !== 'curve') return;
-    const el = document.getElementById('chart-mount');
-    if (!el) return;
-    const flat = !s.series || !s.series.length
-      || s.series.every((ser) => (ser.points || []).every((p) => Math.abs(p.y || 0) < 0.01));
-    if (s.noActivity || flat) return; // empty-state banner already rendered
-    el.appendChild(window.Charts.multiLine({
-      series: s.series,
-      width: 960,
-      height: 360,
-      title: 'Cumulative return % by participant',
-      interactive: true,
-    }));
+    if (s.type === 'curve') {
+      const el = document.getElementById('chart-mount');
+      if (!el) return;
+      const flat = !s.series || !s.series.length
+        || s.series.every((ser) => (ser.points || []).every((p) => Math.abs(p.y || 0) < 0.01));
+      if (s.noActivity || flat) return; // empty-state banner already rendered
+      el.appendChild(window.Charts.multiLine({
+        series: s.series, width: 960, height: 360,
+        title: 'Cumulative return % by participant', interactive: true,
+      }));
+    } else if (s.type === 'picks') {
+      if (s.noActivity) return;
+      (s.charts || []).forEach((ch, i) => {
+        if (!ch.points || ch.points.length < 2) return; // placeholder text already shown
+        const el = document.getElementById(`pick-mount-${i}`);
+        if (el) el.appendChild(window.Charts.priceChart({ points: ch.points, markers: ch.markers }));
+      });
+    }
   }
 
   function renderTitle(s) {
@@ -120,6 +126,32 @@
       <h2>${escapeHtml(s.title)}</h2>
       <div class="curve-legend">${legend}</div>
       <div id="chart-mount" class="chart-wrap"></div>
+    `;
+  }
+  function renderPicks(s) {
+    if (s.noActivity || !s.charts || !s.charts.length) {
+      return `
+        <h2>${escapeHtml(s.title)}</h2>
+        <p class="empty-note">${escapeHtml(s.emptyNote)}</p>
+      `;
+    }
+    return `
+      <h2>${escapeHtml(s.title)}</h2>
+      <p class="lead">Buy / sell marked on each pick's price through the window.</p>
+      <div class="picks-grid">
+        ${s.charts.map((ch, i) => `
+          <div class="chart-card pick-card">
+            <div class="pick-head">
+              <span class="pick-sec">${escapeHtml(ch.security)}</span>
+              <span class="text-muted text-small">${ch.code}${ch.name && ch.name !== ch.code ? ` · ${escapeHtml(ch.name)}` : ''}</span>
+              <span class="pick-gain ${pctClass(ch.gain)}">${fmtNok(ch.gain)}</span>
+            </div>
+            <div id="pick-mount-${i}" class="pick-chart">
+              ${ch.points.length < 2 ? '<p class="text-muted text-small" style="padding:10px 6px">Not enough price history in this window.</p>' : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
     `;
   }
   function renderSetup(s) {

@@ -53,6 +53,7 @@
 
     const summarySlide = buildSummarySlide(scored, noActivity, emptyNote);
     const curveSlide = buildCurveSlide(store, c, participants, names, noActivity, emptyNote);
+    const picksSlide = buildPicksSlide(store, c, scored, names, noActivity, emptyNote);
 
     // Setup slide groups by team_label so the budget appears once per team.
     const setupSlide = {
@@ -151,7 +152,7 @@
       competition: c,
       slides: [
         titleSlide, summarySlide, setupSlide, earlySlide, curveSlide,
-        pivotSlide, positionSlide, standingsSlide, verdictSlide,
+        picksSlide, pivotSlide, positionSlide, standingsSlide, verdictSlide,
       ],
     };
   }
@@ -190,6 +191,63 @@
     ];
 
     return { type: 'summary', title: 'By the numbers', cards, noActivity, emptyNote };
+  }
+
+  // ─── Picks price-chart slide ────────────────────────────────────────────────
+
+  // One price chart per chosen pick: each participant's best in-window pick,
+  // plus the largest buys by amount, deduped (code+security) and capped at 6.
+  function buildPicksSlide(store, c, scored, names, noActivity, emptyNote) {
+    const candidates = [];
+    for (const r of scored.ranks || []) {
+      let best = null;
+      for (const b of r.breakdown || []) {
+        const gain = (b.unrealized || 0) + (b.realized || 0) + (b.divs || 0);
+        const cand = { code: r.code, security: b.security, gain, amount: b.costSum || 0 };
+        candidates.push(cand);
+        if (!best || gain > best.gain) best = cand;
+      }
+      if (best) best.bestForParticipant = true;
+    }
+    const seen = new Set();
+    const chosen = [];
+    const add = (x) => {
+      const k = x.code + '|' + x.security;
+      if (!seen.has(k)) { seen.add(k); chosen.push(x); }
+    };
+    candidates.filter((x) => x.bestForParticipant).forEach(add);
+    [...candidates].sort((a, b) => b.amount - a.amount).forEach((x) => { if (chosen.length < 6) add(x); });
+
+    const charts = chosen.slice(0, 6).map((x) => buildPriceSeries(store, x, c.start_date, c.end_date, names));
+    return { type: 'picks', title: 'The picks, charted', charts, noActivity, emptyNote };
+  }
+
+  // Build a {points, markers} price series for one (participant, security) pick.
+  function buildPriceSeries(store, pick, start, end, names) {
+    const canon = canonicalName(pick.security);
+    const byDate = new Map();
+    for (const h of store.holdings || []) {
+      if (!h.snapshotDate || h.currentPrice == null) continue;
+      if (h.snapshotDate < start || h.snapshotDate > end) continue;
+      if (canonicalName(h.security) !== canon) continue;
+      byDate.set(h.snapshotDate, { date: h.snapshotDate, price: h.currentPrice });
+    }
+    const points = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+
+    const markers = [];
+    for (const tx of store.transactions || []) {
+      if (!tx.security || !tx.tradeDate) continue;
+      if (tx.tradeDate < start || tx.tradeDate > end) continue;
+      if (tx.type !== 'KJØPT' && tx.type !== 'SALG') continue;
+      if (canonicalName(tx.security) !== canon) continue;
+      const split = splitForSecurity(store.attributionMap, tx.security);
+      if (!split.some((s) => s.code === pick.code)) continue;
+      markers.push({ date: tx.tradeDate, type: tx.type === 'SALG' ? 'sell' : 'buy' });
+    }
+    return {
+      code: pick.code, name: names[pick.code] || pick.code,
+      security: canon, gain: pick.gain, points, markers,
+    };
   }
 
   // ─── Equity-curve slide ─────────────────────────────────────────────────────
