@@ -76,24 +76,6 @@
     return Number.isFinite(n) ? n : null;
   }
 
-  // ─── Manual attribution overrides ────────────────────────────────────────
-  // After migrating these rows into Dim-values, this map can shrink to {}.
-  // Left in place as a fallback in case sheet rows are missing.
-  const MANUAL_ATTRIBUTION = {
-    'BEWi': [{ code: 'HF', weight: 1.0 }],
-    'HelloFresh SE': [{ code: 'JC', weight: 1.0 }],
-    'NEXSTIM OYJ  APPLICATION': [{ code: 'HH', weight: 1.0 }],
-    'Ansökan Scibase Holding': [{ code: 'HH', weight: 1.0 }],
-    'Scibase Holding AB BTA': [{ code: 'HH', weight: 1.0 }],
-    'Seafire AB TR': [{ code: 'HS', weight: 1.0 }],
-    'SEAFIRE TR SELL': [{ code: 'HS', weight: 1.0 }],
-    'Seafire AB BTA': [{ code: 'HS', weight: 1.0 }],
-    'KONGSBERG MARITIME ASA': [{ code: 'HH', weight: 1.0 }],
-    'Equinor': [{ code: 'HH', weight: 1.0 }],
-    'Inission B': [{ code: 'HS', weight: 1.0 }],
-    'Smartoptics Group': [{ code: 'HF', weight: 1.0 }],
-  };
-
   // ─── Tab parsers ─────────────────────────────────────────────────────────
 
   function parseTransactions(rows) {
@@ -184,25 +166,7 @@
         }
       }
     }
-    // Fill in manual attributions ONLY for securities the sheet doesn't cover.
-    // The Dim-values sheet is authoritative: if it attributes a stock (to any
-    // investor), the hardcoded fallback is skipped entirely — otherwise a stale
-    // override would be added on top of the sheet (e.g. Smartoptics → HF).
-    for (const [security, owners] of Object.entries(MANUAL_ATTRIBUTION)) {
-      if (seenMeta.has(security)) continue; // sheet already attributes this stock
-      seenMeta.add(security);
-      meta.push({
-        security, type: 'Stock', categoryTick: null,
-        memberString: owners.map((o) => o.code).join('/'),
-        factor: owners[0].weight, isin: null,
-      });
-      for (const { code, weight } of owners) {
-        const key = `${security}|${code}`;
-        if (seenAttr.has(key)) continue;
-        seenAttr.add(key);
-        attributions.push({ security, isin: null, investorCode: code, weight });
-      }
-    }
+    // Dim-values is the single source of truth for attribution.
     return { attributions, meta };
   }
 
