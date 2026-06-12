@@ -213,6 +213,8 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
   display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--panel-2);
   color: var(--muted); font-size: 0.78rem;
 }
+.tag.buy  { background: rgba(45, 91, 255, 0.18); color: #9bb4ff; }
+.tag.sell { background: rgba(255, 59, 59, 0.16); color: #ff9b9b; }
 
 .competition-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
