@@ -58,6 +58,7 @@
       case 'pivot': return renderPivot(s);
       case 'positions': return renderPositions(s);
       case 'standings': return renderStandings(s);
+      case 'company': return renderCompany(s);
       case 'verdict': return renderVerdict(s);
       default: return `<pre>${JSON.stringify(s, null, 2)}</pre>`;
     }
@@ -311,6 +312,27 @@
       <div class="verdict-card">
         <div class="big">${escapeHtml(s.teaser)}</div>
         <div class="runners">${(s.runnerUps || []).map(escapeHtml).join(' · ')}</div>
+      </div>
+    `;
+  }
+  function renderCompany(s) {
+    if (s.noActivity) {
+      return `
+        <h2>${escapeHtml(s.title)}</h2>
+        <p class="empty-note">${escapeHtml(s.emptyNote)}</p>
+      `;
+    }
+    const cls = s.profited ? 'positive' : 'negative';
+    const verdict = s.profited ? 'Yes — Geysir profited 🟢' : 'No — Geysir lost money 🔴';
+    return `
+      <h2>${escapeHtml(s.title)}</h2>
+      <div class="company-verdict ${cls}">${verdict}</div>
+      <div class="company-net ${cls}">${fmtNok(s.net)} · ${fmtPct(s.pct)}</div>
+      <p class="lead">${escapeHtml(s.why)}</p>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="label">Realised</div><div class="value ${pctClass(s.realized)}">${fmtNok(s.realized)}</div></div>
+        <div class="kpi-card"><div class="label">Dividends</div><div class="value">${fmtNok(s.divs)}</div></div>
+        <div class="kpi-card"><div class="label">Unrealised</div><div class="value ${pctClass(s.unrealized)}">${fmtNok(s.unrealized)}</div></div>
       </div>
     `;
   }

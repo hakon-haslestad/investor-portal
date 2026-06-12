@@ -86,6 +86,12 @@
 .verdict-card .big { font-size: 1.6rem; line-height: 1.4; }
 .verdict-card .runners { margin-top: 16px; color: var(--muted); line-height: 1.7; }
 
+/* "Did Geysir profit?" slide */
+.company-verdict { font-size: 2.2rem; font-weight: 800; letter-spacing: 0.3px; margin: 8px 0 4px; }
+.company-net { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; }
+.company-verdict.positive, .company-net.positive { color: var(--positive); }
+.company-verdict.negative, .company-net.negative { color: var(--negative); }
+
 .position-list { display: grid; gap: 16px; }
 .position-list .investor-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
 .position-list .investor-card h3 { margin: 0 0 8px; }
