@@ -152,7 +152,7 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
 .competition-card .ranks .r { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
 .competition-card .actions { margin-top: 10px; display: flex; gap: 8px; }
 
-.chart-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-top: 16px; box-shadow: var(--shadow); }
+.chart-wrap { background: #141414; border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 16px; box-shadow: var(--shadow); }
 canvas { max-width: 100%; }
 
 .chart-stack { display: grid; gap: 12px; }

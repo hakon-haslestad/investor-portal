@@ -9,7 +9,9 @@
 
 (function () {
   const NS = 'http://www.w3.org/2000/svg';
-  const PAD = { top: 16, right: 16, bottom: 28, left: 64 };
+  // Y-axis labels sit on the RIGHT (matches the price-chart design), so the
+  // right pad is the wide one and the left pad is just a small gutter.
+  const PAD = { top: 16, right: 60, bottom: 30, left: 16 };
 
   function svgEl(name, attrs) {
     const el = document.createElementNS(NS, name);
@@ -53,15 +55,15 @@
       const isZero = Math.abs(v) < 1e-9 && yMin < 0;
       const line = svgEl('line', {
         x1: PAD.left, x2: PAD.left + w, y1: y, y2: y,
-        stroke: isZero ? '#525866' : '#262a36',
-        'stroke-width': isZero ? 1 : 1,
+        stroke: isZero ? '#525866' : '#2a2a2a',
+        'stroke-width': 1,
         'shape-rendering': 'crispEdges',
       });
-      if (!isZero) line.setAttribute('stroke-dasharray', '2,4');
       g.appendChild(line);
+      // Labels on the right of the plot.
       const label = svgEl('text', {
-        x: PAD.left - 8, y: y + 4, 'text-anchor': 'end',
-        fill: '#8a92a6', 'font-size': 10,
+        x: PAD.left + w + 8, y: y + 4, 'text-anchor': 'start',
+        fill: '#8a8a8a', 'font-size': 11, 'font-weight': 500,
       });
       label.textContent = fmtNok(v);
       g.appendChild(label);
@@ -102,12 +104,12 @@
       const xPos = PAD.left + (w * (t - xMin)) / (xMax - xMin);
       const line = svgEl('line', {
         x1: xPos, x2: xPos, y1: PAD.top, y2: PAD.top + h,
-        stroke: '#262a36', 'stroke-width': 1, 'shape-rendering': 'crispEdges',
+        stroke: '#2a2a2a', 'stroke-width': 1, 'shape-rendering': 'crispEdges',
       });
       g.appendChild(line);
       const label = svgEl('text', {
-        x: xPos, y: PAD.top + h + 16, 'text-anchor': 'middle',
-        fill: '#8a92a6', 'font-size': 10,
+        x: xPos, y: PAD.top + h + 18, 'text-anchor': 'middle',
+        fill: '#8a8a8a', 'font-size': 11, 'font-weight': 500,
       });
       label.textContent = lbl;
       g.appendChild(label);
@@ -444,7 +446,9 @@
       line = '#1FE0CE', fillTop = 'rgba(31,224,206,0.16)', fillBottom = 'rgba(31,224,206,0)',
       buy = '#2D5BFF', sell = '#FF3B3B',
     } = opts || {};
-    const PADP = { top: 30, right: 70, bottom: 30, left: 8 };
+    const PADP = { top: 30, right: 70, bottom: 48, left: 12 };
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const fmtDate = (iso) => { const d = new Date(iso); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`; };
     const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, xmlns: NS, role: 'img', 'aria-label': 'Price chart' });
 
     if (points.length < 2) {
@@ -480,7 +484,22 @@
     defs.appendChild(grad);
     svg.appendChild(defs);
 
-    // Y-axis labels on the right (4 ticks).
+    // Horizontal gridlines at each y tick (faint), drawn under the area.
+    for (let i = 0; i < 4; i++) {
+      const v = lo + ((hi - lo) * i) / 3;
+      svg.appendChild(svgEl('line', {
+        x1: PADP.left, x2: width - PADP.right, y1: yAt(v).toFixed(1), y2: yAt(v).toFixed(1),
+        stroke: '#2a2a2a', 'stroke-width': '1', 'shape-rendering': 'crispEdges',
+      }));
+    }
+
+    svg.appendChild(svgEl('path', { d: areaPath, fill: `url(#${gradId})` }));
+    svg.appendChild(svgEl('path', {
+      d: linePath, fill: 'none', stroke: line, 'stroke-width': '2.5',
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+    }));
+
+    // Y-axis labels on the right (stock value, 4 ticks).
     for (let i = 0; i < 4; i++) {
       const v = lo + ((hi - lo) * i) / 3;
       const t = svgEl('text', {
@@ -491,11 +510,24 @@
       svg.appendChild(t);
     }
 
-    svg.appendChild(svgEl('path', { d: areaPath, fill: `url(#${gradId})` }));
-    svg.appendChild(svgEl('path', {
-      d: linePath, fill: 'none', stroke: line, 'stroke-width': '2.5',
-      'stroke-linejoin': 'round', 'stroke-linecap': 'round',
-    }));
+    // X-axis labels (time): up to 5 evenly spaced dates along the bottom.
+    const nLabels = Math.min(5, points.length);
+    const baseY = PADP.top + plotH;
+    for (let k = 0; k < nLabels; k++) {
+      const ts = xMin + ((xMax - xMin) * k) / (nLabels - 1);
+      const cx = xAt(ts);
+      svg.appendChild(svgEl('line', {
+        x1: cx.toFixed(1), x2: cx.toFixed(1), y1: baseY + 6, y2: baseY + 12,
+        stroke: '#3a3a3a', 'stroke-width': '2',
+      }));
+      const anchor = k === 0 ? 'start' : (k === nLabels - 1 ? 'end' : 'middle');
+      const t = svgEl('text', {
+        x: cx.toFixed(1), y: baseY + 34, fill: '#8a8a8a', 'font-size': '22',
+        'font-weight': '500', 'text-anchor': anchor,
+      });
+      t.textContent = fmtDate(new Date(ts).toISOString().slice(0, 10));
+      svg.appendChild(t);
+    }
 
     // Nearest price point for a given marker date (for the dot's y position).
     const priceAt = (ts) => {
