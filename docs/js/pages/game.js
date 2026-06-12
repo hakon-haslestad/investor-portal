@@ -325,28 +325,30 @@
     const pool = buildPool();
     if (!pool.length) { renderResult(null); return; }
     const final = spin(pool);
-
-    if (state.guess) {
-      // Guess mode: skip the name-flashing teaser (it would spoil the answer).
-      const series = priceSeriesForSecurity(final.security, final.investor, final.from, final.to);
-      if (chartable(series)) renderGuess(final);
-      else renderResult(final, { note: 'Not enough price history to guess — here\'s the answer.' });
-      return;
-    }
-
-    // Instant mode: a short "spinning" teaser before the real reveal.
+    const guess = state.guess;
     const mount = document.getElementById('game-mount');
     const btn = document.getElementById('spin');
     if (btn) { btn.disabled = true; }
 
+    // Same slot-machine spin in both modes. In guess mode the answer must stay
+    // hidden, so the labels are masked (shuffling blocks, no name/ticker).
     mount.innerHTML = `
       <div class="game-result spinning">
         <div class="verdict"><span class="spin-dice">🎲</span></div>
-        <div class="who"><span class="who-name" id="spin-name"></span></div>
+        <div class="who"><span class="who-name" id="spin-name">${guess ? 'Mystery stock' : ''}</span></div>
         <div class="stock" id="spin-stock"></div>
       </div>`;
-    const nameEl = document.getElementById('spin-name');
+    const nameEl = guess ? null : document.getElementById('spin-name');
     const stockEl = document.getElementById('spin-stock');
+    const mask = (s) => '▓'.repeat(Math.max(3, Math.min(10, (s || '').length)));
+
+    const finish = () => {
+      if (btn) { btn.disabled = false; }
+      if (!guess) { renderResult(final); return; }
+      const series = priceSeriesForSecurity(final.security, final.investor, final.from, final.to);
+      if (chartable(series)) renderGuess(final);
+      else renderResult(final, { note: 'Not enough price history to guess — here\'s the answer.' });
+    };
 
     // Intervals grow → the cycle visibly slows before landing (~1.6s total).
     const delays = [55, 55, 60, 70, 85, 105, 130, 160, 195, 235, 280, 330];
@@ -354,12 +356,8 @@
     const tick = () => {
       const rnd = pool[Math.floor(Math.random() * pool.length)];
       if (nameEl) nameEl.textContent = rnd.investorName;
-      if (stockEl) stockEl.textContent = rnd.security;
-      if (i >= delays.length) {
-        renderResult(final);
-        if (btn) { btn.disabled = false; }
-        return;
-      }
+      if (stockEl) stockEl.textContent = guess ? mask(rnd.security) : rnd.security;
+      if (i >= delays.length) { finish(); return; }
       setTimeout(tick, delays[i++]);
     };
     tick();
