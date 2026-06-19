@@ -13,9 +13,9 @@ Hosted on GitHub Pages from `docs/`.
 - Built-in leaderboards (all-time, YTD, best single bet, monthly)
 - Per-investor drill-down (holdings, transactions, equity story)
 - Custom competitions — individual or team, full-portfolio or stock-pick
-- Presentation mode: 7-slide deck per competition (title → setup → early
-  days → pivot → position breakdown → standings → verdict). Arrow keys
-  to navigate.
+- Presentation mode: a deck per competition (title → KPI summary → setup
+  → early days → return-over-window chart → pivot → position breakdown
+  with P/E·EPS → standings → verdict). Arrow keys to navigate.
 - Admin tab edits the `Ownership` tab in the sheet directly — no
   out-of-band sync step.
 - Accounting tab — read-only dashboard for the konsolidert bookkeeping
@@ -103,7 +103,7 @@ docs/
 ├── login.html            Google Sign-In
 ├── investor.html         Per-investor drill-down
 ├── competitions.html     Competitions list + edit
-├── presentation.html     7-slide presentation mode
+├── presentation.html     Competition presentation deck
 ├── data.html             Raw data inspector
 ├── accounting.html       Read-only accounting dashboard
 ├── admin.html            Ownership + sheet management
@@ -121,7 +121,7 @@ docs/
     ├── dimvalues.js             Attribution helpers
     ├── competitions-engine.js   Scoring, team aggregation
     ├── competitions-data.js     CRUD against the sheet
-    ├── presentation-builder.js  7-slide payload builder
+    ├── presentation-builder.js  Presentation deck payload builder
     ├── format.js                Number / currency / date formatters
     ├── copy.js                  Commentary phrases (verdict per investor)
     └── pages/                   One file per HTML page

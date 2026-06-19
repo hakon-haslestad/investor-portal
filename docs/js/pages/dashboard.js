@@ -107,9 +107,7 @@
   }
   window.__toggleCompetitionMode = toggleCompetitionMode;
 
-  const INVESTOR_COLORS = {
-    HH: '#4ade80', HS: '#60a5fa', 'ØS': '#fbbf24', JC: '#f472b6', HF: '#a78bfa',
-  };
+  const INVESTOR_COLORS = window.Ledger.INVESTOR_COLORS;
   const INVESTOR_CODES = ['HH', 'HS', 'ØS', 'JC', 'HF'];
 
   function toggleFilter(code) {

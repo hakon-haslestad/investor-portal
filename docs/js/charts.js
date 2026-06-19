@@ -432,5 +432,89 @@
     return wrap;
   }
 
-  window.Charts = { stackedArea, multiLine, legend };
+  // Single-security price chart: teal area + angular line, right-side y-axis
+  // labels, and buy (blue) / sell (red) dot markers placed at their trade date.
+  // points:  [{ date, price }]  (sorted ascending by date)
+  // markers: [{ date, type: 'buy' | 'sell' }]
+  let priceGradSeq = 0;
+  function priceChart(opts) {
+    const {
+      points = [], markers = [],
+      width = 1180, height = 440,
+      line = '#1FE0CE', fillTop = 'rgba(31,224,206,0.16)', fillBottom = 'rgba(31,224,206,0)',
+      buy = '#2D5BFF', sell = '#FF3B3B',
+    } = opts || {};
+    const PADP = { top: 30, right: 70, bottom: 30, left: 8 };
+    const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, xmlns: NS, role: 'img', 'aria-label': 'Price chart' });
+
+    if (points.length < 2) {
+      const t = svgEl('text', { x: width / 2, y: height / 2, fill: '#8a8a8a', 'text-anchor': 'middle' });
+      t.textContent = 'Not enough price history in this window';
+      svg.appendChild(t);
+      return svg;
+    }
+
+    const plotW = width - PADP.left - PADP.right;
+    const plotH = height - PADP.top - PADP.bottom;
+    const xMin = dateToTs(points[0].date);
+    const xMax = dateToTs(points[points.length - 1].date);
+    const prices = points.map((p) => p.price).filter((v) => Number.isFinite(v));
+    let lo = Math.min(...prices), hi = Math.max(...prices);
+    const pad = (hi - lo) * 0.12 || Math.abs(hi) * 0.05 || 1;
+    lo -= pad; hi += pad;
+
+    const xAt = (ts) => PADP.left + (xMax > xMin ? (ts - xMin) / (xMax - xMin) : 0) * plotW;
+    const yAt = (v) => PADP.top + (1 - (v - lo) / (hi - lo)) * plotH;
+
+    const linePath = points
+      .map((p, i) => `${i ? 'L' : 'M'}${xAt(dateToTs(p.date)).toFixed(2)},${yAt(p.price).toFixed(2)}`)
+      .join(' ');
+    const areaPath = `${linePath} L${xAt(xMax).toFixed(2)},${(PADP.top + plotH).toFixed(2)} `
+      + `L${PADP.left.toFixed(2)},${(PADP.top + plotH).toFixed(2)} Z`;
+
+    const gradId = `priceGrad${priceGradSeq++}`;
+    const defs = svgEl('defs');
+    const grad = svgEl('linearGradient', { id: gradId, x1: '0', y1: '0', x2: '0', y2: '1' });
+    grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': fillTop }));
+    grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': fillBottom }));
+    defs.appendChild(grad);
+    svg.appendChild(defs);
+
+    // Y-axis labels on the right (4 ticks).
+    for (let i = 0; i < 4; i++) {
+      const v = lo + ((hi - lo) * i) / 3;
+      const t = svgEl('text', {
+        x: width - PADP.right + 14, y: (yAt(v) + 8).toFixed(1),
+        fill: '#8a8a8a', 'font-size': '22', 'font-weight': '500',
+      });
+      t.textContent = Math.round(v).toString();
+      svg.appendChild(t);
+    }
+
+    svg.appendChild(svgEl('path', { d: areaPath, fill: `url(#${gradId})` }));
+    svg.appendChild(svgEl('path', {
+      d: linePath, fill: 'none', stroke: line, 'stroke-width': '2.5',
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+    }));
+
+    // Nearest price point for a given marker date (for the dot's y position).
+    const priceAt = (ts) => {
+      let best = points[0], bestD = Infinity;
+      for (const p of points) {
+        const d = Math.abs(dateToTs(p.date) - ts);
+        if (d < bestD) { bestD = d; best = p; }
+      }
+      return best.price;
+    };
+    for (const m of markers) {
+      const ts = dateToTs(m.date);
+      const cx = xAt(ts), cy = yAt(priceAt(ts));
+      const color = m.type === 'sell' ? sell : buy;
+      svg.appendChild(svgEl('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: '11', fill: color, opacity: '0.25' }));
+      svg.appendChild(svgEl('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: '7', fill: color, stroke: '#fff', 'stroke-width': '1.5' }));
+    }
+    return svg;
+  }
+
+  window.Charts = { stackedArea, multiLine, legend, priceChart };
 })();

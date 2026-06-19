@@ -14,6 +14,11 @@
 .slide {
   flex: 1; display: flex; flex-direction: column; justify-content: center;
   padding: 40px 60px; max-width: 1100px; margin: 0 auto; width: 100%;
+  animation: slide-fade 0.28s ease both;
+}
+@keyframes slide-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 .slide h1 { font-size: 3rem; margin: 0 0 16px; line-height: 1.05; }
 .slide h2 { font-size: 2.2rem; margin: 0 0 18px; line-height: 1.1; }
@@ -57,6 +62,40 @@
 .position-list .investor-card h3 { margin: 0 0 8px; }
 .position-list table th, .position-list table td { padding: 8px 12px; font-size: 0.88rem; }
 .position-list .summary-row { background: var(--panel-2); font-weight: 600; }
+
+.position-list table tbody tr:not(.summary-row):hover { background: var(--panel-2); }
+
+/* Summary KPI slide — reuses .kpi-grid / .kpi-card from style.css */
+.slide-summary .kpi-grid { margin-top: 8px; }
+.slide-summary .kpi-card .value.positive { color: var(--positive); }
+.slide-summary .kpi-card .value.negative { color: var(--negative); }
+
+/* Equity-curve slide */
+.chart-wrap {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px; margin-top: 8px;
+}
+.chart-wrap svg { width: 100%; height: auto; display: block; }
+.curve-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 4px; }
+.curve-legend .legend-key { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--muted); }
+.curve-legend .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* Picks price-chart grid (teal card look from the supplied design) */
+.picks-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-top: 8px; }
+.chart-card { background: #141414; border-radius: 12px; padding: 8px 4px; width: 100%; box-sizing: border-box; }
+.pick-card { padding: 12px 12px 8px; }
+.pick-head { display: flex; align-items: baseline; gap: 10px; padding: 2px 6px 8px; }
+.pick-head .pick-sec { font-weight: 600; font-size: 1rem; }
+.pick-head .pick-gain { margin-left: auto; font-weight: 700; }
+.pick-chart svg { display: block; width: 100%; height: auto; }
+
+/* Shared empty-state note */
+.empty-note {
+  background: var(--panel); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-2);
+  border-radius: var(--radius); padding: 18px 20px; margin-top: 12px;
+  color: var(--muted); font-size: 1.05rem; line-height: 1.5; max-width: 760px;
+}
 
 @media (max-width: 720px) {
   .slide { padding: 24px 16px; }
