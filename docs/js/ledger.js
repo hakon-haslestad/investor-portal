@@ -5,6 +5,12 @@
 (function () {
   const INVESTOR_CODES = ['HH', 'HS', 'ØS', 'JC', 'HF'];
 
+  // Per-investor chart/legend colors. Shared so the dashboard and the
+  // competition presentation draw the same investor in the same color.
+  const INVESTOR_COLORS = {
+    HH: '#4ade80', HS: '#60a5fa', 'ØS': '#fbbf24', JC: '#f472b6', HF: '#a78bfa',
+  };
+
   const BUY_TYPES = new Set([
     'KJØPT',
     'BYTTE INNLEGG VP',
@@ -95,7 +101,7 @@
   }
 
   window.Ledger = {
-    INVESTOR_CODES, classify, splitForSecurity, evenSplit,
+    INVESTOR_CODES, INVESTOR_COLORS, classify, splitForSecurity, evenSplit,
     isRealizingSell, REALIZING_SELL_TYPES,
     amountNok, feeNok,
   };
