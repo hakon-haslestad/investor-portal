@@ -86,25 +86,34 @@ not parsed.
 
 ## 3. `Offisielle nøkkeltall` — per-stock KPIs
 
-Per-year fundamentals for each held security. The header occupies
-rows 1–3 (yes, three rows — they were stylistic in the original
-sheet); data starts at **row 4**. Columns by position:
+Per-company × per-period fundamentals, one row per (company, period). The
+sheet is **header-driven**: the parser finds the column-name row (the one
+containing `Period` + `Selskap`, which may sit a row or two down behind
+stylistic header rows) and maps columns by name, so column order can change.
 
-| Pos | Field          | Type            | Example         |
-| --- | -------------- | --------------- | --------------- |
-| A   | `year`         | number          | `2024`          |
-| B   | `company`      | string          | `Equinor`       |
-| C   | `revenue`      | string (raw)    | `1 089 000 MUSD`|
-| D   | `ourShareRev`  | number          | `0.0001`        |
-| E   | `eat`          | string (raw)    | `8 700 MUSD`    |
-| F   | `ourShareEat`  | number          | `0.0001`        |
-| G   | `price`        | string (raw)    | `345.5`         |
-| H   | `eps`          | string (raw)    | `23.4`          |
-| I   | `pe`           | number          | `14.8`          |
+| Header              | Field           | Type         | Notes                                              |
+| ------------------- | --------------- | ------------ | -------------------------------------------------- |
+| `Period`            | `period`        | string       | `2025`, `Q1 2026`, …                               |
+| `Selskap`           | `company`       | string       | Company name (matched via `canonicalName`).        |
+| `Val.`              | `currency`      | string       | Reporting currency.                                |
+| `Antall`            | `shares`        | number       | Your number of shares.                             |
+| `Aksjer ute (mill)` | `sharesOut`     | number       | Shares outstanding, millions.                      |
+| `Offisiell Revenue` | `revenue`       | string (raw) | Official revenue (carries units).                  |
+| `Offisiell EAT (Oper.)` | `eat`       | string (raw) | Official earnings after tax / operating.           |
+| `Kurs NOK/val`      | `fxRate`        | number       | FX rate, NOK per reporting currency.               |
+| `Din Rev (NOK)`     | `yourRevNok`    | number       | **Your share of revenue, final NOK.**              |
+| `Din EAT Q1 (NOK)`  | `yourProfitNok` | number       | **Your share of profit, final NOK.**               |
+| `Kurs i dag`        | `priceToday`    | number       | Current price.                                     |
+| `Verdi NOK`         | `valueNok`      | number       | Your holding value, NOK.                           |
+| `EPS TTM`           | `eps`           | string (raw) | Trailing-twelve-month EPS.                         |
+| `P/E`               | `pe`            | number       | Indicative P/E.                                    |
+| `Merknad`           | `note`          | string       | Free-text per-company comment (shown in the report).|
 
-The raw-string columns (revenue, EAT, price, EPS) are passed through
-verbatim so they can carry units (`MUSD`, `MNOK`). The portal does not
-do unit math on these — they're displayed as-is in the data inspector.
+The portal does **no** FX/unit math — `yourRevNok` / `yourProfitNok` /
+`valueNok` are taken as the final NOK numbers entered in the sheet. The
+Portfolio report (`portfolio-report.html`) uses the latest period per
+company, compares periods where more than one exists, and renders the
+`Merknad` comments.
 
 ---
 

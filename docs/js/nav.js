@@ -11,6 +11,7 @@
           <a href="./the-game.html" class="${active === 'game' ? 'active' : ''}">The Game</a>
           <a href="./data.html" class="${active === 'data' ? 'active' : ''}">Data</a>
           <a href="./reports.html" class="${active === 'reports' ? 'active' : ''}">Reports</a>
+          <a href="./portfolio-report.html" class="${active === 'report' ? 'active' : ''}">Report</a>
           <a href="./accounting.html" class="${active === 'accounting' ? 'active' : ''}">Accounting</a>
           <a href="./admin.html" class="${active === 'admin' ? 'active' : ''}">Admin</a>
         </div>

@@ -207,22 +207,65 @@
     return out;
   }
 
+  // Offisielle nøkkeltall is header-driven (the header spans the first rows;
+  // the real column-name row is whichever one holds "Period" + "Selskap").
+  // Columns: Period | Selskap | Val. | Antall | Aksjer ute (mill) |
+  // Offisiell Revenue | Offisiell EAT (Oper.) | Kurs NOK/val | Din Rev (NOK) |
+  // Din EAT Q1 (NOK) | Kurs i dag | Verdi NOK | EPS TTM | P/E | Merknad.
+  // Din Rev / Din EAT are the user's share in final NOK (no FX/unit math here).
   function parseKpis(rows) {
-    if (!rows || rows.length < 4) return [];
+    if (!rows || !rows.length) return [];
+    const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase();
+
+    // Locate the column-name row within the first few rows.
+    let hi = -1;
+    for (let i = 0; i < Math.min(rows.length, 5); i++) {
+      const cells = (rows[i] || []).map(norm);
+      if (cells.some((c) => c.includes('period')) && cells.some((c) => c.includes('selskap'))) { hi = i; break; }
+    }
+    if (hi < 0) return [];
+    const header = (rows[hi] || []).map(norm);
+    const find = (pred) => header.findIndex(pred);
+    const idx = {
+      period: find((c) => c.includes('period')),
+      company: find((c) => c.includes('selskap')),
+      currency: find((c) => c === 'val.' || c === 'val'),
+      shares: find((c) => c.includes('antall')),
+      sharesOut: find((c) => c.includes('aksjer ute')),
+      revenue: find((c) => c.includes('revenue')),
+      eat: find((c) => c.includes('eat') && (c.includes('oper') || c.includes('offisiell'))),
+      fxRate: find((c) => c.includes('kurs') && c.includes('/val')),
+      yourRevNok: find((c) => c.includes('din rev')),
+      yourProfitNok: find((c) => c.includes('din eat')),
+      priceToday: find((c) => c.includes('kurs i dag')),
+      valueNok: find((c) => c.includes('verdi')),
+      eps: find((c) => c.includes('eps')),
+      pe: find((c) => c === 'p/e' || c.includes('p/e')),
+      note: find((c) => c.includes('merknad')),
+    };
+    const at = (row, i) => (i >= 0 ? row[i] : null);
+    const str = (v) => (v != null && String(v).trim() !== '' ? String(v).trim() : null);
+
     const out = [];
-    for (let r = 3; r < rows.length; r++) {
+    for (let r = hi + 1; r < rows.length; r++) {
       const row = rows[r];
-      if (!row || row[0] == null || row[1] == null) continue;
+      if (!row || at(row, idx.company) == null || String(at(row, idx.company)).trim() === '') continue;
       out.push({
-        year: numOrNull(row[0]),
-        company: String(row[1]).trim(),
-        revenue: row[2] != null ? String(row[2]) : null,
-        ourShareRev: numOrNull(row[3]),
-        eat: row[4] != null ? String(row[4]) : null,
-        ourShareEat: numOrNull(row[5]),
-        price: row[6] != null ? String(row[6]) : null,
-        eps: row[7] != null ? String(row[7]) : null,
-        pe: numOrNull(row[8]),
+        period: str(at(row, idx.period)) || '',
+        company: String(at(row, idx.company)).trim(),
+        currency: str(at(row, idx.currency)),
+        shares: numOrNull(at(row, idx.shares)),
+        sharesOut: numOrNull(at(row, idx.sharesOut)),
+        revenue: str(at(row, idx.revenue)),
+        eat: str(at(row, idx.eat)),
+        fxRate: numOrNull(at(row, idx.fxRate)),
+        yourRevNok: numOrNull(at(row, idx.yourRevNok)),
+        yourProfitNok: numOrNull(at(row, idx.yourProfitNok)),
+        priceToday: numOrNull(at(row, idx.priceToday)),
+        valueNok: numOrNull(at(row, idx.valueNok)),
+        eps: str(at(row, idx.eps)),
+        pe: numOrNull(at(row, idx.pe)),
+        note: str(at(row, idx.note)),
       });
     }
     return out;
