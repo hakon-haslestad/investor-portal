@@ -29,7 +29,7 @@
     // This engine scores only stocks BOUGHT inside the window. If nobody
     // bought anything in range, every metric is zero — flag it so slides can
     // show a clear explanation instead of a wall of 0 kr / 0.0%.
-    const noActivity = ranks.every((r) => (r.amountSpent || 0) === 0);
+    const noActivity = ranks.every((r) => (r.grossBought || 0) === 0);
     const emptyNote = `No purchases recorded between ${c.start_date} and ${c.end_date}. `
       + 'This competition scores only stocks bought inside the window — pick a window with '
       + 'buys, or check the security attribution in Dim-values.';
