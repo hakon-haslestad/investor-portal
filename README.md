@@ -61,6 +61,11 @@ file, commit, push, GitHub Pages rebuilds in under a minute. There is
 deliberately no local server: the only supported runtime is GitHub
 Pages + the user's browser + the shared Google Sheet.
 
+**Cache busting:** local `./js/` and `./css/` references in the HTML
+pages carry a `?v=YYYYMMDD` query string. When you change a JS/CSS file,
+bump this version (find-and-replace the old `?v=` value across `docs/*.html`)
+so browsers fetch the new file instead of a stale cached copy.
+
 ## Sheet contract
 
 The portal expects seven tabs in the source sheet:
