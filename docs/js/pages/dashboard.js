@@ -24,8 +24,12 @@
 
   const { store, me } = await window.Nav.bootstrap('home');
   clearTimeout(loadingTimer);
+  // The spreadsheet's own name, shown in the welcome heading. Best-effort:
+  // fall back to a generic phrase if the metadata call fails.
+  let sheetName = '';
+  try { sheetName = await window.Sheet.spreadsheetTitle(); } catch (_e) { sheetName = ''; }
   const names = window.Copy.namesFromMembers(store.members);
-  const { fmtNok, fmtPct, pctClass, PODIUM } = window.Fmt;
+  const { fmtNok, fmtPct, pctClass, PODIUM, escapeHtml } = window.Fmt;
 
   // Look up the currently-active competition (today between start_date and
   // end_date). The check is best-effort — if the Competitions tab is missing
@@ -387,7 +391,7 @@
     root.innerHTML = `
       <div class="hero">
         <div>
-          <h2>Welcome back, ${me.displayName}. Here's the book.</h2>
+          <h2>Welcome back, ${me.displayName}. ${sheetName ? `Here is the books for "${escapeHtml(sheetName)}".` : 'Here\'s the book.'}</h2>
           <div class="when">Snapshot: ${dateOrNone} ${filterLabel}</div>
         </div>
         ${renderPicker(d.window)}
