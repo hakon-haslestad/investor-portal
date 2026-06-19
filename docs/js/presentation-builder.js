@@ -166,10 +166,15 @@
       })) : null,
     };
 
+    // Verdict speaks to the actual standings — teams when it's a team
+    // competition, otherwise the individual codes — so it matches Final standings.
+    const standings = (scored.teams && scored.teams.length)
+      ? scored.teams.map((t) => ({ label: t.label, pct: t.pct }))
+      : ranks.map((r) => ({ label: r.code, pct: r.pct }));
     let verdictLine = '';
-    if (ranks.length) {
-      const top = ranks[0]; const last = ranks[ranks.length - 1];
-      verdictLine = `${top.code} takes the win at ${fmtPct(top.pct)}. ${last.code} brings up the rear at ${fmtPct(last.pct)}.`;
+    if (standings.length) {
+      const top = standings[0]; const last = standings[standings.length - 1];
+      verdictLine = `${top.label} takes the win at ${fmtPct(top.pct)}. ${last.label} brings up the rear at ${fmtPct(last.pct)}.`;
       if (top.pct > 30) verdictLine += ' A vintage run.';
       if (last.pct < -10) verdictLine += ' Better luck next round.';
     }
@@ -177,7 +182,7 @@
       type: 'verdict',
       title: 'Verdict',
       teaser: verdictLine,
-      runnerUps: ranks.slice(0, 3).map((r) => verdictFromReturn(names[r.code] || r.code, r.pct)),
+      runnerUps: standings.slice(0, 3).map((t) => verdictFromReturn(t.label, t.pct)),
     };
 
     return {
@@ -300,8 +305,19 @@
   // realized + dividends + (latest-price) unrealized as buys accrue — directionally
   // right, but interior unrealized MV is not historically priced.
   function buildCurveSlide(store, c, participants, names, noActivity, emptyNote) {
-    const dates = sampleDates(c.start_date, c.end_date, 14);
-    // pctByDate[code] = array of {date, y} aligned to `dates`.
+    // Sample at the real Beholdningsverdi snapshot dates inside the window so
+    // every interior point is priced by an actual snapshot (avoids the −100%
+    // artifact from sampling a date no snapshot can price). Fall back to even
+    // spacing when there are no in-window snapshots. Always include the end,
+    // and anchor each line at 0% on the start date (return is 0 at entry).
+    const snaps = [...new Set((store.holdings || []).map((h) => h.snapshotDate).filter(Boolean))]
+      .filter((d) => d > c.start_date && d <= c.end_date)
+      .sort((a, b) => a.localeCompare(b));
+    const interior = snaps.length
+      ? snaps
+      : sampleDates(c.start_date, c.end_date, 14).filter((d) => d > c.start_date && d <= c.end_date);
+    const dates = interior.includes(c.end_date) ? interior : [...interior, c.end_date];
+
     const acc = {};
     for (const d of dates) {
       const r = scoreWithDates(store, c, participants, c.start_date, d);
@@ -309,6 +325,7 @@
         (acc[row.code] = acc[row.code] || []).push({ date: d, y: row.pct });
       }
     }
+    for (const code of Object.keys(acc)) acc[code].unshift({ date: c.start_date, y: 0 });
     let i = 0;
     const palette = ['#4ade80', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#34d399', '#f87171'];
     const series = Object.keys(acc).map((code) => ({
