@@ -48,6 +48,22 @@
     }
     const s = String(v).trim();
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+    // Norwegian / English month-name text, e.g. "19.jun. 2026", "19. juni 2026",
+    // "1 mars 2026". Keyed by the first 3 letters of the month (NB + EN).
+    const MONTHS = {
+      jan: 1, feb: 2, mar: 3, apr: 4, mai: 5, may: 5, jun: 6,
+      jul: 7, aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, des: 12, dec: 12,
+    };
+    const nm = s.toLowerCase().match(/^(\d{1,2})[.\s]*([a-zæøå]{3,})[.\s]*(\d{4})$/);
+    if (nm) {
+      const mon = MONTHS[nm[2].slice(0, 3)];
+      if (mon) return `${nm[3]}-${String(mon).padStart(2, '0')}-${nm[1].padStart(2, '0')}`;
+    }
+    // Numeric day-first, e.g. "19.06.2026" or "19/06/2026".
+    const dmy = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+
     const d = new Date(s);
     if (!Number.isNaN(d.getTime())) return ymd(d);
     return null;
