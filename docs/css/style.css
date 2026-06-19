@@ -138,6 +138,35 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
 .flash.success { background: rgba(62, 224, 127, 0.12); color: var(--positive); }
 .flash.error   { background: rgba(255, 91, 91, 0.12); color: var(--negative); }
 
+/* The Game */
+.range-picker select.preset { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+.game-spin { font-size: 1.05rem; padding: 12px 28px; }
+.game-result {
+  border-radius: var(--radius); padding: 28px; text-align: center;
+  border: 2px solid var(--border); background: var(--panel);
+  transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+}
+.game-result.win {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(62, 224, 127, 0.25);
+  background: linear-gradient(180deg, rgba(62, 224, 127, 0.12), var(--panel));
+}
+.game-result.loss {
+  border-color: var(--danger); box-shadow: 0 0 0 3px rgba(255, 91, 91, 0.25);
+  background: linear-gradient(180deg, rgba(255, 91, 91, 0.12), var(--panel));
+}
+.game-result.spinning { opacity: 0.6; }
+.game-result .verdict { font-size: 2rem; font-weight: 800; letter-spacing: 0.5px; }
+.game-result.win  .verdict { color: var(--positive); }
+.game-result.loss .verdict { color: var(--negative); }
+.game-result .stock { font-size: 1.6rem; font-weight: 700; margin-top: 6px; }
+.game-result .who { color: var(--muted); margin-top: 2px; }
+.game-result .pnl { font-size: 1.3rem; font-weight: 700; margin-top: 10px; }
+.game-result .detail-grid {
+  display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-top: 18px;
+}
+.game-result .detail-grid .kpi-card { min-width: 150px; text-align: left; }
+.game-result #game-chart:not(:empty) { margin-top: 18px; }
+
 .tag {
   display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--panel-2);
   color: var(--muted); font-size: 0.78rem;

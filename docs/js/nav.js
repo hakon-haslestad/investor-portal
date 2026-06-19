@@ -8,6 +8,7 @@
         <div class="links">
           <a href="./index.html" class="${active === 'home' ? 'active' : ''}">Dashboard</a>
           <a href="./competitions.html" class="${active === 'comp' ? 'active' : ''}">Competitions</a>
+          <a href="./the-game.html" class="${active === 'game' ? 'active' : ''}">The Game</a>
           <a href="./data.html" class="${active === 'data' ? 'active' : ''}">Data</a>
           <a href="./reports.html" class="${active === 'reports' ? 'active' : ''}">Reports</a>
           <a href="./accounting.html" class="${active === 'accounting' ? 'active' : ''}">Accounting</a>
