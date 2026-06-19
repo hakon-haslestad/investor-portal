@@ -32,7 +32,6 @@ window.PORTAL_CONFIG = {
     members: 'Members',
     competitions: 'Competitions',
     participants: 'Competition_Participants',
-    picks: 'Competition_Picks',
   },
 
   // Cross-year tab names inside the accounting sheet. Per-year tabs

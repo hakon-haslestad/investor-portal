@@ -14,8 +14,8 @@
 
   // Score each comp client-side
   const scored = list.map((entry) => {
-    const s = window.CompetitionEngine.scoreCompetition(store, entry.competition, entry.participants, entry.picks);
-    return { ...s, participants: entry.participants, picks: entry.picks };
+    const s = window.CompetitionEngine.scoreCompetition(store, entry.competition, entry.participants);
+    return { ...s, participants: entry.participants };
   });
 
   render();

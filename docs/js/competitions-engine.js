@@ -20,7 +20,7 @@
   const { INVESTOR_CODES, classify, splitForSecurity, amountNok } = window.Ledger;
   const { canonicalName, pricesAtDate } = window.Portfolio;
 
-  function scoreCompetition(store, competition, participants /*, _legacyPicks */) {
+  function scoreCompetition(store, competition, participants) {
     const attrMap = store.attributionMap;
     const txs = store.transactions;
     const startDate = competition.start_date;
@@ -178,7 +178,7 @@
       }))
       .sort((a, b) => b.pct - a.pct);
 
-    return { competition, ranks, teams, picksByInvestor: {}, snapshotUsed };
+    return { competition, ranks, teams, snapshotUsed };
   }
 
   window.CompetitionEngine = { scoreCompetition };
