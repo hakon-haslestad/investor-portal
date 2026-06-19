@@ -100,8 +100,8 @@
     // (Beholdningsverdi mark) — surfaced per-row below. Rather than a hard
     // day-30 cutoff (which can land between snapshots and mis-mark the
     // unrealised value), snap to the actual Beholdningsverdi snapshot date
-    // closest to day 30, within a 25–45 day band (clamped to the window).
-    const earlyEnd = nearestSnapshotEnd(store, c, 30, 25, 45);
+    // closest to day 30, within a 20–60 day band (clamped to the window).
+    const earlyEnd = nearestSnapshotEnd(store, c, 30, 20, 60);
     const earlyRanks = scoreWithDates(store, c, scored.participants || [], c.start_date, earlyEnd);
     const earlySlide = {
       type: 'early',
