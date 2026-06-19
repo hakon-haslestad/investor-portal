@@ -521,7 +521,7 @@
         const slot = split.find((s) => s.code === code);
         if (!slot) continue;
         const w = slot.weight;
-        if (cat === 'SELL' && isRealizingSell(tx.type)) realizedYtd += amountNok(tx) * w * 0.1;
+        if (cat === 'SELL' && isRealizingSell(tx.type)) realizedYtd += amountNok(tx) * w;
         else if (cat === 'DIVIDEND' || cat === 'TAX') divsYtd += amountNok(tx) * w;
       }
       const base = perInvestor[code].deposits || 1;
