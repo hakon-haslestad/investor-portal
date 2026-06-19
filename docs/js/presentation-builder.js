@@ -227,30 +227,24 @@
 
   // ─── Picks price-chart slide ────────────────────────────────────────────────
 
-  // One price chart per chosen pick: each participant's best in-window pick,
-  // plus the largest buys by amount, deduped (code+security) and capped at 6.
+  // One price chart per stock in the competition — deduped by SECURITY (a stock
+  // shared between investors is charted once, attributed to whoever put the most
+  // in), and every pick is shown (no cap). Sorted by amount invested.
   function buildPicksSlide(store, c, scored, names, noActivity, emptyNote) {
-    const candidates = [];
+    const bySecurity = new Map();
     for (const r of scored.ranks || []) {
-      let best = null;
       for (const b of r.breakdown || []) {
+        const key = canonicalName(b.security);
         const gain = (b.unrealized || 0) + (b.realized || 0) + (b.divs || 0);
-        const cand = { code: r.code, security: b.security, gain, amount: b.costSum || 0 };
-        candidates.push(cand);
-        if (!best || gain > best.gain) best = cand;
+        // What this participant actually put into the stock. costSum is the
+        // remaining held cost; add back the cost of any in-window sells.
+        const amount = (b.costSum || 0) + Math.max((b.soldProceeds || 0) - (b.realized || 0), 0);
+        const cur = bySecurity.get(key);
+        if (!cur || amount > cur.amount) bySecurity.set(key, { code: r.code, security: key, gain, amount });
       }
-      if (best) best.bestForParticipant = true;
     }
-    const seen = new Set();
-    const chosen = [];
-    const add = (x) => {
-      const k = x.code + '|' + x.security;
-      if (!seen.has(k)) { seen.add(k); chosen.push(x); }
-    };
-    candidates.filter((x) => x.bestForParticipant).forEach(add);
-    [...candidates].sort((a, b) => b.amount - a.amount).forEach((x) => { if (chosen.length < 6) add(x); });
-
-    const charts = chosen.slice(0, 6).map((x) => buildPriceSeries(store, x, c.start_date, c.end_date, names));
+    const chosen = [...bySecurity.values()].sort((a, b) => b.amount - a.amount);
+    const charts = chosen.map((x) => buildPriceSeries(store, x, c.start_date, c.end_date, names));
     return { type: 'picks', title: 'The picks, charted', charts, noActivity, emptyNote };
   }
 
