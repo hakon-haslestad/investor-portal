@@ -70,6 +70,10 @@
       })),
     };
 
+    // First 30 days: re-score the competition over [start, start+30] so it
+    // follows the same rules (only stocks bought in-window count). netPnl
+    // already combines realised (from rådata sells/dividends) and unrealised
+    // (Beholdningsverdi mark at the 30-day mark) — surfaced per-row below.
     const earlyEnd = addDays(c.start_date, 30);
     const earlyRanks = scoreWithDates(store, c, scored.participants || [], c.start_date, earlyEnd);
     const earlySlide = {
@@ -79,6 +83,7 @@
       asOf: earlyEnd,
       ranks: earlyRanks.map((r) => ({
         code: r.code, teamLabel: r.teamLabel, pct: r.pct, netPnl: r.netPnl,
+        realized: r.realizedInWindow, unrealized: r.unrealizedAtEnd, divs: r.divsInWindow,
       })),
     };
 
@@ -151,8 +156,8 @@
     return {
       competition: c,
       slides: [
-        titleSlide, summarySlide, setupSlide, earlySlide, curveSlide,
-        picksSlide, pivotSlide, positionSlide, standingsSlide, verdictSlide,
+        titleSlide, setupSlide, earlySlide, curveSlide, picksSlide,
+        pivotSlide, summarySlide, positionSlide, standingsSlide, verdictSlide,
       ],
     };
   }
@@ -330,13 +335,25 @@
     return result.ranks;
   }
 
+  // Late-window trades, but only ones that follow the competition rules:
+  // a trade counts only if it's on a security the participant actually holds
+  // in the competition — i.e. a position opened by an in-window KJØPT (those
+  // are exactly the securities in their scored breakdown). This excludes sells
+  // of pre-window holdings and trades on stocks that aren't part of the
+  // competition, which the old version wrongly included.
   function extractPivotTrades(store, c, scored) {
     const attrMap = store.attributionMap;
     const txs = store.transactions;
     const start = c.start_date;
     const end = c.end_date;
     const mid = midDate(start, end);
-    const participantCodes = new Set(scored.ranks.map((r) => r.code));
+
+    // code → set of canonical securities that are part of that participant's
+    // competition (opened by an in-window buy).
+    const compSecsByCode = new Map();
+    for (const r of scored.ranks || []) {
+      compSecsByCode.set(r.code, new Set((r.breakdown || []).map((b) => canonicalName(b.security))));
+    }
 
     const out = [];
     for (const tx of txs) {
@@ -344,12 +361,14 @@
       if (tx.type !== 'KJØPT' && tx.type !== 'SALG') continue;
       if (tx.tradeDate < start || tx.tradeDate > end) continue;
       if (tx.tradeDate < mid) continue;
+      const sec = canonicalName(tx.security);
       const split = splitForSecurity(attrMap, tx.security);
       for (const { code, weight } of split) {
-        if (!participantCodes.has(code)) continue;
+        const secs = compSecsByCode.get(code);
+        if (!secs || !secs.has(sec)) continue; // not a competition position for this participant
         out.push({
           date: tx.tradeDate, code, type: tx.type,
-          security: canonicalName(tx.security),
+          security: sec,
           qty: (tx.qty || 0) * weight,
           amount: (tx.amount || 0) * weight,
         });
