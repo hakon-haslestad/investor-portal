@@ -138,6 +138,31 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
 .flash.success { background: rgba(62, 224, 127, 0.12); color: var(--positive); }
 .flash.error   { background: rgba(255, 91, 91, 0.12); color: var(--negative); }
 
+/* Collapsible "How scoring works" info panel */
+.rules-info { margin: 0 0 16px; }
+.rules-info > summary {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  list-style: none; color: var(--link); font-size: 0.9rem; user-select: none; padding: 4px 0;
+}
+.rules-info > summary::-webkit-details-marker { display: none; }
+.rules-info > summary::marker { content: ''; }
+.rules-info .info-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 999px; flex: none;
+  background: var(--panel-2); border: 1px solid var(--border);
+  font-size: 0.78rem; font-weight: 700; font-style: italic; color: var(--link);
+}
+.rules-info[open] > summary { margin-bottom: 10px; }
+.rules-body {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 20px; box-shadow: var(--shadow);
+}
+.rules-body h4 { margin: 14px 0 6px; font-size: 0.95rem; }
+.rules-body h4:first-child { margin-top: 0; }
+.rules-body ul { margin: 0 0 8px; padding-left: 18px; }
+.rules-body li { margin: 4px 0; font-size: 0.88rem; line-height: 1.45; }
+.rules-body p { font-size: 0.88rem; color: var(--muted); margin: 6px 0; }
+
 /* The Game */
 .range-picker select.preset { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
 .game-spin { font-size: 1.05rem; padding: 12px 28px; }
