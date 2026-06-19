@@ -197,19 +197,26 @@
   }
 
   // ─── price timeline ─────────────────────────────────────────────────────────
+  // Per-share price in NOK from a trade (Kurs × FX) — so the chart's y-axis is
+  // always NOK even for USD/SEK-denominated stocks.
+  function txPriceNok(tx) {
+    const cur = (tx.currency || '').toString().toUpperCase().trim();
+    const fx = (!cur || cur === 'NOK') ? 1 : (Number(tx.fxRate) > 0 ? tx.fxRate : 1);
+    return tx.price * fx;
+  }
   function priceSeriesForSecurity(security, code, from, to) {
     const c = canon(security);
     const byDate = new Map();
     const markers = [];
-    // Every in-window trade contributes its Kurs as a price point, and marks
-    // this investor's own buys/sells.
+    // Every in-window trade contributes its Kurs (in NOK) as a price point, and
+    // marks this investor's own buys/sells.
     for (const tx of store.transactions || []) {
       if (!tx.security || !tx.tradeDate) continue;
       if (tx.tradeDate < from || tx.tradeDate > to) continue;
       if (canon(tx.security) !== c) continue;
       const isTrade = tx.type === 'KJØPT' || tx.type === 'SALG';
       if (isTrade && Number.isFinite(tx.price) && tx.price > 0) {
-        byDate.set(tx.tradeDate, { date: tx.tradeDate, price: tx.price });
+        byDate.set(tx.tradeDate, { date: tx.tradeDate, price: txPriceNok(tx) });
       }
       if (isTrade) {
         const split = window.Ledger.splitForSecurity(store.attributionMap, tx.security);
@@ -218,12 +225,14 @@
         }
       }
     }
-    // Snapshot prices take precedence on a shared date.
+    // Snapshot prices (NOK = marketValueNok / qty) take precedence on a shared date.
     for (const h of store.holdings || []) {
       if (!h.snapshotDate || h.currentPrice == null) continue;
       if (h.snapshotDate < from || h.snapshotDate > to) continue;
       if (canon(h.security) !== c) continue;
-      byDate.set(h.snapshotDate, { date: h.snapshotDate, price: h.currentPrice });
+      const priceNok = (h.qty && h.marketValueNok != null && h.qty !== 0)
+        ? h.marketValueNok / h.qty : h.currentPrice;
+      byDate.set(h.snapshotDate, { date: h.snapshotDate, price: priceNok });
     }
     const points = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
     return { points, markers };
@@ -298,7 +307,7 @@
       </div>`;
     if (chartable(series)) {
       document.getElementById('game-chart').appendChild(
-        window.Charts.priceChart({ points: series.points, markers: series.markers })
+        window.Charts.priceChart({ points: series.points, markers: series.markers, yUnit: 'NOK', invested: entry.purchaseAmount })
       );
     }
   }
@@ -316,7 +325,7 @@
         <div style="margin-top:16px"><button class="btn game-spin" id="reveal">Reveal 👀</button></div>
       </div>`;
     document.getElementById('game-chart').appendChild(
-      window.Charts.priceChart({ points: series.points, markers: [] })
+      window.Charts.priceChart({ points: series.points, markers: [], yUnit: 'NOK' })
     );
     document.getElementById('reveal').addEventListener('click', () => renderResult(entry));
   }
