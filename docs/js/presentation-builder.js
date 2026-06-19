@@ -186,12 +186,52 @@
       runnerUps: standings.slice(0, 3).map((t) => verdictFromReturn(t.label, t.pct)),
     };
 
+    const companySlide = buildCompanySlide(scored, noActivity, emptyNote);
+
     return {
       competition: c,
       slides: [
         titleSlide, setupSlide, earlySlide, curveSlide, picksSlide,
-        pivotSlide, summarySlide, positionSlide, standingsSlide, verdictSlide,
+        pivotSlide, summarySlide, positionSlide, standingsSlide, companySlide, verdictSlide,
       ],
+    };
+  }
+
+  // ─── "Did Geysir profit?" slide ─────────────────────────────────────────────
+  // Aggregate net P/L across all competition positions (realised + dividends +
+  // unrealised). Did the club make money on this competition, and the one-line why.
+  function buildCompanySlide(scored, noActivity, emptyNote) {
+    const ranks = scored.ranks || [];
+    const sum = (fn) => ranks.reduce((a, r) => a + (fn(r) || 0), 0);
+    const realized = sum((r) => r.realizedInWindow);
+    const divs = sum((r) => r.divsInWindow);
+    const unrealized = sum((r) => r.unrealizedAtEnd);
+    const net = sum((r) => r.netPnl);
+    const spent = sum((r) => r.amountSpent);
+    const pct = spent > 0 ? (net / spent) * 100 : 0;
+    const profited = net >= 0;
+
+    // Biggest mover among the three P/L components — drives the "why".
+    const parts = [
+      { gain: 'realised trading gains', loss: 'realised trading losses', v: realized },
+      { gain: 'dividends', loss: 'a dividend shortfall', v: divs },
+      { gain: 'unrealised gains on open positions', loss: 'unrealised losses on open positions', v: unrealized },
+    ];
+    const driver = parts.reduce((a, b) => (Math.abs(b.v) > Math.abs(a.v) ? b : a));
+    const driverText = `${driver.v >= 0 ? driver.gain : driver.loss} (${fmtNok(driver.v)})`;
+
+    let why;
+    if (noActivity) {
+      why = 'No stocks were bought inside the window, so the competition moved nothing on the books.';
+    } else if (profited) {
+      why = `Yes — the club is up ${fmtNok(net)} (${fmtPct(pct)}) across the competition stocks, led by ${driverText}.`;
+    } else {
+      why = `No — the club is down ${fmtNok(net)} (${fmtPct(pct)}) across the competition stocks, dragged by ${driverText}.`;
+    }
+
+    return {
+      type: 'company', title: 'Did Geysir profit?',
+      profited, net, pct, realized, divs, unrealized, why, noActivity, emptyNote,
     };
   }
 
