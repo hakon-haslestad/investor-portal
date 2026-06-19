@@ -22,6 +22,8 @@
   function dateToTs(d) { return Date.parse(d); }
   function tsToDate(t) { return new Date(t); }
 
+  let mlGradSeq = 0; // unique gradient ids for single-series area fills
+
   function niceMax(v) {
     if (v <= 0) return 1;
     const exp = Math.pow(10, Math.floor(Math.log10(v)));
@@ -249,6 +251,20 @@
     const seriesPts = series.map((s) =>
       s.points.map((p) => ({ x: xScale(dateToTs(p.date)), y: yScale(p.y), raw: p }))
     );
+
+    // Single-series timelines get the price-chart area fill (teal/series-color
+    // gradient under the line). Multi-series stay as plain lines so overlapping
+    // fills don't muddy the comparison.
+    if (series.length === 1) {
+      const gradId = `mlGrad${mlGradSeq++}`;
+      const defs = svgEl('defs');
+      const grad = svgEl('linearGradient', { id: gradId, x1: '0', y1: '0', x2: '0', y2: '1' });
+      grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': series[0].color, 'stop-opacity': '0.16' }));
+      grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': series[0].color, 'stop-opacity': '0' }));
+      defs.appendChild(grad);
+      g.appendChild(defs);
+      g.appendChild(svgEl('path', { d: areaD(seriesPts[0], PAD.top + h), fill: `url(#${gradId})` }));
+    }
 
     for (let i = 0; i < series.length; i++) {
       const s = series[i];
