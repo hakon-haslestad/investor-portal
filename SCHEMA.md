@@ -173,8 +173,8 @@ Column order matters: `createCompetition` appends rows positionally, so
 the header row above must stay in this exact order.
 
 Delete: removing a competition in the portal hard-deletes its row here
-and cascades to its rows in `Competition_Participants` and
-`Competition_Picks` (matched by competition id).
+and cascades to its rows in `Competition_Participants` (matched by
+competition id).
 
 The 7-slide presentation mode generates all of its copy from the
 competition data and standings — there is no per-competition narrative
@@ -198,24 +198,9 @@ the same `team_label` (e.g. two rows with `team_label = "JC+ØS"`).
 Solo participants get a unique `team_label` per row (typically just
 their own code).
 
----
-
-## 8. `Competition_Picks` — stock picks per participant
-
-Used when the competition is stock-pick mode rather than
-full-portfolio. Read by position.
-
-| Pos | Field           | Type    | Notes                                |
-| --- | --------------- | ------- | ------------------------------------ |
-| A   | `competition_id`| string  | FK to `Competitions.Id`.             |
-| B   | `investor_code` | string  | Who picked it.                       |
-| C   | `security`      | string  | Free text, matches `Verdipapir`.     |
-| D   | `isin`          | string  | Optional.                            |
-| E   | `label`         | string  | Optional display label.              |
-
-Each pick is scored using the same calculator the dashboard uses, so a
-participant's competition score is just the period return of the
-selected security within the competition window.
+A participant's competition score is derived from their actual Nordnet
+transactions inside the competition window — only new buys made during
+the window count.
 
 ---
 
@@ -224,7 +209,7 @@ selected security within the competition window.
 To stand up a sheet from scratch:
 
 1. Create a new Google Sheet.
-2. Add the eight tabs above with their headers (positional tabs only
+2. Add the seven tabs above with their headers (positional tabs only
    need the first header row to exist — the parser skips it).
 3. Share with the service email pattern your OAuth client uses, or
    directly with the investors' Google accounts.

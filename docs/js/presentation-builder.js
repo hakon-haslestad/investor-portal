@@ -55,7 +55,7 @@
     };
 
     const earlyEnd = addDays(c.start_date, 30);
-    const earlyRanks = scoreWithDates(store, c, scored.participants || [], scored.picks || [], c.start_date, earlyEnd);
+    const earlyRanks = scoreWithDates(store, c, scored.participants || [], c.start_date, earlyEnd);
     const earlySlide = {
       type: 'early',
       title: 'First 30 days',
@@ -130,9 +130,9 @@
     };
   }
 
-  function scoreWithDates(store, c, participants, picks, from, to) {
+  function scoreWithDates(store, c, participants, from, to) {
     const overridden = { ...c, start_date: from, end_date: to };
-    const result = window.CompetitionEngine.scoreCompetition(store, overridden, participants, picks);
+    const result = window.CompetitionEngine.scoreCompetition(store, overridden, participants);
     return result.ranks;
   }
 

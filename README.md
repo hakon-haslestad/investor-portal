@@ -63,7 +63,7 @@ Pages + the user's browser + the shared Google Sheet.
 
 ## Sheet contract
 
-The portal expects eight tabs in the source sheet:
+The portal expects seven tabs in the source sheet:
 
 | Tab                        | Purpose                                          |
 | -------------------------- | ------------------------------------------------ |
@@ -72,9 +72,8 @@ The portal expects eight tabs in the source sheet:
 | `Offisielle nøkkeltall`    | Per-stock KPIs (revenue, EPS, P/E)               |
 | `Dim-values`               | Security → investor attribution + overrides     |
 | `Members`                  | Email → investor code + role (member/admin)      |
-| `Competitions`             | Competition metadata + narrative JSON            |
+| `Competitions`             | Competition metadata                             |
 | `Competition_Participants` | Per-competition participants and teams           |
-| `Competition_Picks`        | Per-competition stock picks                      |
 
 **Full column-level schema**, including data types, special enum
 values, and a replication checklist: see [SCHEMA.md](./SCHEMA.md).
