@@ -20,6 +20,30 @@
     return new Date(s + (e - s) / 2).toISOString().slice(0, 10);
   }
 
+  // End date for the "first ~N days" view. Picks the Beholdningsverdi snapshot
+  // date closest to start+targetDays, within [start+loDays, start+hiDays]
+  // (clamped to the competition end). Falls back to start+targetDays (capped
+  // at the end date) when no snapshot lands in that band.
+  function nearestSnapshotEnd(store, c, targetDays, loDays, hiDays) {
+    const end = c.end_date;
+    const clampEnd = (d) => (d < end ? d : end);
+    const target = clampEnd(addDays(c.start_date, targetDays));
+    const lo = addDays(c.start_date, loDays);
+    const hi = clampEnd(addDays(c.start_date, hiDays));
+    const tTs = Date.parse(target);
+    let best = target, bestDiff = Infinity;
+    const seen = new Set();
+    for (const h of store.holdings || []) {
+      const d = h.snapshotDate;
+      if (!d || seen.has(d)) continue;
+      seen.add(d);
+      if (d < lo || d > hi) continue;
+      const diff = Math.abs(Date.parse(d) - tTs);
+      if (diff < bestDiff) { bestDiff = diff; best = d; }
+    }
+    return best;
+  }
+
   function buildPresentation(store, scored) {
     const c = scored.competition;
     const ranks = scored.ranks;
@@ -70,11 +94,14 @@
       })),
     };
 
-    // First 30 days: re-score the competition over [start, start+30] so it
+    // First 30 days: re-score the competition over [start, ~30 days] so it
     // follows the same rules (only stocks bought in-window count). netPnl
     // already combines realised (from rådata sells/dividends) and unrealised
-    // (Beholdningsverdi mark at the 30-day mark) — surfaced per-row below.
-    const earlyEnd = addDays(c.start_date, 30);
+    // (Beholdningsverdi mark) — surfaced per-row below. Rather than a hard
+    // day-30 cutoff (which can land between snapshots and mis-mark the
+    // unrealised value), snap to the actual Beholdningsverdi snapshot date
+    // closest to day 30, within a 25–45 day band (clamped to the window).
+    const earlyEnd = nearestSnapshotEnd(store, c, 30, 25, 45);
     const earlyRanks = scoreWithDates(store, c, scored.participants || [], c.start_date, earlyEnd);
     const earlySlide = {
       type: 'early',

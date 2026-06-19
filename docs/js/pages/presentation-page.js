@@ -180,7 +180,7 @@
     return `
       <h2>${escapeHtml(s.title)}</h2>
       <p class="lead">${escapeHtml(s.teaser)}</p>
-      <div class="text-muted text-small" style="margin-bottom:10px">As of ${s.asOf} · realised (sells + dividends) and unrealised (mark-to-market) combined, competition stocks only</div>
+      <div class="text-muted text-small" style="margin-bottom:10px">As of ${s.asOf} (nearest snapshot to day 30) · realised (sells + dividends) and unrealised (mark-to-market) combined, competition stocks only</div>
       <div class="standings"><div class="col">
         ${s.ranks.map((r, i) => `
           <div class="rank-row">
