@@ -134,8 +134,9 @@
             costSum: acc.costSum + (b.costSum || 0),
             divs: acc.divs + (b.divs || 0),
             unrealized: acc.unrealized + (b.unrealized || 0),
+            realized: acc.realized + (b.realized || 0),
           }),
-          { mv: 0, costSum: 0, divs: 0, unrealized: 0 }
+          { mv: 0, costSum: 0, divs: 0, unrealized: 0, realized: 0 }
         );
         // Attach fundamentals (P/E, EPS) where the security exists in the
         // Offisielle nøkkeltall tab.
