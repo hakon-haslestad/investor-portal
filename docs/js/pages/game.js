@@ -16,10 +16,16 @@
   catch (_e) { /* optional */ }
   const compById = new Map(competitions.map((c) => [c.competition.id, c]));
 
+  const _today = new Date();
+  const _todayStr = _today.toISOString().slice(0, 10);
+  const _yearAgo = new Date(_today); _yearAgo.setUTCFullYear(_yearAgo.getUTCFullYear() - 1);
+
   const state = {
-    source: 'all',     // 'all' | '1y' | 'ytd' | 'comp:<id>'
+    source: 'all',     // 'all' | '1y' | '2y' | '3y' | 'ytd' | 'custom' | 'comp:<id>'
     scope: 'window',   // 'window' | 'lifetime' (ignored when a competition is the source)
     guess: false,      // guess-the-stock-first flow (opt-in)
+    customFrom: _yearAgo.toISOString().slice(0, 10),
+    customTo: _todayStr,
     lastKey: null,
     picked: new Set(), // keys drawn this round — draw without replacement
   };
@@ -39,6 +45,7 @@
       case '1y': return { from: addYears(today, -1), to: todayStr };
       case '2y': return { from: addYears(today, -2), to: todayStr };
       case '3y': return { from: addYears(today, -3), to: todayStr };
+      case 'custom': return { from: state.customFrom, to: state.customTo };
       case 'all': return { from: earliest, to: todayStr };
       case 'ytd':
       default: return { from: `${today.getUTCFullYear()}-01-01`, to: todayStr };
@@ -381,6 +388,7 @@
       { id: '2y', label: '2 Years' },
       { id: '3y', label: '3 Years' },
       { id: 'ytd', label: 'YTD' },
+      { id: 'custom', label: 'Custom' },
     ];
     root.innerHTML = `
       <div class="hero">
@@ -393,6 +401,11 @@
         ${periods.map((p) =>
           `<button class="preset ${!isComp && state.source === p.id ? 'active' : ''}" data-period="${p.id}">${p.label}</button>`
         ).join('')}
+        ${state.source === 'custom' ? `
+          <input type="date" id="custom-from" value="${state.customFrom}" max="${state.customTo}" />
+          <span class="sep">→</span>
+          <input type="date" id="custom-to" value="${state.customTo}" min="${state.customFrom}" />
+        ` : ''}
         ${compOptions()}
       </div>
 
@@ -422,6 +435,15 @@
         state.lastKey = null; state.picked.clear();
         render();
       });
+    });
+    // Custom range: update state on change (no re-render, so the inputs keep focus).
+    const cf = document.getElementById('custom-from');
+    const ct = document.getElementById('custom-to');
+    if (cf) cf.addEventListener('change', () => {
+      if (cf.value) { state.customFrom = cf.value; state.lastKey = null; state.picked.clear(); if (ct) ct.min = cf.value; }
+    });
+    if (ct) ct.addEventListener('change', () => {
+      if (ct.value) { state.customTo = ct.value; state.lastKey = null; state.picked.clear(); if (cf) cf.max = ct.value; }
     });
     const sel = document.getElementById('comp-select');
     if (sel) {
