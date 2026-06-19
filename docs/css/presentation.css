@@ -72,8 +72,8 @@
 
 /* Equity-curve slide */
 .chart-wrap {
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 18px; margin-top: 8px;
+  background: #141414; border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px; margin-top: 8px;
 }
 .chart-wrap svg { width: 100%; height: auto; display: block; }
 .curve-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 4px; }
