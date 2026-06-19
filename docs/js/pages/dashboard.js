@@ -413,6 +413,12 @@
           `).join('')}
         </div>
         <div class="lb-card">
+          <h3>Year to date <span class="text-muted text-small">(realized + dividends)</span></h3>
+          ${d.leaderboards.ytd.map((r, i) => `
+            <div class="row"><span class="who">${PODIUM[i]} ${r.code} <span class="text-muted text-small">${names[r.code] || ''}</span></span><span class="v ${pctClass(r.value)}">${fmtPct(r.value)}</span></div>
+          `).join('')}
+        </div>
+        <div class="lb-card">
           <h3>Best single position (all-time)</h3>
           ${d.leaderboards.bestPicks.map((r) => {
             if (!r.pick) return `<div class="row"><span class="who">${r.code}</span><span class="v text-muted">no picks</span></div>`;
