@@ -252,18 +252,21 @@
       s.points.map((p) => ({ x: xScale(dateToTs(p.date)), y: yScale(p.y), raw: p }))
     );
 
-    // Single-series timelines get the price-chart area fill (teal/series-color
-    // gradient under the line). Multi-series stay as plain lines so overlapping
-    // fills don't muddy the comparison.
-    if (series.length === 1) {
+    // Every timeline gets the price-chart area fill (series-color gradient
+    // under the line) so the whole portal shares one look. A single series
+    // uses the full design opacity; multi-series use a lighter fill so the
+    // overlapping areas don't muddy the comparison. Fills are drawn first so
+    // all lines stay crisp on top.
+    const fillTopOpacity = series.length === 1 ? '0.16' : '0.10';
+    for (let i = 0; i < series.length; i++) {
       const gradId = `mlGrad${mlGradSeq++}`;
       const defs = svgEl('defs');
       const grad = svgEl('linearGradient', { id: gradId, x1: '0', y1: '0', x2: '0', y2: '1' });
-      grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': series[0].color, 'stop-opacity': '0.16' }));
-      grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': series[0].color, 'stop-opacity': '0' }));
+      grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': series[i].color, 'stop-opacity': fillTopOpacity }));
+      grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': series[i].color, 'stop-opacity': '0' }));
       defs.appendChild(grad);
       g.appendChild(defs);
-      g.appendChild(svgEl('path', { d: areaD(seriesPts[0], PAD.top + h), fill: `url(#${gradId})` }));
+      g.appendChild(svgEl('path', { d: areaD(seriesPts[i], PAD.top + h), fill: `url(#${gradId})` }));
     }
 
     for (let i = 0; i < series.length; i++) {
