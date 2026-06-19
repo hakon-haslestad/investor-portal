@@ -166,17 +166,47 @@
     return /\bTR\b/.test(s) || /(tegningsrett|tegningsret|emisjon|fortrinnsrett|rettigheter)/i.test(s);
   }
 
-  // Drop rights artifacts and collapse to unique stocks. When several investors
-  // share a stock, keep the most-invested owner (they're the one who drinks).
+  // Drop rights artifacts and collapse to unique stocks. A stock can be shared
+  // by several investors — aggregate their positions so "Put in", value and P/L
+  // are the stock totals, and list every owner (they all drink together).
   function refinePool(pool) {
     const byStock = new Map();
     for (const e of pool) {
       if (isRightsArtifact(e.security)) continue;
       const key = canon(e.security);
-      const cur = byStock.get(key);
-      if (!cur || (e.purchaseAmount || 0) > (cur.purchaseAmount || 0)) byStock.set(key, e);
+      let g = byStock.get(key);
+      if (!g) {
+        g = {
+          security: e.security, from: e.from, to: e.to,
+          purchaseAmount: 0, pnlNok: 0, currentOrSoldValue: 0, soldAll: true,
+          owners: new Map(),
+        };
+        byStock.set(key, g);
+      }
+      g.purchaseAmount += e.purchaseAmount || 0;
+      g.pnlNok += e.pnlNok || 0;
+      g.currentOrSoldValue += e.currentOrSoldValue || 0;
+      if (!e.sold) g.soldAll = false;
+      const o = g.owners.get(e.investor) || { code: e.investor, name: e.investorName, purchaseAmount: 0 };
+      o.purchaseAmount += e.purchaseAmount || 0;
+      g.owners.set(e.investor, o);
     }
-    return [...byStock.values()];
+    return [...byStock.values()].map((g) => {
+      const owners = [...g.owners.values()].sort((a, b) => b.purchaseAmount - a.purchaseAmount);
+      return {
+        security: g.security,
+        investors: owners,                                  // [{code, name, purchaseAmount}]
+        investor: owners[0] ? owners[0].code : '',          // primary (keys/markers)
+        investorName: owners.map((o) => o.name).join(' + '),
+        purchaseAmount: g.purchaseAmount,
+        pnlNok: g.pnlNok,
+        currentOrSoldValue: g.currentOrSoldValue,
+        pnlPct: g.purchaseAmount > 0 ? (g.pnlNok / g.purchaseAmount) * 100 : 0,
+        win: g.pnlNok >= 0,
+        sold: g.soldAll,
+        from: g.from, to: g.to,
+      };
+    });
   }
 
   function buildPool() {
@@ -206,10 +236,11 @@
   }
   function priceSeriesForSecurity(security, code, from, to) {
     const c = canon(security);
+    const codes = new Set(Array.isArray(code) ? code : [code]);
     const byDate = new Map();
     const markers = [];
     // Every in-window trade contributes its Kurs (in NOK) as a price point, and
-    // marks this investor's own buys/sells.
+    // marks the owners' buys/sells (all co-owners when a stock is shared).
     for (const tx of store.transactions || []) {
       if (!tx.security || !tx.tradeDate) continue;
       if (tx.tradeDate < from || tx.tradeDate > to) continue;
@@ -220,7 +251,7 @@
       }
       if (isTrade) {
         const split = window.Ledger.splitForSecurity(store.attributionMap, tx.security);
-        if (split.some((s) => s.code === code)) {
+        if (split.some((s) => codes.has(s.code))) {
           markers.push({ date: tx.tradeDate, type: tx.type === 'SALG' ? 'sell' : 'buy' });
         }
       }
@@ -288,7 +319,7 @@
     const cls = entry.win ? 'win' : 'loss';
     const verdict = entry.win ? 'Hand out a shot 🥃' : 'Take a shot 🥃';
     const valueLabel = entry.sold ? 'Sold for' : "Today's value";
-    const series = priceSeriesForSecurity(entry.security, entry.investor, entry.from, entry.to);
+    const series = priceSeriesForSecurity(entry.security, (entry.investors || []).map((o) => o.code), entry.from, entry.to);
     const note = opts.note ? `<div class="guess-note">${escapeHtml(opts.note)}</div>` : '';
 
     mount.innerHTML = `
@@ -316,7 +347,7 @@
   // colour). A Reveal button then renders the full result.
   function renderGuess(entry) {
     const mount = document.getElementById('game-mount');
-    const series = priceSeriesForSecurity(entry.security, entry.investor, entry.from, entry.to);
+    const series = priceSeriesForSecurity(entry.security, (entry.investors || []).map((o) => o.code), entry.from, entry.to);
     mount.innerHTML = `
       <div class="game-result guess">
         <div class="guess-prompt">Guess the stock 🤔</div>
@@ -354,7 +385,7 @@
     const finish = () => {
       if (btn) { btn.disabled = false; }
       if (!guess) { renderResult(final); return; }
-      const series = priceSeriesForSecurity(final.security, final.investor, final.from, final.to);
+      const series = priceSeriesForSecurity(final.security, (final.investors || []).map((o) => o.code), final.from, final.to);
       if (chartable(series)) renderGuess(final);
       else renderResult(final, { note: 'Not enough price history to guess — here\'s the answer.' });
     };
