@@ -29,7 +29,7 @@
   let sheetName = '';
   try { sheetName = await window.Sheet.spreadsheetTitle(); } catch (_e) { sheetName = ''; }
   const names = window.Copy.namesFromMembers(store.members);
-  const { fmtNok, fmtPct, pctClass, PODIUM, escapeHtml } = window.Fmt;
+  const { fmtNok, fmtPct, fmtQty, pctClass, PODIUM, escapeHtml } = window.Fmt;
 
   // Look up the currently-active competition (today between start_date and
   // end_date). The check is best-effort — if the Competitions tab is missing
@@ -406,6 +406,52 @@
     return { periods: show, byCode };
   }
 
+  // Current portfolio — per-security holdings from the latest Beholdningsverdi
+  // snapshot: qty, avg cost, price, value, gain/loss, return %, weight.
+  function renderCurrentPortfolio() {
+    const holds = (window.Portfolio.currentHoldings(store) || [])
+      .slice().sort((a, b) => (b.marketValueNok || 0) - (a.marketValueNok || 0));
+    if (!holds.length) return '';
+    const totalVal = holds.reduce((a, h) => a + (h.marketValueNok || 0), 0);
+    const totalGain = holds.reduce((a, h) => a + (h.returnNok || 0), 0);
+    const asOf = holds[0].snapshotDate ? ` · as of ${holds[0].snapshotDate}` : '';
+    const rows = holds.map((h) => {
+      const wgt = totalVal > 0 ? ((h.marketValueNok || 0) / totalVal) * 100 : 0;
+      return `
+        <tr>
+          <td data-label="Security"><strong>${escapeHtml(h.security)}</strong></td>
+          <td class="text-right" data-label="Qty">${fmtQty(h.qty)}</td>
+          <td class="text-right text-muted" data-label="Avg cost">${fmtNok(h.gav)}</td>
+          <td class="text-right" data-label="Price">${fmtNok(h.currentPrice)}</td>
+          <td class="text-right" data-label="Value">${fmtNok(h.marketValueNok)}</td>
+          <td class="text-right ${pctClass(h.returnNok)}" data-label="Gain/loss">${fmtNok(h.returnNok)}</td>
+          <td class="text-right ${pctClass(h.returnPct)}" data-label="Return">${fmtPct(h.returnPct)}</td>
+          <td class="text-right text-muted" data-label="Weight">${wgt.toFixed(1)}%</td>
+        </tr>`;
+    }).join('');
+    return `
+      <div class="section-title">Current portfolio <span class="text-muted text-small">(${holds.length} positions${asOf})</span></div>
+      <div style="overflow-x:auto">
+        <table class="investor-table">
+          <thead><tr>
+            <th>Security</th><th class="text-right">Qty</th><th class="text-right">Avg cost</th>
+            <th class="text-right">Price</th><th class="text-right">Value</th>
+            <th class="text-right">Gain/loss</th><th class="text-right">Return</th><th class="text-right">Weight</th>
+          </tr></thead>
+          <tbody>
+            ${rows}
+            <tr class="summary-row">
+              <td data-label="">Total</td><td></td><td></td><td></td>
+              <td class="text-right" data-label="Value">${fmtNok(totalVal)}</td>
+              <td class="text-right ${pctClass(totalGain)}" data-label="Gain/loss">${fmtNok(totalGain)}</td>
+              <td></td><td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   function paint(d) {
     const wm = d.windowMetrics;
     const ik = buildInvestorKpis(d);
@@ -500,6 +546,8 @@
         <div class="kpi-card"><div class="label">Capital deployed</div><div class="value">${fmtNok(win.buysInWindow)}</div><div class="sub">${win.buyCount || 0} buys</div></div>
         <div class="kpi-card"><div class="label">Net P/L</div><div class="value ${pctClass(win.netPnlInWindow)}">${fmtNok(win.netPnlInWindow)}</div><div class="sub">realized + divs + unrealized Δ</div></div>
       </div>
+
+      ${renderCurrentPortfolio()}
 
       <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${prettyRange(d.window)}${ik ? '; revenue/profit/P/E from Offisielle nøkkeltall, your share' : ''})</span></div>
       <div style="overflow-x:auto">
