@@ -642,5 +642,77 @@
     return svg;
   }
 
-  window.Charts = { stackedArea, multiLine, legend, priceChart };
+  // Trade timeline: every buy/sell as a dot over [from, to]. x = date,
+  // y = signed NOK (buys up / sells down) around a zero line, radius ∝ √amount.
+  // trades: [{ date, amount (abs NOK), type: 'buy'|'sell', label }]
+  function tradeScatter(opts) {
+    const {
+      trades = [], from, to, width = 1100, height = 420,
+      buy = '#2D5BFF', sell = '#FF3B3B',
+    } = opts || {};
+    const PADT = { top: 24, right: 70, bottom: 46, left: 12 };
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const fmtDate = (iso) => { const d = new Date(iso); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`; };
+    const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, xmlns: NS, role: 'img', 'aria-label': 'Trades' });
+
+    if (!trades.length) {
+      const t = svgEl('text', { x: width / 2, y: height / 2, fill: '#8a8a8a', 'text-anchor': 'middle', 'font-size': '20' });
+      t.textContent = 'No buys or sells in this period';
+      svg.appendChild(t);
+      return svg;
+    }
+
+    const plotW = width - PADT.left - PADT.right;
+    const plotH = height - PADT.top - PADT.bottom;
+    const xMin = dateToTs(from || trades[0].date);
+    const xMax = dateToTs(to || trades[trades.length - 1].date);
+    const maxAbs = Math.max(...trades.map((t) => Math.abs(t.amount) || 0), 1);
+    const yMax = niceMax(maxAbs);
+    const xAt = (ts) => PADT.left + (xMax > xMin ? (ts - xMin) / (xMax - xMin) : 0.5) * plotW;
+    const yAt = (v) => PADT.top + (1 - (v + yMax) / (2 * yMax)) * plotH; // [-yMax, +yMax]
+
+    // Gridlines + right-side NOK labels at -yMax, -½, 0, +½, +yMax.
+    for (const v of [yMax, yMax / 2, 0, -yMax / 2, -yMax]) {
+      svg.appendChild(svgEl('line', {
+        x1: PADT.left, x2: PADT.left + plotW, y1: yAt(v).toFixed(1), y2: yAt(v).toFixed(1),
+        stroke: v === 0 ? '#525866' : '#2a2a2a', 'stroke-width': '1', 'shape-rendering': 'crispEdges',
+      }));
+      const lbl = svgEl('text', {
+        x: width - PADT.right + 12, y: (yAt(v) + 5).toFixed(1), fill: '#8a8a8a',
+        'font-size': '17', 'font-weight': '500',
+      });
+      lbl.textContent = fmtNok(v);
+      svg.appendChild(lbl);
+    }
+
+    // X date ticks (up to 6).
+    const nx = 6;
+    for (let k = 0; k < nx; k++) {
+      const ts = xMin + ((xMax - xMin) * k) / (nx - 1);
+      const cx = xAt(ts);
+      svg.appendChild(svgEl('line', { x1: cx.toFixed(1), x2: cx.toFixed(1), y1: PADT.top + plotH + 6, y2: PADT.top + plotH + 12, stroke: '#3a3a3a', 'stroke-width': '2' }));
+      const anchor = k === 0 ? 'start' : (k === nx - 1 ? 'end' : 'middle');
+      const t = svgEl('text', { x: cx.toFixed(1), y: PADT.top + plotH + 32, fill: '#8a8a8a', 'font-size': '17', 'font-weight': '500', 'text-anchor': anchor });
+      t.textContent = fmtDate(new Date(ts).toISOString().slice(0, 10));
+      svg.appendChild(t);
+    }
+
+    // Dots — larger amounts drawn first so small ones stay clickable on top.
+    const sorted = trades.slice().sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+    for (const tr of sorted) {
+      const amt = Math.abs(tr.amount) || 0;
+      const cx = xAt(dateToTs(tr.date));
+      const cy = yAt(tr.type === 'buy' ? amt : -amt);
+      const r = Math.max(6, Math.min(22, Math.sqrt(amt / maxAbs) * 22));
+      const color = tr.type === 'sell' ? sell : buy;
+      const c = svgEl('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: r.toFixed(1), fill: color, 'fill-opacity': '0.8', stroke: '#fff', 'stroke-width': '1.2' });
+      const title = svgEl('title');
+      title.textContent = `${tr.label || ''} · ${tr.date} · ${tr.type === 'sell' ? 'Sold' : 'Bought'} ${fmtNok(amt)}`;
+      c.appendChild(title);
+      svg.appendChild(c);
+    }
+    return svg;
+  }
+
+  window.Charts = { stackedArea, multiLine, legend, priceChart, tradeScatter };
 })();
