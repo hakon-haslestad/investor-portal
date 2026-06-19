@@ -89,6 +89,20 @@
     });
   }
 
+  // The spreadsheet's own title (the file name in Google Drive). Cached in
+  // sessionStorage so it costs one round-trip per session, not per page.
+  async function spreadsheetTitle(opts = {}) {
+    const id = sheetId(opts.sheetId);
+    const cacheKey = 'portal.sheetTitle.' + id;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) return cached;
+    const params = new URLSearchParams({ fields: 'properties.title' });
+    const j = await authedFetch(`${BASE}/${id}?${params}`);
+    const title = (j.properties && j.properties.title) || '';
+    if (title) sessionStorage.setItem(cacheKey, title);
+    return title;
+  }
+
   // Lists tabs for diagnostics ("which tabs does this sheet have?").
   // Pass opts.sheetId to target a different sheet (defaults to PORTAL_CONFIG.SHEET_ID).
   async function listTabs(opts = {}) {
@@ -129,5 +143,5 @@
     });
   }
 
-  window.Sheet = { getValues, batchGet, appendRow, updateRow, listTabs, getSheetId, deleteRows };
+  window.Sheet = { getValues, batchGet, appendRow, updateRow, listTabs, getSheetId, deleteRows, spreadsheetTitle };
 })();
