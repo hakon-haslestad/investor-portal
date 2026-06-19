@@ -356,7 +356,7 @@
         <div style="margin-top:16px"><button class="btn game-spin" id="reveal">Reveal 👀</button></div>
       </div>`;
     document.getElementById('game-chart').appendChild(
-      window.Charts.priceChart({ points: series.points, markers: [], yUnit: 'NOK' })
+      window.Charts.priceChart({ points: series.points, markers: series.markers, yUnit: 'NOK' })
     );
     document.getElementById('reveal').addEventListener('click', () => renderResult(entry));
   }
