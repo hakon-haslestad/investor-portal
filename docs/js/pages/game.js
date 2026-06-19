@@ -189,6 +189,25 @@
   function priceSeriesForSecurity(security, code, from, to) {
     const c = canon(security);
     const byDate = new Map();
+    const markers = [];
+    // Every in-window trade contributes its Kurs as a price point, and marks
+    // this investor's own buys/sells.
+    for (const tx of store.transactions || []) {
+      if (!tx.security || !tx.tradeDate) continue;
+      if (tx.tradeDate < from || tx.tradeDate > to) continue;
+      if (canon(tx.security) !== c) continue;
+      const isTrade = tx.type === 'KJØPT' || tx.type === 'SALG';
+      if (isTrade && Number.isFinite(tx.price) && tx.price > 0) {
+        byDate.set(tx.tradeDate, { date: tx.tradeDate, price: tx.price });
+      }
+      if (isTrade) {
+        const split = window.Ledger.splitForSecurity(store.attributionMap, tx.security);
+        if (split.some((s) => s.code === code)) {
+          markers.push({ date: tx.tradeDate, type: tx.type === 'SALG' ? 'sell' : 'buy' });
+        }
+      }
+    }
+    // Snapshot prices take precedence on a shared date.
     for (const h of store.holdings || []) {
       if (!h.snapshotDate || h.currentPrice == null) continue;
       if (h.snapshotDate < from || h.snapshotDate > to) continue;
@@ -196,16 +215,6 @@
       byDate.set(h.snapshotDate, { date: h.snapshotDate, price: h.currentPrice });
     }
     const points = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
-    const markers = [];
-    for (const tx of store.transactions || []) {
-      if (!tx.security || !tx.tradeDate) continue;
-      if (tx.tradeDate < from || tx.tradeDate > to) continue;
-      if (tx.type !== 'KJØPT' && tx.type !== 'SALG') continue;
-      if (canon(tx.security) !== c) continue;
-      const split = window.Ledger.splitForSecurity(store.attributionMap, tx.security);
-      if (!split.some((s) => s.code === code)) continue;
-      markers.push({ date: tx.tradeDate, type: tx.type === 'SALG' ? 'sell' : 'buy' });
-    }
     return { points, markers };
   }
 

@@ -225,7 +225,36 @@
   // Build a {points, markers} price series for one (participant, security) pick.
   function buildPriceSeries(store, pick, start, end, names) {
     const canon = canonicalName(pick.security);
+    const { points, markers } = priceSeries(store, canon, start, end, pick.code);
+    return {
+      code: pick.code, name: names[pick.code] || pick.code,
+      security: canon, gain: pick.gain, points, markers,
+    };
+  }
+
+  // Build a price line for one security over [start, end] using every
+  // datapoint we have: the Kurs from each in-window trade AND every
+  // Beholdningsverdi snapshot price (snapshot wins on a shared date). Markers
+  // mark the given participant's own buys/sells.
+  function priceSeries(store, canon, start, end, code) {
     const byDate = new Map();
+    const markers = [];
+    for (const tx of store.transactions || []) {
+      if (!tx.security || !tx.tradeDate) continue;
+      if (tx.tradeDate < start || tx.tradeDate > end) continue;
+      if (canonicalName(tx.security) !== canon) continue;
+      const isTrade = tx.type === 'KJØPT' || tx.type === 'SALG';
+      if (isTrade && Number.isFinite(tx.price) && tx.price > 0) {
+        byDate.set(tx.tradeDate, { date: tx.tradeDate, price: tx.price });
+      }
+      if (isTrade && code != null) {
+        const split = splitForSecurity(store.attributionMap, tx.security);
+        if (split.some((s) => s.code === code)) {
+          markers.push({ date: tx.tradeDate, type: tx.type === 'SALG' ? 'sell' : 'buy' });
+        }
+      }
+    }
+    // Snapshot prices take precedence on a shared date (end-of-day mark).
     for (const h of store.holdings || []) {
       if (!h.snapshotDate || h.currentPrice == null) continue;
       if (h.snapshotDate < start || h.snapshotDate > end) continue;
@@ -233,21 +262,7 @@
       byDate.set(h.snapshotDate, { date: h.snapshotDate, price: h.currentPrice });
     }
     const points = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
-
-    const markers = [];
-    for (const tx of store.transactions || []) {
-      if (!tx.security || !tx.tradeDate) continue;
-      if (tx.tradeDate < start || tx.tradeDate > end) continue;
-      if (tx.type !== 'KJØPT' && tx.type !== 'SALG') continue;
-      if (canonicalName(tx.security) !== canon) continue;
-      const split = splitForSecurity(store.attributionMap, tx.security);
-      if (!split.some((s) => s.code === pick.code)) continue;
-      markers.push({ date: tx.tradeDate, type: tx.type === 'SALG' ? 'sell' : 'buy' });
-    }
-    return {
-      code: pick.code, name: names[pick.code] || pick.code,
-      security: canon, gain: pick.gain, points, markers,
-    };
+    return { points, markers };
   }
 
   // ─── Equity-curve slide ─────────────────────────────────────────────────────
