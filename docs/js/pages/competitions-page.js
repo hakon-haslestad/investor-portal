@@ -135,7 +135,7 @@
     document.querySelectorAll('[data-delete]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.delete;
-        if (!confirm(`Delete competition ${id}? (Empties the Id cell; row stays in the sheet.)`)) return;
+        if (!confirm(`Delete competition ${id}? This permanently removes it and its participants/picks from the sheet.`)) return;
         try {
           await window.Auth.requestWriteAccess();
           await window.CompetitionsData.deleteCompetition(id);
