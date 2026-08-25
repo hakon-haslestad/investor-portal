@@ -16,7 +16,7 @@
 // scaling is exact).
 
 (function () {
-  const { classify, isRealizingSell, isCashLeg, amountNok } = window.Ledger;
+  const { classify, isRealizingSell, isCashLeg, isPricedBuy, amountNok } = window.Ledger;
 
   // Map(canonicalSecurity → {currency, dates[], qty[], costSum[], realized[]})
   // Arrays are cumulative states AFTER each event date (one entry per event).
@@ -28,6 +28,18 @@
     }
     const canonical = (s) => window.Portfolio.canonicalName(s);
     const states = new Map();
+    // Conversion cost transfer (BTA→shares etc.): cost drained from the
+    // source form is parked per pair id and added to the receiving form.
+    const convBucket = new Map(); // convId → NOK cost in transit
+    const convDrained = new Set();
+    const drainFrom = (st, q, id) => {
+      if (!st || convDrained.has(id)) return 0;
+      convDrained.add(id);
+      const frac = st._q > 0 ? Math.min(q / st._q, 1) : 0;
+      const t = st._c * frac;
+      st._c -= t;
+      return t;
+    };
     for (const tx of store.transactions) {
       if (!tx.security) continue;
       const cat = classify(tx.type);
@@ -45,8 +57,19 @@
       const q = Math.abs(tx.qty || 0);
       if (cat === 'BUY') {
         st._q += q;
-        if (tx.type === 'KJØPT') st._c += Math.abs(amountNok(tx));
+        if (isPricedBuy(tx)) st._c += Math.abs(amountNok(tx));
+        if (tx._convRole === 'in') {
+          // Receive the converted-away form's cost. If the out row hasn't
+          // been replayed yet (row order within the day varies), drain the
+          // source slot directly now.
+          if (convBucket.has(tx._convId)) st._c += convBucket.get(tx._convId);
+          else st._c += drainFrom(states.get(canonical(tx._convOther)), q, tx._convId);
+        }
       } else {
+        if (tx._convRole === 'out') {
+          const t = drainFrom(st, q, tx._convId);
+          if (t > 0) convBucket.set(tx._convId, t);
+        }
         if (isRealizingSell(tx.type)) {
           const avg = st._q > 0 ? st._c / st._q : 0;
           st._r += amountNok(tx) - avg * q;

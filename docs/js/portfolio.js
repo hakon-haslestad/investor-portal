@@ -6,7 +6,7 @@
 // active" notice.
 
 (function () {
-  const { INVESTOR_CODES, classify, splitForSecurity, isRealizingSell, isCashLeg, amountNok } = window.Ledger;
+  const { INVESTOR_CODES, classify, splitForSecurity, isRealizingSell, isCashLeg, isPricedBuy, amountNok } = window.Ledger;
 
   // Legacy fallback aliases — used only until the Securities registry is
   // populated (it carries aliases per security and supersedes this map).
@@ -129,6 +129,17 @@
     const attrMap = store.attributionMap;
     const perInvestor = new Map();
     for (const code of INVESTOR_CODES) perInvestor.set(code, new Map());
+    // Conversion cost transfer, keyed per (investor, pair id).
+    const convBucket = new Map();
+    const convDrained = new Set();
+    const drainFrom = (slot, q, key) => {
+      if (!slot || convDrained.has(key)) return 0;
+      convDrained.add(key);
+      const frac = slot.qty > 0 ? Math.min(q / slot.qty, 1) : 0;
+      const t = slot.costSum * frac;
+      slot.costSum -= t;
+      return t;
+    };
 
     for (const tx of store.transactions) {
       if (!tx.security) continue;
@@ -150,8 +161,18 @@
         const wq = qty * weight;
         if (cat === 'BUY') {
           slot.qty += wq;
-          if (tx.type === 'KJØPT') slot.costSum += Math.abs(amount * weight);
+          if (isPricedBuy(tx)) slot.costSum += Math.abs(amount * weight);
+          if (tx._convRole === 'in') {
+            const key = code + '|' + tx._convId;
+            if (convBucket.has(key)) slot.costSum += convBucket.get(key);
+            else slot.costSum += drainFrom(bag.get(canonicalName(tx._convOther)), wq, key);
+          }
         } else {
+          if (tx._convRole === 'out') {
+            const key = code + '|' + tx._convId;
+            const t = drainFrom(slot, wq, key);
+            if (t > 0) convBucket.set(key, t);
+          }
           if (isRealizingSell(tx.type)) {
             const avgCost = slot.qty > 0 ? slot.costSum / slot.qty : 0;
             slot.realized += amount * weight - avgCost * wq;
@@ -170,7 +191,7 @@
     const perInvestor = new Map();
     for (const code of INVESTOR_CODES) perInvestor.set(code, 0);
     for (const tx of store.transactions) {
-      if (tx.type !== 'KJØPT' || !tx.security) continue;
+      if (!tx.security || !isPricedBuy(tx)) continue;
       const split = splitForSecurity(attrMap, tx.security);
       if (!split.length) continue;
       for (const { code, weight } of split) {
@@ -309,6 +330,29 @@
       }
       return state.perSec.get(security);
     };
+    // Conversion cost transfer (see deriveCostBasis) — buckets persist across
+    // the pre-window and in-window passes since a pair can straddle `from`.
+    const convBucket = new Map();
+    const convDrained = new Set();
+    const convDrain = (slot, q, key) => {
+      if (!slot || convDrained.has(key)) return 0;
+      convDrained.add(key);
+      const frac = slot.qty > 0 ? Math.min(q / slot.qty, 1) : 0;
+      const t = slot.costSum * frac;
+      slot.costSum -= t;
+      return t;
+    };
+    const convApply = (state, slot, tx, q, code) => {
+      if (tx._convRole === 'in') {
+        const key = code + '|' + tx._convId;
+        if (convBucket.has(key)) slot.costSum += convBucket.get(key);
+        else slot.costSum += convDrain(state.perSec.get(canonicalName(tx._convOther)), q, key);
+      } else if (tx._convRole === 'out') {
+        const key = code + '|' + tx._convId;
+        const t = convDrain(slot, q, key);
+        if (t > 0) convBucket.set(key, t);
+      }
+    };
 
     // Pre-window replay. Corporate actions (BYTTE/SPLITT/…) move qty but
     // not cost, same rules as Positions — otherwise the endpoint market
@@ -327,9 +371,10 @@
         const slot = ensureSec(state, security);
         const amt = amountNok(tx) * weight;
         const q = Math.abs(tx.qty || 0) * weight;
+        convApply(state, slot, tx, q, code);
         if (preCat === 'BUY') {
           slot.qty += q;
-          if (tx.type === 'KJØPT') slot.costSum += Math.abs(amt);
+          if (isPricedBuy(tx)) slot.costSum += Math.abs(amt);
         } else {
           if (isRealizingSell(tx.type)) {
             const fracSold = slot.qty > 0 ? Math.min(q / slot.qty, 1) : 0;
@@ -369,7 +414,7 @@
           slot.divs += amt;
           state.dividendsInWindow += amt;
         }
-      } else if (tx.type === 'KJØPT' || isRealizingSell(tx.type)) {
+      } else if (isPricedBuy(tx) || isRealizingSell(tx.type)) {
         const split = splitForSecurity(attrMap, tx.security);
         if (!split.length) continue;
         const security = canonicalName(tx.security);
@@ -378,7 +423,7 @@
           const slot = ensureSec(state, security);
           const amt = amountNok(tx) * weight;
           const q = (tx.qty || 0) * weight;
-          if (tx.type === 'KJØPT') {
+          if (isPricedBuy(tx)) {
             slot.qty += q;
             slot.costSum += Math.abs(amt);
             slot.boughtInWindow += Math.abs(amt);
@@ -404,8 +449,10 @@
         if (!split.length) continue;
         const security = canonicalName(tx.security);
         for (const { code, weight } of split) {
-          const slot = ensureSec(states.get(code), security);
+          const state = states.get(code);
+          const slot = ensureSec(state, security);
           const q = Math.abs(tx.qty || 0) * weight;
+          convApply(state, slot, tx, q, code);
           if (cat === 'BUY') slot.qty += q;
           else slot.qty = Math.max(0, slot.qty - q);
         }

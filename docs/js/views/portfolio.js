@@ -232,7 +232,7 @@
   function renderActivity(body, ctx) {
     const { store } = ctx;
     const { fmtNok, fmtQty, fmtPct, pctClass, escapeHtml } = window.Fmt;
-    const { classify, amountNok, feeNok, isRealizingSell, splitForSecurity, INVESTOR_CODES } = window.Ledger;
+    const { classify, amountNok, feeNok, isRealizingSell, isPricedBuy, splitForSecurity, INVESTOR_CODES } = window.Ledger;
     const canon = window.Portfolio.canonicalName;
     const ii = window.UI.infoIcon;
 
@@ -249,7 +249,18 @@
     // average-cost replay (canonical names), so filtered sums stay honest.
     const txRows = [];
     {
+      window.Ledger.annotateConversionPairs(store.transactions);
       const costMap = new Map();
+      const convBucket = new Map();
+      const convDrained = new Set();
+      const convDrain = (slot, q, id) => {
+        if (!slot || convDrained.has(id)) return 0;
+        convDrained.add(id);
+        const frac = slot.qty > 0 ? Math.min(q / slot.qty, 1) : 0;
+        const t = slot.costSum * frac;
+        slot.costSum -= t;
+        return t;
+      };
       const sorted = store.transactions.slice().sort((a, b) => {
         const ak = a.tradeDate || a.bookDate || '';
         const bk = b.tradeDate || b.bookDate || '';
@@ -270,11 +281,19 @@
           codes: tx.security ? splitForSecurity(store.attributionMap, tx.security).map((s) => s.code) : INVESTOR_CODES.slice(),
           realizedNok: null,
         };
-        if (c && (cat === 'BUY' || cat === 'SELL') && (tx.type === 'KJØPT' || isRealizingSell(tx.type))) {
+        if (c && (cat === 'BUY' || cat === 'SELL') && (isPricedBuy(tx) || isRealizingSell(tx.type) || tx._convRole)) {
           if (!costMap.has(c)) costMap.set(c, { qty: 0, costSum: 0 });
           const slot = costMap.get(c);
           const q = Math.abs(tx.qty || 0);
-          if (tx.type === 'KJØPT') {
+          if (tx._convRole === 'in') {
+            slot.qty += q;
+            if (convBucket.has(tx._convId)) slot.costSum += convBucket.get(tx._convId);
+            else slot.costSum += convDrain(costMap.get(canon(tx._convOther)), q, tx._convId);
+          } else if (tx._convRole === 'out') {
+            const t = convDrain(slot, q, tx._convId);
+            if (t > 0) convBucket.set(tx._convId, t);
+            slot.qty = Math.max(0, slot.qty - q);
+          } else if (cat === 'BUY') {
             slot.qty += q; slot.costSum += Math.abs(row.amountNok);
           } else {
             const avg = slot.qty > 0 ? slot.costSum / slot.qty : 0;

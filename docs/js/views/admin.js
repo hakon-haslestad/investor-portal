@@ -92,6 +92,7 @@
         `<span class="tag">${esc(s.status)}</span>`,
         esc(s.soldDate || '—'),
         esc(s.notes || ''),
+        `<span class="text-muted text-small">${esc(s.lastChecked || '—')}</span>`,
       ],
     }));
 
@@ -112,6 +113,7 @@
               { label: 'Ticker' }, { label: 'Name' }, { label: 'Aliases' },
               { label: 'ISIN' }, { label: 'Cur' }, { label: 'Exchange' },
               { label: 'Source' }, { label: 'Status' }, { label: 'Sold' }, { label: 'Notes' },
+              { label: 'Last checked' },
             ],
             rows,
             { caption: 'Securities registry' },

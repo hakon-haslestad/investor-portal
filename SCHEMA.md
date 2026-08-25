@@ -104,7 +104,8 @@ order-tolerant. One row per security ever traded.
 | `source`   | enum   | `yahoo`        | `yahoo` (Oslo Børs) or `googlefinance` (STO/ETR/FX).          |
 | `status`   | enum   | `held`         | `held` / `sold` / `expired` (script-maintained) / `ignore` (manual: excluded from fetching AND from portal holdings — expired subscription rights, acceptance lines). |
 | `soldDate` | date   | `2026-05-02`   | Set when the replay hits qty 0; drives the 6-month tail.      |
-| `notes`    | string |                | Free text. `REVIEW` marks unmapped seeds; `gf=EXCH:SYM` overrides the GF symbol. |
+| `notes`    | string |                | **Script-maintained health message** (empty = healthy; `REVIEW`/`⚠ fetch failed`/`expired`); a manual `gf=EXCH:SYM` token is preserved. |
+| `lastChecked` | string | `2026-08-27 18:02` | Stamped on every row each `dailyFetch` run — when the script last evaluated it. |
 
 ## 3. `StockPrices` — daily close matrix (NEW)
 

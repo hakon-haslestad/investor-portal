@@ -34,7 +34,7 @@ var TABS = {
   log: '_log',
 };
 
-var SEC_HEADERS = ['ticker', 'name', 'aliases', 'isin', 'currency', 'exchange', 'source', 'status', 'soldDate', 'notes'];
+var SEC_HEADERS = ['ticker', 'name', 'aliases', 'isin', 'currency', 'exchange', 'source', 'status', 'soldDate', 'notes', 'lastChecked'];
 
 // How long to keep fetching a sold stock, and how often.
 var SOLD_TAIL_DAYS = 183; // ~6 months
@@ -138,8 +138,21 @@ function currencyForSymbol_(symbol) {
   return { OL: 'NOK', ST: 'SEK', CO: 'DKK', DE: 'EUR', F: 'EUR', HE: 'EUR', L: 'GBP' }[m[1]] || '';
 }
 
+// Make sure the Securities tab has every column (older installs predate
+// lastChecked). Appends missing headers at the end of row 1.
+function ensureSecColumns_(ss) {
+  var sheet = ss.getSheetByName(TABS.securities);
+  if (!sheet) return;
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var hdr = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  SEC_HEADERS.forEach(function (h, i) {
+    if (hdr.indexOf(h) === -1 && i >= hdr.length) sheet.getRange(1, i + 1).setValue(h);
+  });
+}
+
 function dailyFetch() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureSecColumns_(ss);
 
   // Self-maintenance: a security bought since the last run gets seeded from
   // its ISIN, its ticker resolved, and its history backfilled — no manual
@@ -172,6 +185,31 @@ function dailyFetch() {
   writeRow_(ss, today, values);
   var misses = list.length - Object.keys(values).length;
   if (misses > 0) log_(ss, 'dailyFetch', '', misses + '/' + list.length + ' fetches failed');
+  stampSecurities_(ss, securities, list, values);
+}
+
+// Script-maintained bookkeeping on the Securities tab: `lastChecked` gets a
+// timestamp on every row the run evaluated, and `notes` reflects the row's
+// current health (empty = healthy). A manual `gf=EXCH:SYM` token in notes is
+// always preserved.
+function stampSecurities_(ss, securities, fetchList, values) {
+  var sheet = ss.getSheetByName(TABS.securities);
+  if (!sheet || !securities.length) return;
+  var now = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm');
+  var attempted = {};
+  fetchList.forEach(function (item) { if (item.column.indexOf('CUR:') !== 0) attempted[item.column] = true; });
+  securities.forEach(function (s) {
+    var gf = /gf=[^\s;]+/.exec(s.notes || '');
+    var msg;
+    if (s.status === 'ignore') msg = 'ignored';
+    else if (!s.ticker) msg = 'REVIEW: no ticker — fill manually or run resolveTickers';
+    else if (s.status === 'expired') msg = 'expired — no longer fetched';
+    else if (attempted[s.ticker] && values[s.ticker] != null) msg = '';
+    else if (attempted[s.ticker]) msg = '⚠ fetch failed ' + now.slice(0, 10) + ' — see _log';
+    else msg = s.status === 'sold' ? 'sold — weekly check' : '';
+    var note = (gf ? gf[0] + (msg ? ' · ' : '') : '') + msg;
+    sheet.getRange(s.row, 10, 1, 2).setValues([[note, now]]);
+  });
 }
 
 var AUTO_BACKFILL_MAX_PER_RUN = 4;

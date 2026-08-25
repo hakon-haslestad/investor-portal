@@ -37,6 +37,7 @@
     window.Portfolio._setRegistry(registry);
 
     const transactions = window.Parsers.parseTransactions(result[T.transactions] || []);
+    window.Ledger.annotateConversionPairs(transactions);
     // Nordnet exports carry ISINs but no tickers, and names drift across
     // eras — teach the registry any name variant whose ISIN it knows, so
     // every replay joins on one canonical security.
@@ -77,12 +78,12 @@
   // KJØPT / realizing-sell rows. Historical valuation only.
   function buildPricesWithTradeFallback(rows, transactions, registry) {
     const matrix = window.Prices.build(rows);
-    const { classify, isRealizingSell, amountNok } = window.Ledger;
+    const { classify, isRealizingSell, isPricedBuy, amountNok } = window.Ledger;
     const byName = new Map();
     for (const tx of transactions) {
       if (!tx.security || !tx.qty) continue;
       const cat = classify(tx.type);
-      if (!(tx.type === 'KJØPT' || (cat === 'SELL' && isRealizingSell(tx.type)))) continue;
+      if (!(isPricedBuy(tx) || (cat === 'SELL' && isRealizingSell(tx.type)))) continue;
       const sec = registry.forName(tx.security);
       if (!sec) continue;
       if (sec.ticker && matrix.series.has(sec.ticker)) continue; // market data exists

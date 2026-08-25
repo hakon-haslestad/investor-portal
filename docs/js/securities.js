@@ -12,7 +12,7 @@
     // Header-keyed with a positional fallback: the tab has a canonical
     // column order, and one accidentally overwritten header cell must not
     // blank the ticker (= every price) portal-wide.
-    const CANON = ['ticker', 'name', 'aliases', 'isin', 'currency', 'exchange', 'source', 'status', 'solddate', 'notes'];
+    const CANON = ['ticker', 'name', 'aliases', 'isin', 'currency', 'exchange', 'source', 'status', 'solddate', 'notes', 'lastchecked'];
     const col = (name) => {
       const i = header.indexOf(name);
       return i >= 0 ? i : CANON.indexOf(name);
@@ -21,7 +21,7 @@
       ticker: col('ticker'), name: col('name'), aliases: col('aliases'),
       isin: col('isin'), currency: col('currency'), exchange: col('exchange'),
       source: col('source'), status: col('status'), soldDate: col('solddate'),
-      notes: col('notes'),
+      notes: col('notes'), lastChecked: col('lastchecked'),
     };
     const at = (row, i) => (i >= 0 && row[i] != null ? String(row[i]).trim() : '');
     const out = [];
@@ -43,6 +43,7 @@
         status: (at(row, idx.status) || 'held').toLowerCase(),
         soldDate: window.Parsers.excelDateToISO(row[idx.soldDate]) || null,
         notes: at(row, idx.notes) || null,
+        lastChecked: at(row, idx.lastChecked) || null,
       });
     }
     return out;
