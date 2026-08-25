@@ -1,12 +1,15 @@
-// Portfolio calculator. Ported verbatim from src/portfolio/calculator.js,
-// with every `db.prepare(...).all()` replaced by reads from a hydrated `store`.
-// Synchronous — pass `store` (from window.Store.hydrate()) and you're done.
+// Portfolio calculator. Same public API as the original (buildDashboard,
+// investorDetail, pricesAtDate, canonicalName, …) — prices come from the
+// StockPrices date×ticker matrix (window.Prices) and quantities from the
+// transaction replay (window.Positions). If the price matrix is empty the
+// helpers return empty results and the views surface a "price feed not
+// active" notice.
 
 (function () {
-  const { INVESTOR_CODES, classify, splitForSecurity, isRealizingSell, amountNok, feeNok } = window.Ledger;
+  const { INVESTOR_CODES, classify, splitForSecurity, isRealizingSell, amountNok } = window.Ledger;
 
-  // Stable canonicalization for stocks that show up under slightly different
-  // names across Beholdningsverdi and Rådata. Same map as the original.
+  // Legacy fallback aliases — used only until the Securities registry is
+  // populated (it carries aliases per security and supersedes this map).
   const NAME_ALIASES = {
     'storskogen group ab ser. b': 'Storskogen B',
     'crayon group holding': 'Crayon Group Holding',
@@ -19,127 +22,140 @@
     'hellofresh se': 'HelloFresh SE',
   };
 
+  // The Securities registry is attached at hydration (Store.hydrate).
+  let registry = null;
+  function _setRegistry(r) { registry = r; }
+
   function canonicalName(security) {
     if (!security) return security;
+    if (registry) {
+      const hit = registry.forName(security);
+      if (hit) return hit.name;
+    }
     const lower = String(security).trim().toLowerCase();
     if (NAME_ALIASES[lower]) return NAME_ALIASES[lower];
     return String(security).trim();
   }
 
-  // ─── Snapshot / holdings helpers ─────────────────────────────────────────
+  function usePriceMatrix(store) {
+    return !!(store.prices && store.prices.hasData && registry);
+  }
+
+  // ─── Price maps ──────────────────────────────────────────────────────────
+  // Shape kept from the snapshot era: Map(security → {price, marketValueNok,
+  // qty}) where price is native currency and marketValueNok/qty gives the
+  // NOK per-share value. Group-level qty.
+
+  function today() { return new Date().toISOString().slice(0, 10); }
 
   function snapshotDate(store) {
-    let max = null;
-    for (const h of store.holdings) {
-      if (h.snapshotDate && (!max || h.snapshotDate > max)) max = h.snapshotDate;
-    }
-    return max;
+    return usePriceMatrix(store) ? store.prices.latestDate : null;
   }
 
-  function currentHoldings(store) {
-    const date = snapshotDate(store);
-    if (!date) return [];
-    const rows = store.holdings.filter((h) => h.snapshotDate === date && (h.qty || 0) > 0);
+  function pricesAtDate(store, date) {
     const map = new Map();
-    for (const r of rows) {
-      const key = canonicalName(r.security);
-      const existing = map.get(key);
-      if (!existing || (r.marketValueNok || 0) > (existing.marketValueNok || 0)) {
-        // Keep the original keys the rest of the file uses (current_price, market_value_nok)
-        map.set(key, {
-          ...r,
-          security: key,
-          current_price: r.currentPrice,
-          market_value_nok: r.marketValueNok,
-        });
-      }
-    }
-    return Array.from(map.values());
-  }
-
-  function currentPrices(store) {
-    const map = new Map();
-    for (const h of currentHoldings(store)) {
-      if (h.current_price != null) {
-        map.set(canonicalName(h.security), {
-          price: h.current_price, marketValueNok: h.market_value_nok, qty: h.qty,
-        });
-      }
+    if (!usePriceMatrix(store)) return map;
+    for (const h of window.Positions.holdingsAt(store, date)) {
+      const sec = registry.forName(h.security);
+      if (sec && sec.status === 'ignore') continue;
+      // nokPriceAround: for dates before the backfilled history, value at the
+      // earliest known close rather than dropping the position — a missing
+      // entry reads as price 0 in windowMetrics and fabricates P/L.
+      const nok = window.Prices.nokPriceAround(store.prices, sec, date);
+      if (nok == null) continue;
+      const native = sec ? window.Prices.priceOn(store.prices, sec.ticker, date) : nok;
+      map.set(h.security, { price: native, marketValueNok: nok * h.qty, qty: h.qty });
     }
     return map;
   }
 
-  // Find the Beholdningsverdi snapshot date <= the given date (closest before).
-  // Returns null if no snapshots exist on or before the date.
-  function snapshotForDate(store, date) {
-    let best = null;
-    for (const h of store.holdings) {
-      if (!h.snapshotDate) continue;
-      if (h.snapshotDate > date) continue;
-      if (!best || h.snapshotDate > best) best = h.snapshotDate;
-    }
-    return best;
+  function currentPrices(store) {
+    return pricesAtDate(store, today());
   }
 
-  // Price map for a specific date, using the closest snapshot on or before it.
-  // NOK market value per share for a pricesAtDate entry. currentPrice is in the
-  // security's native currency (USD/SEK/…); marketValueNok is already converted,
-  // so prefer marketValueNok / qty and fall back to the raw price only if absent.
   function nokPerShare(px) {
     if (!px) return 0;
     return (px.marketValueNok != null && px.qty) ? px.marketValueNok / px.qty : (px.price || 0);
   }
 
-  // Falls back to currentPrices if no historical snapshot is available.
-  function pricesAtDate(store, date) {
-    const snap = snapshotForDate(store, date);
-    if (!snap) return currentPrices(store);
-    const map = new Map();
-    for (const h of store.holdings) {
-      if (h.snapshotDate !== snap) continue;
-      const key = canonicalName(h.security);
-      if (!map.has(key) && h.currentPrice != null) {
-        map.set(key, { price: h.currentPrice, marketValueNok: h.marketValueNok, qty: h.qty });
-      }
+  // NOK close for one security on a date (null when unknown). Handy for
+  // per-stock charts; forward-fills via the price matrix.
+  function nokPriceForSecurity(store, security, date) {
+    if (!usePriceMatrix(store)) return null;
+    const sec = registry.forName(security);
+    return window.Prices.nokPriceOn(store.prices, sec, date);
+  }
+
+  // Current holdings, derived from the replay + latest prices. Field names
+  // match the old snapshot rows (both camelCase and the snake_case aliases
+  // the dashboard-era code used) so consumers keep working.
+  function currentHoldings(store) {
+    if (!usePriceMatrix(store)) return [];
+    const date = today();
+    const out = [];
+    for (const h of window.Positions.holdingsAt(store, date)) {
+      const sec = registry.forName(h.security);
+      // 'ignore' = deliberately untracked residue (expired subscription
+      // rights, acceptance lines) — keep it out of holdings and KPIs.
+      if (sec && sec.status === 'ignore') continue;
+      const nok = window.Prices.nokPriceOn(store.prices, sec, date);
+      const native = sec && sec.ticker ? window.Prices.priceOn(store.prices, sec.ticker, date) : null;
+      const mv = nok != null ? nok * h.qty : null;
+      const returnNok = mv != null ? mv - h.costSum : null;
+      out.push({
+        snapshotDate: store.prices.latestDate,
+        security: h.security,
+        isin: sec ? sec.isin : null,
+        currency: sec ? sec.currency : h.currency,
+        qty: h.qty,
+        gav: h.avgCost,
+        currentPrice: native,
+        current_price: native,
+        marketValueNok: mv,
+        market_value_nok: mv,
+        returnNok,
+        returnPct: h.costSum > 0 && returnNok != null ? (returnNok / h.costSum) * 100 : null,
+        priced: nok != null,
+      });
     }
-    return map;
+    return out.sort((a, b) => (b.marketValueNok || 0) - (a.marketValueNok || 0));
   }
 
   // ─── Cost basis / cashflow / dividends ───────────────────────────────────
 
   function deriveCostBasis(store) {
     const attrMap = store.attributionMap;
-    const txs = store.transactions;
     const perInvestor = new Map();
     for (const code of INVESTOR_CODES) perInvestor.set(code, new Map());
 
-    for (const tx of txs) {
+    for (const tx of store.transactions) {
       if (!tx.security) continue;
       const cat = classify(tx.type);
       if (cat !== 'BUY' && cat !== 'SELL') continue;
-      const isPriced = tx.type === 'KJØPT' || isRealizingSell(tx.type);
-      if (!isPriced) continue;
+      // Corporate actions (BYTTE, SPLITT, spinoffs) move qty but never touch
+      // cost: a split halves avg cost implicitly, a spinoff parent keeps its
+      // basis. Only KJØPT adds cost; only realizing sells remove it.
       const split = splitForSecurity(attrMap, tx.security);
       if (!split.length) continue;
       const security = canonicalName(tx.security);
-      const qty = tx.qty || 0;
+      const qty = Math.abs(tx.qty || 0);
       const amount = amountNok(tx);
       for (const { code, weight } of split) {
         const bag = perInvestor.get(code);
-        if (!bag.has(security)) bag.set(security, { qty: 0, costSum: 0, realized: 0, lastSellPrice: 0 });
+        if (!bag.has(security)) bag.set(security, { qty: 0, costSum: 0, realized: 0 });
         const slot = bag.get(security);
         const wq = qty * weight;
-        const wa = amount * weight;
         if (cat === 'BUY') {
           slot.qty += wq;
-          slot.costSum += Math.abs(wa);
+          if (tx.type === 'KJØPT') slot.costSum += Math.abs(amount * weight);
         } else {
-          const avgCost = slot.qty > 0 ? slot.costSum / slot.qty : 0;
-          const soldQty = Math.abs(wq);
-          slot.realized += wa - avgCost * soldQty;
-          const fracSold = slot.qty > 0 ? soldQty / slot.qty : 0;
-          slot.qty = Math.max(0, slot.qty - soldQty);
-          slot.costSum = Math.max(0, slot.costSum - slot.costSum * fracSold);
+          if (isRealizingSell(tx.type)) {
+            const avgCost = slot.qty > 0 ? slot.costSum / slot.qty : 0;
+            slot.realized += amount * weight - avgCost * wq;
+            const fracSold = slot.qty > 0 ? Math.min(wq / slot.qty, 1) : 0;
+            slot.costSum = Math.max(0, slot.costSum - slot.costSum * fracSold);
+          }
+          slot.qty = Math.max(0, slot.qty - wq);
         }
       }
     }
@@ -148,10 +164,9 @@
 
   function deriveInvested(store) {
     const attrMap = store.attributionMap;
-    const txs = store.transactions;
     const perInvestor = new Map();
     for (const code of INVESTOR_CODES) perInvestor.set(code, 0);
-    for (const tx of txs) {
+    for (const tx of store.transactions) {
       if (tx.type !== 'KJØPT' || !tx.security) continue;
       const split = splitForSecurity(attrMap, tx.security);
       if (!split.length) continue;
@@ -164,10 +179,9 @@
 
   function deriveDividends(store) {
     const attrMap = store.attributionMap;
-    const txs = store.transactions;
     const perInvestor = new Map();
     for (const code of INVESTOR_CODES) perInvestor.set(code, 0);
-    for (const tx of txs) {
+    for (const tx of store.transactions) {
       const cat = classify(tx.type);
       if (cat !== 'DIVIDEND' && cat !== 'TAX') continue;
       const split = splitForSecurity(attrMap, tx.security);
@@ -179,8 +193,7 @@
     return perInvestor;
   }
 
-  // Nordnet records a running cash balance ("Saldo") on every transaction row.
-  // That balance — not our additive replay — is the authoritative cash figure.
+  // Nordnet's running "Saldo" is the authoritative cash figure.
   function latestSaldo(store) {
     let best = null;
     for (const t of store.transactions) {
@@ -203,9 +216,8 @@
   }
 
   function deriveCashFlow(store) {
-    const txs = store.transactions;
     let totalDeposits = 0, totalWithdrawals = 0, totalFees = 0, netDividends = 0, totalBuys = 0, totalSells = 0;
-    for (const tx of txs) {
+    for (const tx of store.transactions) {
       const cat = classify(tx.type);
       const amount = amountNok(tx);
       if (cat === 'DEPOSIT') totalDeposits += amount;
@@ -231,7 +243,10 @@
           security: h.security,
           qty: (h.qty || 0) * weight,
           currentPrice: h.current_price,
-          marketValueNok: (h.market_value_nok || 0) * weight,
+          // Keep null when unpriced — coercing to 0 would book a phantom
+          // 100% loss into every KPI downstream.
+          marketValueNok: h.market_value_nok != null ? h.market_value_nok * weight : null,
+          priced: h.priced !== false && h.market_value_nok != null,
           weight,
           currency: h.currency,
         });
@@ -243,8 +258,8 @@
   // ─── Window picker ───────────────────────────────────────────────────────
 
   function computeWindow(store, preset) {
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
     let earliest = '2020-01-01';
     for (const t of store.transactions) {
       if (t.tradeDate && (earliest === '2020-01-01' || t.tradeDate < earliest)) earliest = t.tradeDate;
@@ -256,19 +271,23 @@
       const x = new Date(d); x.setUTCFullYear(x.getUTCFullYear() + n); return x.toISOString().slice(0, 10);
     };
     switch (preset) {
-      case '1m': return { from: addMonths(today, -1), to: todayStr };
-      case '6m': return { from: addMonths(today, -6), to: todayStr };
-      case '1y': return { from: addYears(today, -1), to: todayStr };
+      case '1m': return { from: addMonths(now, -1), to: todayStr };
+      case '6m': return { from: addMonths(now, -6), to: todayStr };
+      case '1y': return { from: addYears(now, -1), to: todayStr };
       case 'all': return { from: earliest, to: todayStr };
       case 'ytd':
-      default:    return { from: `${today.getUTCFullYear()}-01-01`, to: todayStr };
+      default:    return { from: `${now.getUTCFullYear()}-01-01`, to: todayStr };
     }
   }
 
+  // Window metrics — start and end market values are now priced with the
+  // actual closes on those dates (the old code priced both ends with
+  // today's snapshot, which made "unrealized delta in window" a fiction).
   function windowMetrics(store, from, to) {
     const attrMap = store.attributionMap;
     const txs = store.transactions;
-    const prices = currentPrices(store);
+    const pricesStart = pricesAtDate(store, from);
+    const pricesEnd = pricesAtDate(store, to);
 
     const states = new Map();
     for (const code of INVESTOR_CODES) {
@@ -288,11 +307,14 @@
       return state.perSec.get(security);
     };
 
-    // Pre-window replay
+    // Pre-window replay. Corporate actions (BYTTE/SPLITT/…) move qty but
+    // not cost, same rules as Positions — otherwise the endpoint market
+    // values are wrong for any security that split or was spun off.
     for (const tx of txs) {
       if (!tx.security) continue;
       if ((tx.tradeDate || '') >= from) break;
-      if (tx.type !== 'KJØPT' && !isRealizingSell(tx.type)) continue;
+      const preCat = classify(tx.type);
+      if (preCat !== 'BUY' && preCat !== 'SELL') continue;
       const split = splitForSecurity(attrMap, tx.security);
       if (!split.length) continue;
       const security = canonicalName(tx.security);
@@ -300,15 +322,16 @@
         const state = states.get(code);
         const slot = ensureSec(state, security);
         const amt = amountNok(tx) * weight;
-        const q = (tx.qty || 0) * weight;
-        if (tx.type === 'KJØPT') {
+        const q = Math.abs(tx.qty || 0) * weight;
+        if (preCat === 'BUY') {
           slot.qty += q;
-          slot.costSum += Math.abs(amt);
+          if (tx.type === 'KJØPT') slot.costSum += Math.abs(amt);
         } else {
-          const sold = Math.abs(q);
-          const fracSold = slot.qty > 0 ? sold / slot.qty : 0;
-          slot.costSum = Math.max(0, slot.costSum - slot.costSum * fracSold);
-          slot.qty = Math.max(0, slot.qty - sold);
+          if (isRealizingSell(tx.type)) {
+            const fracSold = slot.qty > 0 ? Math.min(q / slot.qty, 1) : 0;
+            slot.costSum = Math.max(0, slot.costSum - slot.costSum * fracSold);
+          }
+          slot.qty = Math.max(0, slot.qty - q);
         }
       }
     }
@@ -316,8 +339,11 @@
       const state = states.get(code);
       let cost = 0, mv = 0;
       for (const [security, slot] of state.perSec.entries()) {
+        // An open position with no price is unknowable — excluding only its
+        // MV would book a phantom full-cost loss, so exclude cost too.
+        const px = pricesStart.get(security);
+        if (slot.qty > 0 && !px) continue;
         cost += slot.costSum;
-        const px = prices.get(security);
         mv += slot.qty * nokPerShare(px);
       }
       state.costAtStart = cost; state.mvAtStart = mv;
@@ -368,6 +394,17 @@
             state.sellCount += 1;
           }
         }
+      } else if (cat === 'BUY' || cat === 'SELL') {
+        // In-window corporate action: qty moves, no cost/realized/counters.
+        const split = splitForSecurity(attrMap, tx.security);
+        if (!split.length) continue;
+        const security = canonicalName(tx.security);
+        for (const { code, weight } of split) {
+          const slot = ensureSec(states.get(code), security);
+          const q = Math.abs(tx.qty || 0) * weight;
+          if (cat === 'BUY') slot.qty += q;
+          else slot.qty = Math.max(0, slot.qty - q);
+        }
       }
     }
 
@@ -375,8 +412,9 @@
       const state = states.get(code);
       let cost = 0, mv = 0;
       for (const [security, slot] of state.perSec.entries()) {
+        const px = pricesEnd.get(security);
+        if (slot.qty > 0 && !px) continue;
         cost += slot.costSum;
-        const px = prices.get(security);
         mv += slot.qty * nokPerShare(px);
       }
       state.costAtEnd = cost; state.mvAtEnd = mv;
@@ -391,12 +429,9 @@
     };
     for (const code of INVESTOR_CODES) {
       const state = states.get(code);
-      const unrealizedAtStart = state.mvAtStart - state.costAtStart;
-      const unrealizedAtEnd = state.mvAtEnd - state.costAtEnd;
-      const unrealizedDelta = unrealizedAtEnd - unrealizedAtStart;
+      const unrealizedDelta = (state.mvAtEnd - state.costAtEnd) - (state.mvAtStart - state.costAtStart);
       const netPnl = state.realizedInWindow + state.dividendsInWindow + unrealizedDelta;
       const base = Math.max(state.costAtStart + state.buysInWindow, 1);
-      const pct = (netPnl / base) * 100;
       perInvestor[code] = {
         realizedInWindow: state.realizedInWindow,
         dividendsInWindow: state.dividendsInWindow,
@@ -407,7 +442,7 @@
         unrealizedDeltaInWindow: unrealizedDelta,
         netPnlInWindow: netPnl,
         basis: base,
-        periodReturnPct: pct,
+        periodReturnPct: (netPnl / base) * 100,
       };
       group.realizedInWindow += state.realizedInWindow;
       group.dividendsInWindow += state.dividendsInWindow;
@@ -417,7 +452,7 @@
       group.sellCount += state.sellCount;
       group.unrealizedDeltaInWindow += unrealizedDelta;
       group.netPnlInWindow += netPnl;
-      group.base += base;
+      group.base += Math.max(state.costAtStart + state.buysInWindow, 1);
     }
     group.periodReturnPct = group.base > 0 ? (group.netPnlInWindow / group.base) * 100 : 0;
 
@@ -455,13 +490,18 @@
       for (const h of held) {
         const cost = costBag.get(h.security);
         const avgCost = cost && cost.qty > 0 ? cost.costSum / cost.qty : (h.currentPrice || 0);
-        const unrealizedH = (h.marketValueNok || 0) - avgCost * h.qty;
-        const unrealizedPct = avgCost > 0 ? (unrealizedH / (avgCost * h.qty)) * 100 : 0;
+        // Unpriced holding (no ticker / no data yet): contributes nothing to
+        // MV or unrealized instead of a fabricated full-cost loss.
+        const unrealizedH = h.priced === false ? 0 : (h.marketValueNok || 0) - avgCost * h.qty;
+        const unrealizedPct = h.priced === false ? null
+          : (avgCost > 0 ? (unrealizedH / (avgCost * h.qty)) * 100 : 0);
         holdings.push({
           security: h.security, qty: h.qty,
           avgCost, currentPrice: h.currentPrice,
           marketValue: h.marketValueNok,
-          unrealized: unrealizedH, unrealizedPct,
+          unrealized: h.priced === false ? null : unrealizedH,
+          unrealizedPct,
+          priced: h.priced !== false,
           weight: h.weight,
         });
         mv += h.marketValueNok || 0;
@@ -509,18 +549,18 @@
       totalValue: perInvestor[code].totalValue,
     })).sort((a, b) => b.value - a.value);
 
-    const ytd = buildYtdLeaderboard(store, perInvestor);
-    const bestPicks = buildBestPicks(store);
-    const monthly = buildMonthlyLeaderboard(store);
-
-    return { allTime, ytd, bestPicks, monthly };
+    return {
+      allTime,
+      ytd: buildYtdLeaderboard(store, perInvestor),
+      bestPicks: buildBestPicks(store),
+      monthly: buildMonthlyLeaderboard(store),
+    };
   }
 
   function buildYtdLeaderboard(store, perInvestor) {
     const attrMap = store.attributionMap;
     const txs = store.transactions;
-    const year = new Date().getUTCFullYear();
-    const yearStart = `${year}-01-01`;
+    const yearStart = `${new Date().getUTCFullYear()}-01-01`;
     const result = [];
     for (const code of INVESTOR_CODES) {
       let realizedYtd = 0, divsYtd = 0;
@@ -532,13 +572,11 @@
         if (!split.length) continue;
         const slot = split.find((s) => s.code === code);
         if (!slot) continue;
-        const w = slot.weight;
-        if (cat === 'SELL' && isRealizingSell(tx.type)) realizedYtd += amountNok(tx) * w;
-        else if (cat === 'DIVIDEND' || cat === 'TAX') divsYtd += amountNok(tx) * w;
+        if (cat === 'SELL' && isRealizingSell(tx.type)) realizedYtd += amountNok(tx) * slot.weight;
+        else if (cat === 'DIVIDEND' || cat === 'TAX') divsYtd += amountNok(tx) * slot.weight;
       }
       const base = perInvestor[code].deposits || 1;
-      const value = ((divsYtd + realizedYtd) / base) * 100;
-      result.push({ code, value });
+      result.push({ code, value: ((divsYtd + realizedYtd) / base) * 100 });
     }
     return result.sort((a, b) => b.value - a.value);
   }
@@ -567,9 +605,8 @@
         else if (cat === 'DIVIDEND' || cat === 'TAX') { slot.returned += amt; }
       }
     }
-    const holdings = currentHoldings(store);
     const priceMap = new Map();
-    for (const h of holdings) priceMap.set(h.security, h);
+    for (const h of currentHoldings(store)) priceMap.set(h.security, h);
 
     const out = [];
     for (const code of INVESTOR_CODES) {
@@ -587,8 +624,6 @@
       }
       out.push({ code, pick: best });
     }
-    // Sort by total gain (realized + unrealized) descending so the biggest
-    // single-position win appears first regardless of which investor holds it.
     out.sort((a, b) => {
       const ar = a.pick ? a.pick.return : -Infinity;
       const br = b.pick ? b.pick.return : -Infinity;
@@ -625,13 +660,10 @@
       ranks.sort((a, b) => b.value - a.value);
       result.push({ month: ym, ranks });
     }
-    // Newest month on top.
     return result.reverse();
   }
 
-  // Previously-held securities — positions this investor used to own but
-  // has fully exited. Walks transactions, attributes per the investor's
-  // weight, and reuses the cost-basis bag for realized P/L.
+  // Previously-held securities — fully exited positions for one investor.
   function previousHoldings(store, code) {
     const attrMap = store.attributionMap;
     const txs = store.transactions;
@@ -666,7 +698,6 @@
       }
     }
 
-    // Pull authoritative realized from the cost-basis replay.
     const costBag = deriveCostBasis(store).get(code) || new Map();
     for (const [security, m] of bySec.entries()) {
       const slot = costBag.get(security);
@@ -688,12 +719,12 @@
   // ─── Public entry points ─────────────────────────────────────────────────
 
   function buildDashboard(store, opts = {}) {
-    const window = opts.from && opts.to ? { from: opts.from, to: opts.to } : computeWindow(store, opts.preset || 'ytd');
-    const wm = windowMetrics(store, window.from, window.to);
+    const win = opts.from && opts.to ? { from: opts.from, to: opts.to } : computeWindow(store, opts.preset || 'ytd');
+    const wm = windowMetrics(store, win.from, win.to);
     const base = buildDashboardSnapshot(store);
     return {
       ...base,
-      window: { ...window, preset: opts.preset || 'ytd' },
+      window: { ...win, preset: opts.preset || 'ytd' },
       windowMetrics: wm,
       leaderboards: { ...base.leaderboards, period: wm.periodRanks },
     };
@@ -704,19 +735,17 @@
     const summary = dashboard.perInvestor[code];
     if (!summary) return null;
     const attrMap = store.attributionMap;
-    const txs = store.transactions;
     const recent = [];
-    for (const tx of txs.slice().reverse()) {
+    for (const tx of store.transactions.slice().reverse()) {
       if (!tx.security) continue;
       const split = splitForSecurity(attrMap, tx.security);
       if (!split.length) continue;
       const slot = split.find((s) => s.code === code);
       if (!slot) continue;
-      const w = slot.weight;
       recent.push({
         tradeDate: tx.tradeDate, type: tx.type, security: canonicalName(tx.security),
-        qty: tx.qty != null ? tx.qty * w : null, price: tx.price,
-        amount: amountNok(tx) * w, weight: w,
+        qty: tx.qty != null ? tx.qty * slot.weight : null, price: tx.price,
+        amount: amountNok(tx) * slot.weight, weight: slot.weight,
       });
       if (recent.length >= 50) break;
     }
@@ -726,8 +755,18 @@
   window.Portfolio = {
     buildDashboard, investorDetail, canonicalName,
     currentHoldings, previousHoldings, snapshotDate,
-    pricesAtDate, snapshotForDate,
+    pricesAtDate,
+    // "Which date are these prices actually from?" — the last price row on
+    // or before `date`.
+    snapshotForDate: (store, date) => {
+      if (!usePriceMatrix(store)) return null;
+      let best = null;
+      for (const d of store.prices.dates) { if (d <= date) best = d; else break; }
+      return best;
+    },
+    nokPriceForSecurity, computeWindow, windowMetrics, usePriceMatrix,
     cash: { latestSaldo, saldoOnOrBefore },
+    _setRegistry,
     _debug: { deriveCashFlow, deriveCostBasis, deriveDividends, deriveInvested },
   };
 })();

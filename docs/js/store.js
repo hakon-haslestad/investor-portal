@@ -1,5 +1,6 @@
-// One-page-load hydration of the Google Sheet into a plain JS object.
-// Calculator, ledger, etc. read from this — no further async calls.
+// One-per-session hydration of the Google Sheet into a plain JS object.
+// Calculator, ledger, views read from this — no further async calls.
+// The SPA hydrates once and navigates freely; refresh() re-fetches.
 
 (function () {
   let cached = null;
@@ -7,30 +8,46 @@
   async function hydrate(opts = {}) {
     if (cached && !opts.force) return cached;
     const T = window.PORTAL_CONFIG.TABS;
-    const tabs = [T.transactions, T.holdings, T.kpis, T.dimValues, T.members];
-    if (opts.includeCompetitions) {
-      tabs.push(T.competitions, T.participants);
-    }
+    const tabs = [
+      T.transactions, T.kpis, T.dimValues, T.members,
+      T.securities, T.stockPrices,
+      T.competitions, T.participants,
+    ];
 
     let result;
     try {
       result = await window.Sheet.batchGet(tabs);
     } catch (err) {
-      // batchGet fails entirely if any one tab doesn't exist yet (Members,
-      // Competitions). Fall back to per-tab fetches with tolerance.
+      // batchGet fails entirely if any one tab doesn't exist yet (Securities
+      // and StockPrices land in Phase 1). Fall back to per-tab fetches — but
+      // only to paper over MISSING tabs. If the core tabs fail too, this is
+      // a real API/auth error: rethrow it instead of hydrating an empty
+      // store (which would masquerade as "you're not in the Members tab").
       result = {};
       await Promise.all(tabs.map(async (t) => {
         try { result[t] = await window.Sheet.getValues(t); }
-        catch (_e) { result[t] = []; }
+        catch (_e) { result[t] = null; }
       }));
+      if (result[T.transactions] == null && result[T.members] == null) throw err;
+      for (const t of tabs) if (result[t] == null) result[t] = [];
     }
 
-    const transactions = window.Parsers.parseTransactions(result[T.transactions] || []);
-    const holdings = window.Parsers.parseHoldings(result[T.holdings] || []);
-    const kpis = window.Parsers.parseKpis(result[T.kpis] || []);
-    const dim = window.Parsers.parseDimValues(result[T.dimValues] || []);
-    const members = window.Parsers.parseMembers(result[T.members] || []);
+    const securitiesList = window.Securities.parseSecurities(result[T.securities] || []);
+    const registry = window.Securities.buildRegistry(securitiesList);
+    window.Portfolio._setRegistry(registry);
 
+    const transactions = window.Parsers.parseTransactions(result[T.transactions] || []);
+    // Nordnet exports carry ISINs but no tickers, and names drift across
+    // eras — teach the registry any name variant whose ISIN it knows, so
+    // every replay joins on one canonical security.
+    for (const tx of transactions) {
+      if (!tx.security || !tx.isin) continue;
+      if (registry.forName(tx.security)) continue;
+      const byIsin = registry.forIsin(tx.isin);
+      if (byIsin) registry.learnAlias(tx.security, byIsin);
+    }
+
+    const dim = window.Parsers.parseDimValues(result[T.dimValues] || []);
     const attributionMap = new Map();
     for (const a of dim.attributions) {
       if (!attributionMap.has(a.security)) attributionMap.set(a.security, []);
@@ -39,12 +56,16 @@
 
     cached = {
       transactions,
-      holdings,
-      kpis,
+      kpis: window.Parsers.parseKpis(result[T.kpis] || []),
       attributions: dim.attributions,
       meta: dim.meta,
       attributionMap,
-      members,
+      members: window.Parsers.parseMembers(result[T.members] || []),
+      securities: securitiesList,
+      registry,
+      prices: window.Prices.build(result[T.stockPrices] || []),
+      competitionsRaw: result[T.competitions] || [],
+      participantsRaw: result[T.participants] || [],
       raw: result,
     };
     return cached;
@@ -52,13 +73,17 @@
 
   function clear() { cached = null; }
 
+  async function refresh() {
+    clear();
+    return hydrate({ force: true });
+  }
+
   // Look up the current signed-in member's profile from the Members tab.
   function whoami(store) {
     const email = (window.Auth.getEmail() || '').toLowerCase();
     if (!email) return null;
-    const hit = store.members.find((m) => m.email === email);
-    return hit || null;
+    return store.members.find((m) => m.email === email) || null;
   }
 
-  window.Store = { hydrate, clear, whoami };
+  window.Store = { hydrate, clear, refresh, whoami };
 })();

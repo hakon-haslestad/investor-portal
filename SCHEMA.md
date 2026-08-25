@@ -14,27 +14,57 @@ explicitly described.
 ## 1. `Rådata fra nordnet` — transactions
 
 Source of truth for every cash movement and trade. Exported as-is from
-Nordnet → "Last ned transaksjoner". The parser keys columns by **header
-name**, so column order can change without breaking anything as long as
-the headers stay.
+Nordnet → "Last ned transaksjoner" (`transactions-and-notes-export.csv`).
+The parser keys columns by **header name**, so column order can change
+without breaking anything as long as the headers stay.
 
-| Header                | Type    | Example         | Notes                                    |
-| --------------------- | ------- | --------------- | ---------------------------------------- |
-| `Id`                  | string  | `12345678`      | Nordnet's row id. Required.              |
-| `Bokføringsdag`       | date    | `2025-03-04`    | Booking date.                            |
-| `Handelsdag`          | date    | `2025-03-03`    | Trade date. Used for ordering.           |
-| `Oppgjørsdag`         | date    | `2025-03-05`    | Settlement date.                         |
-| `Transaksjonstype`    | enum    | `KJØPT`         | See enum table below.                    |
-| `Verdipapir`          | string  | `Equinor`       | Security name. Free text, normalized.    |
-| `ISIN`                | string  | `NO0010096985`  | Optional.                                |
-| `Antall`              | number  | `100`           | Quantity (shares).                       |
-| `Kurs`                | number  | `345.5`         | Per-unit price.                          |
-| `Totale Avgifter`     | number  | `99`            | Fees.                                    |
-| `Beløp`               | number  | `-34649`        | Cash amount. Negative = outflow.         |
-| `Valuta`              | string  | `NOK`           | Should sit immediately right of `Beløp`. |
-| `Saldo`               | number  | `12345.67`      | Running balance.                         |
-| `Vekslingskurs`       | number  | `10.85`         | FX rate when foreign trade.              |
-| `Transaksjonstekst`   | string  | `Ord 12345`     | Free-text notes.                         |
+**Export format** (verified against a real 2026 export): the download is
+a **UTF-16 LE file with BOM, tab-separated** (despite the `.csv` name),
+with **decimal commas** (`0,0275`), ISO dates (`2026-06-18`), and empty
+cells for missing values. Google Sheets handles all of this on paste /
+File → Import; the portal's `numOrNull`/`excelDateToISO` normalize both
+comma-decimals and serials, so appending rows to the tab as-is is safe.
+
+The full current header row is:
+
+```
+Id  Bokføringsdag  Handelsdag  Oppgjørsdag  Portefølje  Transaksjonstype
+Verdipapir  ISIN  Antall  Kurs  Rente  Totale Avgifter  Valuta  Beløp
+Valuta  Kjøpsverdi  Valuta  Resultat  Valuta  Totalt antall  Saldo
+Vekslingskurs  Transaksjonstekst  Makuleringsdato  Sluttseddelnummer
+Verifikationsnummer  Kurtasje  Valuta  Valutakurs  Innledende rente
+```
+
+Note there are **five separate `Valuta` columns** — one after each money
+column (`Totale Avgifter`, `Beløp`, `Kjøpsverdi`, `Resultat`,
+`Kurtasje`). The parser resolves the ambiguity by taking the `Valuta`
+column **immediately to the right of `Beløp`** as the cash-amount
+currency.
+
+Columns the portal actually reads:
+
+| Header                | Type    | Example          | Notes                                    |
+| --------------------- | ------- | ---------------- | ---------------------------------------- |
+| `Id`                  | string  | `2583783747`     | Nordnet's row id. Required.              |
+| `Bokføringsdag`       | date    | `2026-06-22`     | Booking date.                            |
+| `Handelsdag`          | date    | `2026-06-22`     | Trade date. Used for ordering.           |
+| `Oppgjørsdag`         | date    | `2026-06-24`     | Settlement date.                         |
+| `Transaksjonstype`    | enum    | `KJØPT`          | See enum table below.                    |
+| `Verdipapir`          | string  | `Tomra Systems`  | Security name. Free text — variants are reconciled via ISIN. |
+| `ISIN`                | string  | `NO0012470089`   | **The stable security key.** Drives Securities seeding and ticker resolution. |
+| `Antall`              | number  | `398`            | Quantity (shares).                       |
+| `Kurs`                | number  | `96,85`          | Per-unit price (decimal comma).          |
+| `Totale Avgifter`     | number  | `29`             | Fees.                                    |
+| `Beløp`               | number  | `38517,3`        | Cash amount. Negative = outflow.         |
+| `Valuta` (after Beløp)| string  | `NOK`            | Currency of `Beløp`.                     |
+| `Saldo`               | number  | `128485,83`      | Running balance (NOK).                   |
+| `Vekslingskurs`       | number  | `1,0089`         | FX rate when foreign trade.              |
+| `Transaksjonstekst`   | string  | `FÖRSÄLJNING …`  | Free-text notes.                         |
+
+Ignored by the portal (kept in the tab, harmless): `Portefølje`
+(account id), `Rente`, `Kjøpsverdi`, `Resultat` (+ their `Valuta`
+columns), `Totalt antall`, `Makuleringsdato`, `Sluttseddelnummer`,
+`Verifikationsnummer`, `Kurtasje`, `Valutakurs`, `Innledende rente`.
 
 ### `Transaksjonstype` enum
 
@@ -56,35 +86,45 @@ The `BYTTE` / `SPLITT` rule is deliberate: replaying these as cost
 events would zero out the original basis on spinoffs (e.g. Kongsberg
 Maritime out of Kongsberg Gruppen). Cost basis is preserved by intent.
 
----
+----
 
-## 2. `Beholdningsverdi` — current holdings
+## 2. `Securities` — security master (NEW)
 
-A snapshot of currently-held positions. One row per security per
-snapshot date. The portal uses the **latest snapshot date** as the
-source of truth for current qty and price. Columns are read by
-**position**, not header — keep this order.
+Created and seeded by the Apps Script (`setupTabs`). Header-keyed,
+order-tolerant. One row per security ever traded.
 
-| Pos | Field          | Type   | Example       |
-| --- | -------------- | ------ | ------------- |
-| A   | `snapshotDate` | date   | `2026-05-15`  |
-| B   | `security`     | string | `Equinor`     |
-| C   | `currency`     | string | `NOK`         |
-| D   | `qty`          | number | `100`         |
-| E   | `gav`          | number | `298.4`       |
-| F   | (unused)       | —      | —             |
-| G   | `currentPrice` | number | `345.5`       |
-| H   | `marginValue`  | number | `0`           |
-| I   | `marketValue`  | number | `34550`       |
-| J   | `returnPct`    | number | `15.81`       |
-| K   | `returnNok`    | number | `4710`        |
+| Header     | Type   | Example        | Notes                                                        |
+| ---------- | ------ | -------------- | ------------------------------------------------------------ |
+| `ticker`   | string | `EQNR.OL`      | Yahoo-style symbol. StockPrices column key. Required to price.|
+| `name`     | string | `Equinor`      | Canonical display name.                                       |
+| `aliases`  | string | `equinor;EQNR` | `;`-separated Nordnet display-name variants. A retired **ISIN** here merges that era into this row (re-listings, ticker changes). |
+| `isin`     | string | `NO0010096985` | Optional.                                                     |
+| `currency` | string | `NOK`          | The ticker's native quote currency.                           |
+| `exchange` | string | `OSL`          | Informational; GF symbol derives from it when needed.         |
+| `source`   | enum   | `yahoo`        | `yahoo` (Oslo Børs) or `googlefinance` (STO/ETR/FX).          |
+| `status`   | enum   | `held`         | `held` / `sold` / `expired` (script-maintained) / `ignore` (manual: excluded from fetching AND from portal holdings — expired subscription rights, acceptance lines). |
+| `soldDate` | date   | `2026-05-02`   | Set when the replay hits qty 0; drives the 6-month tail.      |
+| `notes`    | string |                | Free text. `REVIEW` marks unmapped seeds; `gf=EXCH:SYM` overrides the GF symbol. |
 
-Header row is required (it's skipped), but the labels themselves are
-not parsed.
+## 3. `StockPrices` — daily close matrix (NEW)
 
----
+Written exclusively by the Apps Script. Row 1 is the header:
+`date | <ticker…> | CUR:USDNOK | CUR:SEKNOK | …`. One row per fetched
+date (`yyyy-mm-dd`), values are closes in the ticker's **native
+currency**; FX pairs are ordinary columns. Held stocks get a value per
+trading day; sold stocks weekly until 6 months after the sale. Holes are
+fine — the portal forward-fills every lookup. Never put formulas here.
 
-## 3. `Offisielle nøkkeltall` — per-stock KPIs
+## 4. `Beholdningsverdi` — RETIRED
+
+The manual holdings snapshot is fully retired: the portal neither
+fetches nor reads it (keep or delete the tab as you wish). Quantity and
+cost basis are derived by replaying `Rådata fra nordnet`: quantity moves
+on every BUY/SELL-classified type including corporate actions (`BYTTE`,
+`SPLITT`), cost moves only on `KJØPT` and realizing sells — so a split
+halves average cost implicitly and a spinoff parent keeps its basis.
+
+## 5. `Offisielle nøkkeltall` — per-stock KPIs
 
 Per-company × per-period fundamentals, one row per (company, period). The
 sheet is **header-driven**: the parser finds the column-name row (the one
@@ -117,7 +157,7 @@ company, compares periods where more than one exists, and renders the
 
 ---
 
-## 4. `Dim-values` — default attribution + ownership overrides
+## 6. `Dim-values` — default attribution + ownership overrides
 
 Maps each security to the investor(s) who own it, and at what weight.
 Five investors share one Nordnet account, so every transaction needs to
@@ -143,7 +183,7 @@ Admin page updates row D + E on the matching row of this tab.
 
 ---
 
-## 5. `Members` — user accounts
+## 7. `Members` — user accounts
 
 Maps Google accounts to investor codes and roles. This is the **auth
 allowlist**: a Google account that signs in but isn't in this tab gets
@@ -164,7 +204,7 @@ with their Google account as Editor.
 
 ---
 
-## 6. `Competitions` — competition metadata
+## 8. `Competitions` — competition metadata
 
 One row per competition. Created via the Competitions page in the
 portal; the row is appended at the bottom of this tab.
@@ -190,7 +230,7 @@ data and standings — there is no per-competition narrative override field.
 
 ---
 
-## 7. `Competition_Participants` — who's in each competition
+## 9. `Competition_Participants` — who's in each competition
 
 Read by **position** (no header parsing).
 

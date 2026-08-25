@@ -5,10 +5,12 @@
     document.getElementById('root').innerHTML = 'Setup needed: edit js/config.js';
     return;
   }
-  try { await window.Auth.ensureToken(); } catch (_e) { location.href = './login.html'; return; }
-  if (!window.Auth.getEmail()) {
-    try { await window.Auth.signIn(); } catch (_e) { location.href = './login.html'; return; }
-  }
+  // Auth is redirect-based and lives in the SPA shell — this page only
+  // reuses an existing session; without one, bounce to the shell to sign in.
+  try {
+    await window.Auth.ensureToken();
+    await window.Auth.ensureEmail();
+  } catch (_e) { location.href = './index.html'; return; }
   const store = await window.Store.hydrate({ includeCompetitions: true });
 
   const { fmtNok, fmtPct, fmtQty, pctClass, escapeHtml, PODIUM } = window.Fmt;
@@ -16,13 +18,13 @@
   const id = params.get('competition');
   const root = document.getElementById('root');
   if (!id) {
-    root.innerHTML = '<p>No competition selected. <a href="./competitions.html">Pick one</a>.</p>';
+    root.innerHTML = '<p>No competition selected. <a href="./index.html#/competitions">Pick one</a>.</p>';
     return;
   }
 
   const entry = await window.CompetitionsData.getCompetition(id);
   if (!entry) {
-    root.innerHTML = `<p>Competition <code>${escapeHtml(id)}</code> not found. <a href="./competitions.html">Back</a>.</p>`;
+    root.innerHTML = `<p>Competition <code>${escapeHtml(id)}</code> not found. <a href="./index.html#/competitions">Back</a>.</p>`;
     return;
   }
   const scored = window.CompetitionEngine.scoreCompetition(store, entry.competition, entry.participants);
@@ -35,7 +37,7 @@
     const s = slides[cur];
     root.innerHTML = `
       <div class="slide-header">
-        <div><a href="./competitions.html" class="text-muted text-small">← back</a></div>
+        <div><a href="./index.html#/competitions" class="text-muted text-small">← back</a></div>
         <div class="progress">${cur + 1} / ${slides.length}</div>
         <div>
           <button class="nav-btn" onclick="window.__prev()">←</button>

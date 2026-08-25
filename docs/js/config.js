@@ -26,12 +26,15 @@ window.PORTAL_CONFIG = {
   // Sheet tab names.
   TABS: {
     transactions: 'Rådata fra nordnet',
-    holdings: 'Beholdningsverdi',
     kpis: 'Offisielle nøkkeltall',
     dimValues: 'Dim-values',
     members: 'Members',
     competitions: 'Competitions',
     participants: 'Competition_Participants',
+    // Written by the Apps Script price feed (see apps-script/README.md).
+    securities: 'Securities',
+    stockPrices: 'StockPrices',
+    priceLog: '_log',
   },
 
   // Cross-year tab names inside the accounting sheet. Per-year tabs

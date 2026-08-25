@@ -20,10 +20,10 @@
     return new Date(s + (e - s) / 2).toISOString().slice(0, 10);
   }
 
-  // End date for the "first ~N days" view. Picks the Beholdningsverdi snapshot
-  // date closest to start+targetDays, within [start+loDays, start+hiDays]
+  // End date for the "first ~N days" view. Picks the StockPrices date
+  // closest to start+targetDays, within [start+loDays, start+hiDays]
   // (clamped to the competition end). Falls back to start+targetDays (capped
-  // at the end date) when no snapshot lands in that band.
+  // at the end date) when no price row lands in that band.
   function nearestSnapshotEnd(store, c, targetDays, loDays, hiDays) {
     const end = c.end_date;
     const clampEnd = (d) => (d < end ? d : end);
@@ -32,11 +32,7 @@
     const hi = clampEnd(addDays(c.start_date, hiDays));
     const tTs = Date.parse(target);
     let best = target, bestDiff = Infinity;
-    const seen = new Set();
-    for (const h of store.holdings || []) {
-      const d = h.snapshotDate;
-      if (!d || seen.has(d)) continue;
-      seen.add(d);
+    for (const d of (store.prices && store.prices.dates) || []) {
       if (d < lo || d > hi) continue;
       const diff = Math.abs(Date.parse(d) - tTs);
       if (diff < bestDiff) { bestDiff = diff; best = d; }
@@ -97,9 +93,9 @@
     // First 30 days: re-score the competition over [start, ~30 days] so it
     // follows the same rules (only stocks bought in-window count). netPnl
     // already combines realised (from rådata sells/dividends) and unrealised
-    // (Beholdningsverdi mark) — surfaced per-row below. Rather than a hard
+    // (last close) — surfaced per-row below. Rather than a hard
     // day-30 cutoff (which can land between snapshots and mis-mark the
-    // unrealised value), snap to the actual Beholdningsverdi snapshot date
+    // unrealised value), snap to the actual StockPrices row date
     // closest to day 30, within a 20–60 day band (clamped to the window).
     const earlyEnd = nearestSnapshotEnd(store, c, 30, 20, 60);
     const earlyRanks = scoreWithDates(store, c, scored.participants || [], c.start_date, earlyEnd);
@@ -306,7 +302,7 @@
 
   // Build a price line for one security over [start, end] using every
   // datapoint we have: the Kurs from each in-window trade AND every
-  // Beholdningsverdi snapshot price (snapshot wins on a shared date). Markers
+  // StockPrices daily closes (matrix wins on a shared date). Markers
   // mark the given participant's own buys/sells.
   function priceSeries(store, canon, start, end, code) {
     const byDate = new Map();
@@ -326,12 +322,14 @@
         }
       }
     }
-    // Snapshot prices take precedence on a shared date (end-of-day mark).
-    for (const h of store.holdings || []) {
-      if (!h.snapshotDate || h.currentPrice == null) continue;
-      if (h.snapshotDate < start || h.snapshotDate > end) continue;
-      if (canonicalName(h.security) !== canon) continue;
-      byDate.set(h.snapshotDate, { date: h.snapshotDate, price: h.currentPrice });
+    // Daily closes from the price matrix take precedence — genuine history
+    // beats the sparse trade-price sketch.
+    const sec = store.registry && store.registry.forName(canon);
+    if (sec && sec.ticker && store.prices) {
+      for (const p of store.prices.series.get(sec.ticker) || []) {
+        if (p.d < start || p.d > end) continue;
+        byDate.set(p.d, { date: p.d, price: p.v });
+      }
     }
     const points = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
     return { points, markers };
@@ -340,22 +338,19 @@
   // ─── Equity-curve slide ─────────────────────────────────────────────────────
 
   // Sample the competition window at ~14 points and re-score [start → sample]
-  // each time, producing one return-% line per participant. NOTE: if
-  // Beholdningsverdi holds only the current snapshot, pricesAtDate falls back
-  // to latest prices for interior dates, so the curve reflects cumulative
-  // realized + dividends + (latest-price) unrealized as buys accrue — directionally
-  // right, but interior unrealized MV is not historically priced.
+  // each time, producing one return-% line per participant. Every interior
+  // point is priced with the actual closes on that date via pricesAtDate.
   function buildCurveSlide(store, c, participants, names, noActivity, emptyNote) {
-    // Sample at the real Beholdningsverdi snapshot dates inside the window so
-    // every interior point is priced by an actual snapshot (avoids the −100%
-    // artifact from sampling a date no snapshot can price). Fall back to even
-    // spacing when there are no in-window snapshots. Always include the end,
+    // Sample at real StockPrices dates inside the window (thinned to ~14) so
+    // every interior point is priced by actual closes. Fall back to even
+    // spacing when the matrix has no in-window dates. Always include the end,
     // and anchor each line at 0% on the start date (return is 0 at entry).
-    const snaps = [...new Set((store.holdings || []).map((h) => h.snapshotDate).filter(Boolean))]
-      .filter((d) => d > c.start_date && d <= c.end_date)
-      .sort((a, b) => a.localeCompare(b));
-    const interior = snaps.length
-      ? snaps
+    const priceDates = ((store.prices && store.prices.dates) || [])
+      .filter((d) => d > c.start_date && d <= c.end_date);
+    const step = Math.max(1, Math.ceil(priceDates.length / 14));
+    const thinned = priceDates.filter((_, i) => i % step === 0);
+    const interior = thinned.length
+      ? thinned
       : sampleDates(c.start_date, c.end_date, 14).filter((d) => d > c.start_date && d <= c.end_date);
     const dates = interior.includes(c.end_date) ? interior : [...interior, c.end_date];
 

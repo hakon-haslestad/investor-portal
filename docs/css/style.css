@@ -390,3 +390,97 @@ td.links a:hover { color: var(--accent); }
   .chart-legend { grid-template-columns: 1fr; }
   .competition-card .ranks { grid-template-columns: 1fr; }
 }
+
+/* ─── SPA shell (rewrite) ────────────────────────────────────────────── */
+
+/* Visible keyboard focus everywhere interactive */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--link); outline-offset: 2px; border-radius: 4px;
+}
+#view:focus { outline: none; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.view-loading { color: var(--muted); padding: 60px 0; text-align: center; font-size: 0.95rem; }
+.gate-status { margin-top: 16px; font-size: 0.9rem; color: var(--muted); }
+
+/* Sub-tab bar inside a top-level view */
+.subtabs {
+  display: flex; gap: 4px; margin: 4px 0 18px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); padding-bottom: 0;
+}
+.subtabs a {
+  color: var(--muted); font-size: 0.9rem; padding: 8px 14px;
+  border-radius: 8px 8px 0 0; border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.subtabs a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+.subtabs a.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); }
+.empty-cell { color: var(--muted); text-align: center; padding: 28px 14px; }
+.empty-state {
+  background: var(--panel); border: 1px dashed var(--border); border-radius: var(--radius);
+  padding: 28px; text-align: center; color: var(--muted); margin: 14px 0;
+}
+.empty-state strong { color: var(--text); display: block; margin-bottom: 6px; }
+.empty-state p { margin: 0; font-size: 0.88rem; }
+
+.inv-chip { display: inline-flex; align-items: center; gap: 7px; font-weight: 500; }
+.inv-chip .dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; flex: none; }
+
+.price-freshness { color: var(--muted); font-size: 0.82rem; }
+.price-freshness.stale { color: var(--accent-2); }
+
+@media (max-width: 720px) {
+  .subtabs { overflow-x: auto; flex-wrap: nowrap; }
+  .subtabs a { white-space: nowrap; padding: 8px 10px; font-size: 0.84rem; }
+}
+
+/* ─── Metric info popovers ───────────────────────────────────────────── */
+.info-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 999px; flex: none;
+  background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--link); font-size: 0.68rem; font-weight: 700; font-style: italic;
+  cursor: pointer; padding: 0; vertical-align: middle; line-height: 1;
+  margin-left: 4px;
+}
+.info-dot:hover { border-color: var(--link); background: var(--panel); }
+.kpi-card .label .info-dot, .section-title .info-dot { opacity: 0.75; }
+.kpi-card .label .info-dot:hover, .section-title .info-dot:hover { opacity: 1; }
+
+.info-popover {
+  position: absolute; z-index: 200;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+}
+.info-popover-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+}
+.info-popover-head strong { font-size: 0.95rem; }
+.info-popover .info-close {
+  background: transparent; border: none; color: var(--muted);
+  font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 6px;
+}
+.info-popover .info-close:hover { color: var(--text); background: var(--panel-2); }
+.info-popover-body { padding: 12px 14px 14px; max-height: 340px; overflow-y: auto; }
+.info-popover-body h5 {
+  margin: 10px 0 4px; font-size: 0.72rem; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--muted); font-weight: 600;
+}
+.info-popover-body h5:first-child { margin-top: 0; }
+.info-popover-body p { margin: 0; font-size: 0.85rem; line-height: 1.55; color: var(--text); }
+.info-popover-body em { color: var(--accent-2); font-style: normal; }
+
+/* The hidden attribute must always win — .login-shell's display:flex (and
+   any other explicit display) would otherwise override it and keep the
+   auth gate painted on top of the running app. */
+[hidden] { display: none !important; }
