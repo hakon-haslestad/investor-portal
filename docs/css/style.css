@@ -390,3 +390,55 @@ td.links a:hover { color: var(--accent); }
   .chart-legend { grid-template-columns: 1fr; }
   .competition-card .ranks { grid-template-columns: 1fr; }
 }
+
+/* ─── SPA shell (rewrite) ────────────────────────────────────────────── */
+
+/* Visible keyboard focus everywhere interactive */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--link); outline-offset: 2px; border-radius: 4px;
+}
+#view:focus { outline: none; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.view-loading { color: var(--muted); padding: 60px 0; text-align: center; font-size: 0.95rem; }
+.gate-status { margin-top: 16px; font-size: 0.9rem; color: var(--muted); }
+
+/* Sub-tab bar inside a top-level view */
+.subtabs {
+  display: flex; gap: 4px; margin: 4px 0 18px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); padding-bottom: 0;
+}
+.subtabs a {
+  color: var(--muted); font-size: 0.9rem; padding: 8px 14px;
+  border-radius: 8px 8px 0 0; border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.subtabs a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+.subtabs a.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); }
+.empty-cell { color: var(--muted); text-align: center; padding: 28px 14px; }
+.empty-state {
+  background: var(--panel); border: 1px dashed var(--border); border-radius: var(--radius);
+  padding: 28px; text-align: center; color: var(--muted); margin: 14px 0;
+}
+.empty-state strong { color: var(--text); display: block; margin-bottom: 6px; }
+.empty-state p { margin: 0; font-size: 0.88rem; }
+
+.inv-chip { display: inline-flex; align-items: center; gap: 7px; font-weight: 500; }
+.inv-chip .dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; flex: none; }
+
+.price-freshness { color: var(--muted); font-size: 0.82rem; }
+.price-freshness.stale { color: var(--accent-2); }
+
+@media (max-width: 720px) {
+  .subtabs { overflow-x: auto; flex-wrap: nowrap; }
+  .subtabs a { white-space: nowrap; padding: 8px 10px; font-size: 0.84rem; }
+}

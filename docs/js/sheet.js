@@ -78,9 +78,20 @@
     });
   }
 
+  // 1-based column number → A1 letters (1→A, 26→Z, 27→AA, 703→AAA …).
+  function colLetter(n) {
+    let s = '';
+    while (n > 0) {
+      const r = (n - 1) % 26;
+      s = String.fromCharCode(65 + r) + s;
+      n = Math.floor((n - 1) / 26);
+    }
+    return s;
+  }
+
   // Updates a single row at row index (1-based, matching the sheet UI).
   async function updateRow(tab, rowIndex1Based, row) {
-    const endCol = String.fromCharCode(64 + row.length); // 1→A, 2→B, …
+    const endCol = colLetter(row.length);
     const range = encodeURIComponent(quoteRange(tab, `A${rowIndex1Based}:${endCol}${rowIndex1Based}`));
     const params = new URLSearchParams({ valueInputOption: 'USER_ENTERED' });
     return authedFetch(`${BASE}/${sheetId()}/values/${range}?${params}`, {

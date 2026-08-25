@@ -148,11 +148,62 @@
   //                      + cost  − cost   (cost cancels)  + unrealized at end
   // …which collapses to deposits − withdrawals − fees + dividends + realized
   // for in-flight points and adds the unrealized lift at the final sample.
-  // Portfolio value per investor — pulled straight from Beholdningsverdi.
-  // One sample per snapshotDate, summing marketValueNok × investor weight
-  // across every security in that snapshot. No transactions, no derived
-  // cash — this is the authoritative MV the broker recorded on that day.
-  function buildPortfolioValueSeries(store) {
+  // Portfolio value per investor — a true daily series from the StockPrices
+  // matrix: for every price date, Σ qtyOn(date) × nokPriceOn(ticker, date)
+  // per security, attributed by Dim-values weight. Downsampled to ≤ MAX_PTS
+  // points so the SVG stays light. Falls back to the sparse Beholdningsverdi
+  // snapshots until the price matrix has data.
+  const MAX_PTS = 400;
+
+  function sampleDates(dates) {
+    if (dates.length <= MAX_PTS) return dates;
+    const step = Math.ceil(dates.length / MAX_PTS);
+    const out = [];
+    for (let i = 0; i < dates.length; i += step) out.push(dates[i]);
+    if (out[out.length - 1] !== dates[dates.length - 1]) out.push(dates[dates.length - 1]);
+    return out;
+  }
+
+  function buildPortfolioValueSeries(store, opts = {}) {
+    if (!window.Portfolio.usePriceMatrix(store)) return legacyPortfolioValueSeries(store);
+    const attrMap = store.attributionMap;
+    const from = opts.from || store.prices.dates[0];
+    const to = opts.to || store.prices.latestDate;
+    const dates = sampleDates(window.Prices.datesBetween(store.prices, from, to));
+    return dates.map((date) => {
+      const perInvestor = {};
+      for (const code of INVESTOR_CODES) perInvestor[code] = 0;
+      for (const h of window.Positions.holdingsAt(store, date)) {
+        const nok = window.Portfolio.nokPriceForSecurity(store, h.security, date);
+        if (nok == null) continue;
+        const split = splitForSecurity(attrMap, h.security);
+        for (const { code, weight } of split) {
+          perInvestor[code] += nok * h.qty * weight;
+        }
+      }
+      return { date, perInvestor };
+    });
+  }
+
+  // NOK close series for one security — a genuine daily price chart input.
+  // Returns [{date, price}] within [from, to] (both optional).
+  function buildSecurityPriceSeries(store, security, from, to) {
+    if (!window.Portfolio.usePriceMatrix(store)) return [];
+    const sec = store.registry.forName(security);
+    if (!sec || !sec.ticker) return [];
+    const points = store.prices.series.get(sec.ticker) || [];
+    const out = [];
+    for (const p of points) {
+      if (from && p.d < from) continue;
+      if (to && p.d > to) continue;
+      const fx = window.Prices.fxOn(store.prices, sec.currency, p.d);
+      if (fx == null) continue;
+      out.push({ date: p.d, price: p.v * fx });
+    }
+    return out;
+  }
+
+  function legacyPortfolioValueSeries(store) {
     const attrMap = store.attributionMap;
     const byDate = new Map();
     for (const h of store.holdings) {
@@ -211,6 +262,7 @@
 
   window.TimeSeries = {
     buildPortfolioValueSeries,
+    buildSecurityPriceSeries,
     buildCumulativePnlSeries,
     buildCapitalVsReturnSeries,
   };

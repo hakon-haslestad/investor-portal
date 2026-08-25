@@ -5,34 +5,69 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: https://*.googleusercontent.com; font-src 'self'; style-src 'self' 'unsafe-inline' https://accounts.google.com; script-src 'self' 'unsafe-inline' https://accounts.google.com https://www.gstatic.com; connect-src 'self' https://sheets.googleapis.com https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>Investor Portal — dashboard</title>
-  <link rel="stylesheet" href="./css/style.css?v=20260651" />
+  <title>Investor Portal</title>
+  <link rel="stylesheet" href="./css/style.css?v=20260825" />
 </head>
 <body>
-  <div id="nav-mount"></div>
-  <div class="container" id="root">Loading…</div>
+  <!-- Auth gate — shown until a signed-in member is confirmed -->
+  <div id="auth-gate" class="login-shell">
+    <div class="login-card" style="text-align:center">
+      <h1>Investor Portal</h1>
+      <p class="sub">Sign in with your Google account.</p>
+      <button class="btn" id="gate-signin">Sign in with Google</button>
+      <div id="gate-status" class="gate-status" role="status" aria-live="polite"></div>
+      <p class="text-small text-muted" style="margin-top:24px">
+        The portal reads from a private Google Sheet shared with the club
+        members. Nothing is stored on a server.
+      </p>
+    </div>
+  </div>
 
-  <!-- Google Identity Services. Intentionally no Subresource Integrity (SRI)
-       hash: Google ships gsi/client as a rolling library and updates it
-       without notice, so a pinned integrity hash would eventually break
-       sign-in. Third-party script integrity is instead enforced by the
-       Content-Security-Policy above, which restricts script origins to
-       this site + Google. -->
+  <!-- App shell -->
+  <div id="shell" hidden>
+    <header class="nav">
+      <h1>Investor Portal</h1>
+      <nav id="top-nav" class="links" aria-label="Main"></nav>
+      <div class="who" id="nav-who"></div>
+    </header>
+    <main id="view" class="container" tabindex="-1"></main>
+  </div>
+
+  <!-- Google Identity Services. Intentionally no SRI hash: Google ships
+       gsi/client as a rolling library; script origin is enforced by CSP. -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="./js/config.js?v=20260651"></script>
-  <script src="./js/format.js?v=20260651"></script>
-  <script src="./js/copy.js?v=20260651"></script>
-  <script src="./js/auth.js?v=20260651"></script>
-  <script src="./js/sheet.js?v=20260651"></script>
-  <script src="./js/parsers.js?v=20260651"></script>
-  <script src="./js/store.js?v=20260651"></script>
-  <script src="./js/nav.js?v=20260651"></script>
-  <script src="./js/ledger.js?v=20260651"></script>
-  <script src="./js/portfolio.js?v=20260651"></script>
-  <script src="./js/charts.js?v=20260651"></script>
-  <script src="./js/timeseries.js?v=20260651"></script>
-  <script src="./js/competitions-data.js?v=20260651"></script>
-  <script src="./js/competitions-engine.js?v=20260651"></script>
-  <script src="./js/pages/dashboard.js?v=20260651"></script>
+
+  <!-- Core -->
+  <script src="./js/config.js?v=20260825"></script>
+  <script src="./js/auth.js?v=20260825"></script>
+  <script src="./js/sheet.js?v=20260825"></script>
+  <script src="./js/parsers.js?v=20260825"></script>
+  <script src="./js/format.js?v=20260825"></script>
+  <script src="./js/copy.js?v=20260825"></script>
+  <!-- Domain -->
+  <script src="./js/ledger.js?v=20260825"></script>
+  <script src="./js/securities.js?v=20260825"></script>
+  <script src="./js/prices.js?v=20260825"></script>
+  <script src="./js/portfolio.js?v=20260825"></script>
+  <script src="./js/positions.js?v=20260825"></script>
+  <script src="./js/store.js?v=20260825"></script>
+  <script src="./js/timeseries.js?v=20260825"></script>
+  <script src="./js/dimvalues.js?v=20260825"></script>
+  <script src="./js/competitions-data.js?v=20260825"></script>
+  <script src="./js/competitions-engine.js?v=20260825"></script>
+  <script src="./js/accounting.js?v=20260825"></script>
+  <!-- UI -->
+  <script src="./js/charts.js?v=20260825"></script>
+  <script src="./js/components.js?v=20260825"></script>
+  <script src="./js/router.js?v=20260825"></script>
+  <!-- Views -->
+  <script src="./js/views/dashboard.js?v=20260825"></script>
+  <script src="./js/views/portfolio.js?v=20260825"></script>
+  <script src="./js/views/investors.js?v=20260825"></script>
+  <script src="./js/views/competitions.js?v=20260825"></script>
+  <script src="./js/views/accounting.js?v=20260825"></script>
+  <script src="./js/views/admin.js?v=20260825"></script>
+  <!-- Boot -->
+  <script src="./js/app.js?v=20260825"></script>
 </body>
 </html>

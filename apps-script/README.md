@@ -1,0 +1,56 @@
+# Price feed — Google Apps Script
+
+Free, serverless price ingestion for the portal. A script bound to the club's
+Google Sheet fetches closes daily and stores them in the `StockPrices` tab
+(rows = dates, columns = tickers, values = close in the security's native
+currency; FX rates as `CUR:USDNOK`-style columns).
+
+Cadence: **held** stocks daily; **sold** stocks weekly for 6 months after the
+sale (`soldDate + 183 days`), then the ticker is marked `expired` and fetching
+stops. Sold-state is derived automatically by replaying the Nordnet
+transaction log.
+
+Sources: GOOGLEFINANCE where it covers the symbol (Stockholm, Xetra, FX);
+Yahoo Finance chart API for Oslo Børs (GOOGLEFINANCE has no OSE coverage).
+Only static values are written — GOOGLEFINANCE formulas are evaluated in the
+hidden `_scratch` tab and replaced by their value, since formulas recalculate
+and would not preserve history.
+
+## Install (one-time, ~10 minutes)
+
+1. Open the portfolio Google Sheet → **Extensions → Apps Script**.
+2. Replace the default `Code.gs` content with this folder's `Code.gs`. Save.
+3. In the editor's function dropdown, run **`setupTabs`**. First run asks for
+   authorization (spreadsheet + external requests) — accept.
+   - This creates `Securities`, `StockPrices`, `_scratch`, `_log` and seeds
+     `Securities` from every distinct security in `Rådata fra nordnet`.
+4. **Review the `Securities` tab.** Rows noted `REVIEW` need a ticker,
+   currency and source filled in by hand:
+   - `ticker` — Yahoo-style symbol (`EQNR.OL`, `STOR-B.ST`, `HFG.DE`). This
+     becomes the column header in `StockPrices` and the key the portal uses.
+   - `source` — `yahoo` for Oslo Børs, `googlefinance` where GF covers it.
+   - `aliases` — extra Nordnet display-name variants, `;`-separated (old
+     exports used short codes like `SALM`; newer ones use full names).
+   - For a `googlefinance` row whose GF symbol differs from
+     `exchange:ticker`, put `gf=EXCH:SYM` in `notes`.
+5. Run **`backfill`** — fetches historical closes per ticker from its first
+   transaction date, plus FX history. Idempotent; safe to re-run (it never
+   overwrites an existing cell). May take a few minutes.
+6. Run **`dailyFetch`** manually once and check:
+   - `StockPrices` has today's row with a value per held ticker + FX columns.
+   - `_log` (unhide via right-click a tab → Show) has no errors.
+   - Run `dailyFetch` again — the same row is updated, not duplicated.
+7. Run **`setupTrigger`** — installs the daily 18:00 Europe/Oslo trigger.
+
+## Operations
+
+- **New stock bought** — `dailyFetch` won't know its ticker: the seeded row
+  appears after the next `setupTabs` run, or simply add a `Securities` row
+  yourself (ticker, name, alias = the Nordnet `Verdipapir` text, currency,
+  source). Backfill it with one `backfill` run.
+- **Fetch failures** land in `_log` and leave a hole in the matrix — safe,
+  the portal forward-fills the last known close.
+- **Force-refresh sold state** — `dailyFetch` does it on every run; nothing
+  to maintain by hand. `status`/`soldDate` can be overridden manually.
+- The portal's Admin tab shows the `Securities` registry and recent `_log`
+  entries, so day-to-day you rarely need the Apps Script editor.

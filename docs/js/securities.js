@@ -1,0 +1,81 @@
+// Security master — parses the `Securities` tab into a registry that maps
+// Nordnet display names (and aliases) to a canonical security identity:
+// ticker (StockPrices column key), currency, exchange, status, soldDate.
+// Replaces the old hardcoded NAME_ALIASES table in portfolio.js.
+
+(function () {
+  // Header: ticker | name | aliases | isin | currency | exchange | source |
+  //         status | soldDate | notes   (header-keyed, order-tolerant)
+  function parseSecurities(rows) {
+    if (!rows || rows.length < 2) return [];
+    const header = rows[0].map((h) => String(h || '').trim().toLowerCase());
+    const col = (name) => header.indexOf(name);
+    const idx = {
+      ticker: col('ticker'), name: col('name'), aliases: col('aliases'),
+      isin: col('isin'), currency: col('currency'), exchange: col('exchange'),
+      source: col('source'), status: col('status'), soldDate: col('solddate'),
+      notes: col('notes'),
+    };
+    const at = (row, i) => (i >= 0 && row[i] != null ? String(row[i]).trim() : '');
+    const out = [];
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      const name = at(row, idx.name);
+      const ticker = at(row, idx.ticker);
+      if (!name && !ticker) continue;
+      out.push({
+        sourceRow: r + 1,
+        ticker,
+        name: name || ticker,
+        aliases: at(row, idx.aliases).split(';').map((a) => a.trim()).filter(Boolean),
+        isin: at(row, idx.isin) || null,
+        currency: (at(row, idx.currency) || 'NOK').toUpperCase(),
+        exchange: at(row, idx.exchange) || null,
+        source: (at(row, idx.source) || 'yahoo').toLowerCase(),
+        status: (at(row, idx.status) || 'held').toLowerCase(),
+        soldDate: window.Parsers.excelDateToISO(row[idx.soldDate]) || null,
+        notes: at(row, idx.notes) || null,
+      });
+    }
+    return out;
+  }
+
+  // Registry with lowercase-name → security lookups.
+  function buildRegistry(list) {
+    const byKey = new Map();   // lowercased name/alias/ticker → security
+    const byTicker = new Map();
+    for (const s of list) {
+      if (s.ticker) byTicker.set(s.ticker, s);
+      const keys = [s.name, s.ticker, ...s.aliases];
+      for (const k of keys) {
+        if (k) byKey.set(k.toLowerCase(), s);
+      }
+    }
+    function forName(raw) {
+      if (!raw) return null;
+      return byKey.get(String(raw).trim().toLowerCase()) || null;
+    }
+    return {
+      list,
+      byTicker,
+      forName,
+      // Canonical display name for any Nordnet name variant. Falls back to
+      // the trimmed input when the security isn't registered (yet).
+      canonicalName(raw) {
+        const s = forName(raw);
+        return s ? s.name : (raw == null ? raw : String(raw).trim());
+      },
+      tickerFor(raw) {
+        const s = forName(raw);
+        return s ? s.ticker || null : null;
+      },
+      currencyFor(raw) {
+        const s = forName(raw);
+        return s ? s.currency : 'NOK';
+      },
+    };
+  }
+
+  window.Securities = { parseSecurities, buildRegistry };
+})();

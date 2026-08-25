@@ -5,9 +5,9 @@
     document.getElementById('root').innerHTML = 'Setup needed: edit js/config.js';
     return;
   }
-  try { await window.Auth.ensureToken(); } catch (_e) { location.href = './login.html'; return; }
+  try { await window.Auth.ensureToken(); } catch (_e) { location.href = './index.html'; return; }
   if (!window.Auth.getEmail()) {
-    try { await window.Auth.signIn(); } catch (_e) { location.href = './login.html'; return; }
+    try { await window.Auth.signIn(); } catch (_e) { location.href = './index.html'; return; }
   }
   const store = await window.Store.hydrate({ includeCompetitions: true });
 

@@ -1,0 +1,103 @@
+// Position replay — derives quantity, cost basis, and realized P/L per
+// security by replaying the Nordnet transaction log. Replaces the manual
+// Beholdningsverdi snapshot as the source of holdings.
+//
+// Rules (same intent as the old calculator, now also authoritative for qty):
+//   - Quantity moves on every BUY/SELL-classified type, INCLUDING corporate
+//     actions (BYTTE, SPLITT, spinoffs) — shares must track reality.
+//   - Cost basis moves only on KJØPT (adds) and realizing sells (removes
+//     proportionally + realizes P/L vs average cost). Corporate actions
+//     never touch cost — a split halves the average cost implicitly by
+//     doubling qty; a spinoff parent keeps its full basis.
+//
+// Group-level states are computed once per hydration and cached on the
+// store. Per-investor figures are the group figures scaled by the
+// investor's Dim-values weight (weights are constant per security, so
+// scaling is exact).
+
+(function () {
+  const { classify, isRealizingSell, amountNok } = window.Ledger;
+
+  // Map(canonicalSecurity → {currency, dates[], qty[], costSum[], realized[]})
+  // Arrays are cumulative states AFTER each event date (one entry per event).
+  function bySecurity(store) {
+    if (store._positionsCache) return store._positionsCache;
+    const canonical = (s) => window.Portfolio.canonicalName(s);
+    const states = new Map();
+    for (const tx of store.transactions) {
+      if (!tx.security) continue;
+      const cat = classify(tx.type);
+      if (cat !== 'BUY' && cat !== 'SELL') continue;
+      const security = canonical(tx.security);
+      if (!states.has(security)) {
+        states.set(security, {
+          currency: tx.currency || 'NOK',
+          dates: [], qty: [], costSum: [], realized: [],
+          _q: 0, _c: 0, _r: 0,
+        });
+      }
+      const st = states.get(security);
+      const q = Math.abs(tx.qty || 0);
+      if (cat === 'BUY') {
+        st._q += q;
+        if (tx.type === 'KJØPT') st._c += Math.abs(amountNok(tx));
+      } else {
+        if (isRealizingSell(tx.type)) {
+          const avg = st._q > 0 ? st._c / st._q : 0;
+          st._r += amountNok(tx) - avg * q;
+          const frac = st._q > 0 ? Math.min(q / st._q, 1) : 0;
+          st._c = Math.max(0, st._c - st._c * frac);
+        }
+        st._q = Math.max(0, st._q - q);
+      }
+      const d = tx.tradeDate || tx.bookDate || '';
+      if (st.dates.length && st.dates[st.dates.length - 1] === d) {
+        // Same-day events collapse into one state entry.
+        st.qty[st.qty.length - 1] = st._q;
+        st.costSum[st.costSum.length - 1] = st._c;
+        st.realized[st.realized.length - 1] = st._r;
+      } else {
+        st.dates.push(d);
+        st.qty.push(st._q);
+        st.costSum.push(st._c);
+        st.realized.push(st._r);
+      }
+    }
+    store._positionsCache = states;
+    return states;
+  }
+
+  // State (qty, costSum, realized) of one security at end of `date`.
+  function stateAt(st, date) {
+    if (!st || !st.dates.length) return { qty: 0, costSum: 0, realized: 0 };
+    let lo = 0, hi = st.dates.length - 1, best = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (st.dates[mid] <= date) { best = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    if (best < 0) return { qty: 0, costSum: 0, realized: 0 };
+    return { qty: st.qty[best], costSum: st.costSum[best], realized: st.realized[best] };
+  }
+
+  // Group-level open positions at end of `date` (today when omitted):
+  // [{security, currency, qty, costSum, avgCost}], qty > 0 only.
+  function holdingsAt(store, date) {
+    const d = date || '9999-12-31';
+    const out = [];
+    for (const [security, st] of bySecurity(store).entries()) {
+      const s = stateAt(st, d);
+      if (s.qty > 0.0001) {
+        out.push({
+          security,
+          currency: st.currency,
+          qty: s.qty,
+          costSum: s.costSum,
+          avgCost: s.qty > 0 ? s.costSum / s.qty : 0,
+        });
+      }
+    }
+    return out;
+  }
+
+  window.Positions = { bySecurity, stateAt, holdingsAt };
+})();
