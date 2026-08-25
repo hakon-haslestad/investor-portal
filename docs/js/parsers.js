@@ -170,31 +170,6 @@
     return { attributions, meta };
   }
 
-  function parseHoldings(rows) {
-    if (!rows || rows.length < 2) return [];
-    const out = [];
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r];
-      if (!row || row[1] == null) continue;
-      const security = normalizeSecurityName(row[1]);
-      if (!security) continue;
-      out.push({
-        snapshotDate: excelDateToISO(row[0]),
-        security,
-        isin: null,
-        currency: row[2] ? String(row[2]).trim() : null,
-        qty: numOrNull(row[3]),
-        gav: numOrNull(row[4]),
-        currentPrice: numOrNull(row[6]),
-        marketValueNok: numOrNull(row[8]),
-        marginValue: numOrNull(row[7]),
-        returnPct: numOrNull(row[9]),
-        returnNok: numOrNull(row[10]),
-      });
-    }
-    return out;
-  }
-
   // Offisielle nøkkeltall is header-driven (the header spans the first rows;
   // the real column-name row is whichever one holds "Period" + "Selskap").
   // Columns: Period | Selskap | Val. | Antall | Aksjer ute (mill) |
@@ -286,7 +261,6 @@
     INVESTOR_CODES,
     parseTransactions,
     parseDimValues,
-    parseHoldings,
     parseKpis,
     parseMembers,
     parseMemberCell,

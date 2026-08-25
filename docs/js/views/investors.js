@@ -432,7 +432,8 @@
         if (daily.length >= 2) return { points: daily, markers };
       }
 
-      // Fallback: reconstruct from in-window trade prices + legacy snapshots.
+      // Fallback for an unpriced ticker: sketch the curve from the actual
+      // in-window trade prices (better than no chart at all).
       const byDate = new Map();
       for (const tx of store.transactions || []) {
         if (!tx.security || !tx.tradeDate) continue;
@@ -442,14 +443,6 @@
         if (isTrade && Number.isFinite(tx.price) && tx.price > 0) {
           byDate.set(tx.tradeDate, { date: tx.tradeDate, price: txPriceNok(tx) });
         }
-      }
-      for (const h of store.holdings || []) {
-        if (!h.snapshotDate || h.currentPrice == null) continue;
-        if (h.snapshotDate < from || h.snapshotDate > to) continue;
-        if (canon(h.security) !== c) continue;
-        const priceNok = (h.qty && h.marketValueNok != null && h.qty !== 0)
-          ? h.marketValueNok / h.qty : h.currentPrice;
-        byDate.set(h.snapshotDate, { date: h.snapshotDate, price: priceNok });
       }
       const points = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
       return { points, markers };

@@ -117,11 +117,10 @@ fine — the portal forward-fills every lookup. Never put formulas here.
 
 ## 4. `Beholdningsverdi` — RETIRED
 
-The manual holdings snapshot is no longer maintained. The portal reads
-it only as a fallback while `StockPrices` is empty (set `TABS.holdings`
-to `null` in config.js to stop fetching it). Quantity and cost basis are
-derived by replaying `Rådata fra nordnet`: quantity moves on every
-BUY/SELL-classified type including corporate actions (`BYTTE`,
+The manual holdings snapshot is fully retired: the portal neither
+fetches nor reads it (keep or delete the tab as you wish). Quantity and
+cost basis are derived by replaying `Rådata fra nordnet`: quantity moves
+on every BUY/SELL-classified type including corporate actions (`BYTTE`,
 `SPLITT`), cost moves only on `KJØPT` and realizing sells — so a split
 halves average cost implicitly and a spinoff parent keeps its basis.
 

@@ -366,31 +366,19 @@
       return { periods: show, byCode };
     }
 
-    // Native-currency price return over a period — from the StockPrices
-    // matrix when live (currency cancels in the ratio), from legacy
-    // snapshots otherwise. Null → the cell shows "—".
+    // Native-currency price return over a period, from the StockPrices
+    // matrix (currency cancels in the ratio). Null → the cell shows "—".
     function periodReturnFor(security, fromDate) {
-      if (window.Portfolio.usePriceMatrix(store)) {
-        const sec = store.registry.forName(security);
-        if (!sec || !sec.ticker) return null;
-        const today = new Date().toISOString().slice(0, 10);
-        const base = window.Prices.priceOn(store.prices, sec.ticker, fromDate);
-        const nowPx = window.Prices.priceOn(store.prices, sec.ticker, today);
-        if (base == null || nowPx == null || !(base > 0)) return null;
-        // Only meaningful if the series actually starts on/before fromDate.
-        const series = store.prices.series.get(sec.ticker);
-        if (!series || series[0].d > fromDate) return null;
-        return ((nowPx - base) / base) * 100;
-      }
-      const canon = window.Portfolio.canonicalName;
-      const a = (store.holdings || [])
-        .filter((h) => canon(h.security) === canon(security) && h.snapshotDate && h.currentPrice != null)
-        .sort((x, y) => x.snapshotDate.localeCompare(y.snapshotDate));
-      let base = null;
-      for (const p of a) { if (p.snapshotDate <= fromDate) base = p; else break; }
-      const latest = a[a.length - 1];
-      if (!base || !(base.currentPrice > 0) || !latest) return null;
-      return ((latest.currentPrice - base.currentPrice) / base.currentPrice) * 100;
+      const sec = store.registry.forName(security);
+      if (!sec || !sec.ticker) return null;
+      const today = new Date().toISOString().slice(0, 10);
+      const base = window.Prices.priceOn(store.prices, sec.ticker, fromDate);
+      const nowPx = window.Prices.priceOn(store.prices, sec.ticker, today);
+      if (base == null || nowPx == null || !(base > 0)) return null;
+      // Only meaningful if the series actually starts on/before fromDate.
+      const series = store.prices.series.get(sec.ticker);
+      if (!series || series[0].d > fromDate) return null;
+      return ((nowPx - base) / base) * 100;
     }
 
     // Current portfolio table — replay-derived holdings priced by the matrix.
@@ -459,7 +447,7 @@
 
     function priceFreshnessLine() {
       if (!window.Portfolio.usePriceMatrix(store)) {
-        return '<div class="price-freshness stale">Using legacy Beholdningsverdi snapshot — price feed not yet active</div>';
+        return '<div class="price-freshness stale">No price data — the StockPrices tab is empty. Install/run the Apps Script feed (see apps-script/README.md).</div>';
       }
       const latest = store.prices.latestDate;
       const ageDays = Math.round((Date.now() - new Date(latest).getTime()) / 86400000);

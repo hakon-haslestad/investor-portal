@@ -69,7 +69,7 @@
 
   // FX helpers. Nordnet records `Beløp` and `Totale Avgifter` in the
   // transaction's trading currency (USD, SEK, EUR, …) plus `Vekslingskurs`
-  // — the foreign→NOK rate. Saldo and Beholdningsverdi.marketValueNok are
+  // — the foreign→NOK rate. Saldo is
   // already NOK, but every other money field needs the multiply. Treats
   // empty / 'NOK' currency, or a missing fx rate, as a 1:1 NOK figure.
   function amountNok(tx) {

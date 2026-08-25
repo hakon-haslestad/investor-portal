@@ -1,7 +1,7 @@
 // Competitions view — list + live standings, scoring rules, create/delete.
 // Ported from pages/competitions-page.js. Scoring runs client-side through
 // CompetitionEngine; its price inputs come from the rewritten Portfolio
-// (StockPrices matrix with Beholdningsverdi fallback) automatically.
+// (StockPrices matrix) automatically.
 
 (function () {
   const MEMBERS = ['HH', 'HS', 'ØS', 'JC', 'HF'];

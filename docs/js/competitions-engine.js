@@ -9,7 +9,7 @@
 //     pre-window shares, which aren't in the competition.
 //   • UTBYTTE / KUPONGSKATT during the window count if the participant still
 //     holds in-window inventory at that time.
-//   • End-of-window valuation uses the closest Beholdningsverdi snapshot
+//   • End-of-window valuation uses the last StockPrices close
 //     on-or-before end_date (period-correct, not "now").
 //   • Budget is a recyclable pool: SALG proceeds free up capital to redeploy,
 //     so capital used = net invested = gross KJØPT − in-window SALG proceeds.
@@ -29,7 +29,7 @@
     const startDate = competition.start_date;
     const endDate = competition.end_date;
     const endPrices = pricesAtDate(store, endDate);
-    // Snapshot date actually used (closest in Beholdningsverdi on-or-before end_date).
+    // Price date actually used (last StockPrices row on-or-before end_date).
     const snapshotUsed = window.Portfolio.snapshotForDate(store, endDate);
 
     const perParticipant = [];
@@ -108,7 +108,7 @@
       for (const [sec, lot] of lots.entries()) {
         if (!lot.opened) continue;
         const px = endPrices.get(sec);
-        // Value in NOK. Beholdningsverdi.currentPrice is in the security's
+        // Value in NOK. The price map's currentPrice is in the security's
         // native currency (USD/SEK/…), but marketValueNok is already converted,
         // so derive a NOK-per-share (marketValueNok / qty) — otherwise foreign
         // holdings get marked ~FX-rate too low against their NOK cost basis.
@@ -124,7 +124,7 @@
           security: sec,
           qty: lot.qty,
           costSum: lot.costSum,
-          endPrice,                  // price from Beholdningsverdi snapshot on-or-before end_date
+          endPrice,                  // close on-or-before end_date (forward-filled)
           marketValueAtEnd: mv,      // qty × endPrice (only the in-window slice)
           // Aliases kept for older slide renderers that referenced these names:
           currentPrice: endPrice,

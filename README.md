@@ -81,11 +81,11 @@ bump this version (find-and-replace across `docs/*.html`).
 | `Competition_Participants` | Per-competition participants and teams                      |
 | `_scratch`, `_log`         | Apps Script working tabs (hidden)                           |
 
-The old `Beholdningsverdi` snapshot tab is retired: quantities and cost
-basis are derived by replaying the transaction log (corporate actions
-move shares but never touch cost basis), and prices come from
-`StockPrices` with forward-fill over weekends/holes. Until `StockPrices`
-has data the portal transparently falls back to `Beholdningsverdi`.
+Quantities and cost basis are derived by replaying the transaction log
+(corporate actions move shares but never touch cost basis); prices come
+from `StockPrices` with forward-fill over weekends/holes. The old
+`Beholdningsverdi` snapshot tab is fully retired — the portal never
+reads it.
 
 **Full column-level schema**: see [SCHEMA.md](./SCHEMA.md).
 

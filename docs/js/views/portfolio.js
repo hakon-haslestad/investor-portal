@@ -34,7 +34,7 @@
 
   function priceFreshnessNote(store) {
     if (!window.Portfolio.usePriceMatrix(store)) {
-      return '<span class="price-freshness stale">Price feed not live yet — values from the legacy Beholdningsverdi snapshot.</span>';
+      return '<span class="price-freshness stale">No price data — the StockPrices tab is empty. Install/run the Apps Script feed.</span>';
     }
     return `<span class="price-freshness">Prices as of ${store.prices.latestDate}</span>`;
   }
@@ -396,30 +396,18 @@
         return out;
       }
 
-      // Month-end MV: true valuation at the month-end closes when the price
-      // matrix is live; else the closest legacy snapshot on or before month-end.
+      // Month-end MV: true valuation at the month-end closes from the
+      // price matrix. Null when nothing is priceable yet.
       function monthEndMv(store, monthEnd) {
-        if (window.Portfolio.usePriceMatrix(store)) {
-          const held = window.Positions.holdingsAt(store, monthEnd);
-          if (!held.length) return 0;
-          let mv = 0, priced = false;
-          for (const h of held) {
-            const px = window.Portfolio.nokPriceForSecurity(store, h.security, monthEnd);
-            if (px != null) { mv += px * h.qty; priced = true; }
-          }
-          return priced ? mv : null;
+        if (!window.Portfolio.usePriceMatrix(store)) return null;
+        const held = window.Positions.holdingsAt(store, monthEnd);
+        if (!held.length) return 0;
+        let mv = 0, priced = false;
+        for (const h of held) {
+          const px = window.Portfolio.nokPriceForSecurity(store, h.security, monthEnd);
+          if (px != null) { mv += px * h.qty; priced = true; }
         }
-        let snap = null;
-        for (const h of store.holdings) {
-          if (!h.snapshotDate || h.snapshotDate > monthEnd) continue;
-          if (!snap || h.snapshotDate > snap) snap = h.snapshotDate;
-        }
-        if (!snap) return null;
-        let mv = 0;
-        for (const h of store.holdings) {
-          if (h.snapshotDate === snap) mv += h.marketValueNok || 0;
-        }
-        return mv;
+        return priced ? mv : null;
       }
 
       function blank(ym) {

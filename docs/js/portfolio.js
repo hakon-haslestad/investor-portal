@@ -1,12 +1,9 @@
-// Portfolio calculator. Same public API as before (buildDashboard,
-// investorDetail, pricesAtDate, canonicalName, …) — but prices now come
-// from the StockPrices date×ticker matrix (window.Prices) and quantities
-// from the transaction replay (window.Positions) instead of the manual
-// Beholdningsverdi snapshot.
-//
-// Transition safety: when the StockPrices tab has no data yet, every price
-// helper falls back to the legacy Beholdningsverdi snapshot so the portal
-// keeps working mid-migration.
+// Portfolio calculator. Same public API as the original (buildDashboard,
+// investorDetail, pricesAtDate, canonicalName, …) — prices come from the
+// StockPrices date×ticker matrix (window.Prices) and quantities from the
+// transaction replay (window.Positions). If the price matrix is empty the
+// helpers return empty results and the views surface a "price feed not
+// active" notice.
 
 (function () {
   const { INVESTOR_CODES, classify, splitForSecurity, isRealizingSell, amountNok } = window.Ledger;
@@ -52,13 +49,12 @@
   function today() { return new Date().toISOString().slice(0, 10); }
 
   function snapshotDate(store) {
-    if (usePriceMatrix(store)) return store.prices.latestDate;
-    return legacySnapshotDate(store);
+    return usePriceMatrix(store) ? store.prices.latestDate : null;
   }
 
   function pricesAtDate(store, date) {
-    if (!usePriceMatrix(store)) return legacyPricesAtDate(store, date);
     const map = new Map();
+    if (!usePriceMatrix(store)) return map;
     for (const h of window.Positions.holdingsAt(store, date)) {
       const sec = registry.forName(h.security);
       if (sec && sec.status === 'ignore') continue;
@@ -85,10 +81,7 @@
   // NOK close for one security on a date (null when unknown). Handy for
   // per-stock charts; forward-fills via the price matrix.
   function nokPriceForSecurity(store, security, date) {
-    if (!usePriceMatrix(store)) {
-      const px = legacyPricesAtDate(store, date).get(canonicalName(security));
-      return px ? nokPerShare(px) : null;
-    }
+    if (!usePriceMatrix(store)) return null;
     const sec = registry.forName(security);
     return window.Prices.nokPriceOn(store.prices, sec, date);
   }
@@ -97,7 +90,7 @@
   // match the old snapshot rows (both camelCase and the snake_case aliases
   // the dashboard-era code used) so consumers keep working.
   function currentHoldings(store) {
-    if (!usePriceMatrix(store)) return legacyCurrentHoldings(store);
+    if (!usePriceMatrix(store)) return [];
     const date = today();
     const out = [];
     for (const h of window.Positions.holdingsAt(store, date)) {
@@ -126,50 +119,6 @@
       });
     }
     return out.sort((a, b) => (b.marketValueNok || 0) - (a.marketValueNok || 0));
-  }
-
-  // ─── Legacy Beholdningsverdi fallback ────────────────────────────────────
-
-  function legacySnapshotDate(store) {
-    let max = null;
-    for (const h of store.holdings) {
-      if (h.snapshotDate && (!max || h.snapshotDate > max)) max = h.snapshotDate;
-    }
-    return max;
-  }
-
-  function legacyCurrentHoldings(store) {
-    const date = legacySnapshotDate(store);
-    if (!date) return [];
-    const rows = store.holdings.filter((h) => h.snapshotDate === date && (h.qty || 0) > 0);
-    const map = new Map();
-    for (const r of rows) {
-      const key = canonicalName(r.security);
-      const existing = map.get(key);
-      if (!existing || (r.marketValueNok || 0) > (existing.marketValueNok || 0)) {
-        map.set(key, { ...r, security: key, current_price: r.currentPrice, market_value_nok: r.marketValueNok });
-      }
-    }
-    return Array.from(map.values());
-  }
-
-  function legacyPricesAtDate(store, date) {
-    let snap = null;
-    for (const h of store.holdings) {
-      if (!h.snapshotDate || h.snapshotDate > date) continue;
-      if (!snap || h.snapshotDate > snap) snap = h.snapshotDate;
-    }
-    const map = new Map();
-    const source = snap
-      ? store.holdings.filter((h) => h.snapshotDate === snap)
-      : legacyCurrentHoldings(store);
-    for (const h of source) {
-      const key = canonicalName(h.security);
-      if (!map.has(key) && h.currentPrice != null) {
-        map.set(key, { price: h.currentPrice, marketValueNok: h.marketValueNok, qty: h.qty });
-      }
-    }
-    return map;
   }
 
   // ─── Cost basis / cashflow / dividends ───────────────────────────────────
@@ -807,20 +756,13 @@
     buildDashboard, investorDetail, canonicalName,
     currentHoldings, previousHoldings, snapshotDate,
     pricesAtDate,
-    // "Which date are these prices actually from?" In matrix mode: the last
-    // price row on or before `date`; legacy: the snapshot used.
+    // "Which date are these prices actually from?" — the last price row on
+    // or before `date`.
     snapshotForDate: (store, date) => {
-      if (usePriceMatrix(store)) {
-        let best = null;
-        for (const d of store.prices.dates) { if (d <= date) best = d; else break; }
-        return best;
-      }
-      let snap = null;
-      for (const h of store.holdings) {
-        if (!h.snapshotDate || h.snapshotDate > date) continue;
-        if (!snap || h.snapshotDate > snap) snap = h.snapshotDate;
-      }
-      return snap;
+      if (!usePriceMatrix(store)) return null;
+      let best = null;
+      for (const d of store.prices.dates) { if (d <= date) best = d; else break; }
+      return best;
     },
     nokPriceForSecurity, computeWindow, windowMetrics, usePriceMatrix,
     cash: { latestSaldo, saldoOnOrBefore },

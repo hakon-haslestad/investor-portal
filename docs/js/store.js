@@ -13,7 +13,6 @@
       T.securities, T.stockPrices,
       T.competitions, T.participants,
     ];
-    if (T.holdings) tabs.push(T.holdings); // legacy fallback during migration
 
     let result;
     try {
@@ -57,7 +56,6 @@
 
     cached = {
       transactions,
-      holdings: T.holdings ? window.Parsers.parseHoldings(result[T.holdings] || []) : [],
       kpis: window.Parsers.parseKpis(result[T.kpis] || []),
       attributions: dim.attributions,
       meta: dim.meta,

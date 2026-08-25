@@ -151,8 +151,7 @@
   // Portfolio value per investor — a true daily series from the StockPrices
   // matrix: for every price date, Σ qtyOn(date) × nokPriceOn(ticker, date)
   // per security, attributed by Dim-values weight. Downsampled to ≤ MAX_PTS
-  // points so the SVG stays light. Falls back to the sparse Beholdningsverdi
-  // snapshots until the price matrix has data.
+  // points so the SVG stays light. Empty until the price matrix has data.
   const MAX_PTS = 400;
 
   function sampleDates(dates) {
@@ -165,7 +164,7 @@
   }
 
   function buildPortfolioValueSeries(store, opts = {}) {
-    if (!window.Portfolio.usePriceMatrix(store)) return legacyPortfolioValueSeries(store);
+    if (!window.Portfolio.usePriceMatrix(store)) return [];
     const attrMap = store.attributionMap;
     const from = opts.from || store.prices.dates[0];
     const to = opts.to || store.prices.latestDate;
@@ -201,30 +200,6 @@
       out.push({ date: p.d, price: p.v * fx });
     }
     return out;
-  }
-
-  function legacyPortfolioValueSeries(store) {
-    const attrMap = store.attributionMap;
-    const byDate = new Map();
-    for (const h of store.holdings) {
-      if (!h.snapshotDate || h.marketValueNok == null) continue;
-      if (!byDate.has(h.snapshotDate)) byDate.set(h.snapshotDate, []);
-      byDate.get(h.snapshotDate).push(h);
-    }
-    const dates = Array.from(byDate.keys()).sort();
-    return dates.map((date) => {
-      const perInvestor = {};
-      for (const code of INVESTOR_CODES) perInvestor[code] = 0;
-      for (const h of byDate.get(date)) {
-        const security = canonicalName(h.security);
-        const split = splitForSecurity(attrMap, security);
-        if (!split.length) continue;
-        for (const { code, weight } of split) {
-          perInvestor[code] += (h.marketValueNok || 0) * weight;
-        }
-      }
-      return { date, perInvestor };
-    });
   }
 
   function buildCumulativePnlSeries(store) {

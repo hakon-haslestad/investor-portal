@@ -1,6 +1,6 @@
 // Position replay — derives quantity, cost basis, and realized P/L per
-// security by replaying the Nordnet transaction log. Replaces the manual
-// Beholdningsverdi snapshot as the source of holdings.
+// security by replaying the Nordnet transaction log — the sole source of
+// holdings (the manual Beholdningsverdi snapshot is retired).
 //
 // Rules (same intent as the old calculator, now also authoritative for qty):
 //   - Quantity moves on every BUY/SELL-classified type, INCLUDING corporate
