@@ -9,7 +9,14 @@
   function parseSecurities(rows) {
     if (!rows || rows.length < 2) return [];
     const header = rows[0].map((h) => String(h || '').trim().toLowerCase());
-    const col = (name) => header.indexOf(name);
+    // Header-keyed with a positional fallback: the tab has a canonical
+    // column order, and one accidentally overwritten header cell must not
+    // blank the ticker (= every price) portal-wide.
+    const CANON = ['ticker', 'name', 'aliases', 'isin', 'currency', 'exchange', 'source', 'status', 'solddate', 'notes'];
+    const col = (name) => {
+      const i = header.indexOf(name);
+      return i >= 0 ? i : CANON.indexOf(name);
+    };
     const idx = {
       ticker: col('ticker'), name: col('name'), aliases: col('aliases'),
       isin: col('isin'), currency: col('currency'), exchange: col('exchange'),
