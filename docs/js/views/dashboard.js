@@ -17,22 +17,6 @@
     let sheetName = '';
     try { sheetName = await window.Sheet.spreadsheetTitle(); } catch (_e) { sheetName = ''; }
 
-    // Currently-active competition (today inside its window). Best-effort —
-    // if the Competitions tab is missing or the network fails, skip the feature.
-    let activeCompetition = null;
-    try {
-      const all = await window.CompetitionsData.listCompetitions();
-      const today = new Date().toISOString().slice(0, 10);
-      const live = all.filter((c) =>
-        c.competition.start_date && c.competition.end_date &&
-        c.competition.start_date <= today && c.competition.end_date >= today
-      );
-      if (live.length) {
-        activeCompetition = live.sort((a, b) =>
-          b.competition.start_date.localeCompare(a.competition.start_date)
-        )[0];
-      }
-    } catch (_e) { /* competitions optional; ignore */ }
 
     const PRESETS = [
       { id: '1m', label: '1M' }, { id: '6m', label: '6M' },
@@ -50,42 +34,6 @@
     };
     let selectedCodes = (localStorage.getItem('portal.filter') || '')
       .split(',').map((s) => s.trim()).filter(Boolean);
-    let competitionMode = localStorage.getItem('portal.competition_mode') === '1';
-    if (competitionMode && !activeCompetition) {
-      competitionMode = false;
-      localStorage.removeItem('portal.competition_mode');
-    }
-    if (competitionMode && activeCompetition) {
-      current = {
-        preset: 'custom',
-        from: activeCompetition.competition.start_date,
-        to: activeCompetition.competition.end_date,
-      };
-      selectedCodes = activeCompetition.participants.map((p) => p.investor_code).filter(Boolean);
-    }
-
-    function toggleCompetitionMode() {
-      if (!activeCompetition) return;
-      if (competitionMode) {
-        competitionMode = false;
-        localStorage.removeItem('portal.competition_mode');
-        current = { preset: 'ytd', from: null, to: null };
-        selectedCodes = [];
-        localStorage.removeItem('portal.filter');
-      } else {
-        competitionMode = true;
-        localStorage.setItem('portal.competition_mode', '1');
-        current = {
-          preset: 'custom',
-          from: activeCompetition.competition.start_date,
-          to: activeCompetition.competition.end_date,
-        };
-        selectedCodes = activeCompetition.participants.map((p) => p.investor_code).filter(Boolean);
-        if (selectedCodes.length) localStorage.setItem('portal.filter', selectedCodes.join(','));
-      }
-      refresh();
-    }
-    window.__toggleCompetitionMode = toggleCompetitionMode;
 
     window.__clearFilter = () => { selectedCodes = []; localStorage.removeItem('portal.filter'); refresh(); };
 
@@ -140,85 +88,9 @@
         current.to = d.window.to;
       }
       localStorage.setItem('portal.range', JSON.stringify(current));
-
-      if (competitionMode && activeCompetition && window.CompetitionEngine) {
-        try {
-          const comp = window.CompetitionEngine.scoreCompetition(
-            store, activeCompetition.competition, activeCompetition.participants
-          );
-          applyCompetitionOverrides(d, comp);
-        } catch (_e) { /* fall back to normal dashboard if scoring blows up */ }
-      }
-
       paint(d);
     }
 
-    function applyCompetitionOverrides(d, comp) {
-      const byCode = new Map();
-      for (const r of comp.ranks) byCode.set(r.code, r);
-      const wm = d.windowMetrics;
-
-      let gMV = 0, gCash = 0, gUnreal = 0, gReal = 0, gDiv = 0, gInv = 0, gNet = 0;
-      let gBuys = 0, gSells = 0, gBuyCount = 0, gSellCount = 0, gNetPnl = 0;
-
-      for (const code of INVESTOR_CODES) {
-        const p = byCode.get(code);
-        const cash = p ? Math.max(0, (p.buyIn || 0) - (p.amountSpent || 0)) : 0;
-        const sellsProceeds = p ? p.breakdown.reduce((s, b) => s + (b.soldProceeds || 0), 0) : 0;
-        const sellCount = p ? p.breakdown.filter((b) => (b.soldQty || 0) > 0).length : 0;
-        const buyCount = p ? p.breakdown.length : 0;
-        const rn = d.perInvestor[code] || (d.perInvestor[code] = {});
-        rn.marketValue = p ? p.mvAtEnd : 0;
-        rn.cash = cash;
-        rn.totalValue = (rn.marketValue || 0) + (rn.cash || 0);
-        rn.unrealized = p ? p.unrealizedAtEnd : 0;
-        rn.realized = p ? p.realizedInWindow : 0;
-        rn.dividends = p ? p.divsInWindow : 0;
-        rn.invested = p ? p.amountSpent : 0;
-        rn.netReturn = p ? p.netPnl : 0;
-        rn.portfolioReturnPct = p ? p.pct : 0;
-        rn.totalReturnPct = rn.portfolioReturnPct;
-        gMV += rn.marketValue; gCash += rn.cash; gUnreal += rn.unrealized;
-        gReal += rn.realized; gDiv += rn.dividends; gInv += rn.invested;
-        gNet += rn.netReturn;
-
-        const w = wm.perInvestor[code] || (wm.perInvestor[code] = {});
-        w.realizedInWindow = p ? p.realizedInWindow : 0;
-        w.dividendsInWindow = p ? p.divsInWindow : 0;
-        w.buysInWindow = p ? p.amountSpent : 0;
-        w.sellsInWindow = sellsProceeds;
-        w.buyCount = buyCount;
-        w.sellCount = sellCount;
-        w.netPnlInWindow = p ? p.netPnl : 0;
-        w.periodReturnPct = p ? p.pct : 0;
-        gBuys += w.buysInWindow; gSells += w.sellsInWindow;
-        gBuyCount += w.buyCount; gSellCount += w.sellCount;
-        gNetPnl += w.netPnlInWindow;
-      }
-
-      d.group.marketValue = gMV;
-      d.group.cash = gCash;
-      d.group.totalValue = gMV + gCash;
-      d.group.unrealized = gUnreal;
-      d.group.realized = gReal;
-      d.group.dividends = gDiv;
-      d.group.invested = gInv;
-      d.group.netReturn = gNet;
-      d.group.portfolioReturnPct = gInv > 0 ? (gNet / gInv) * 100 : 0;
-
-      wm.group.realizedInWindow = gReal;
-      wm.group.dividendsInWindow = gDiv;
-      wm.group.buysInWindow = gBuys;
-      wm.group.sellsInWindow = gSells;
-      wm.group.buyCount = gBuyCount;
-      wm.group.sellCount = gSellCount;
-      wm.group.netPnlInWindow = gNetPnl;
-      wm.group.periodReturnPct = gInv > 0 ? (gNetPnl / gInv) * 100 : 0;
-
-      d.leaderboards.period = comp.ranks.map((r) => ({ code: r.code, value: r.pct }));
-    }
-
-    // Slice an all-time per-investor series down to the selected window.
     function periodKey(p) {
       const y = /(\d{4})/.exec(p || ''); const yr = y ? +y[1] : 0;
       const q = /Q\s*([1-4])/i.exec(p || ''); return yr * 10 + (q ? +q[1] : 4);
@@ -359,19 +231,6 @@
         : '';
       const rnTitle = `Right now (${d.snapshotDate || '—'})`;
       const winTitle = selectedCodes.length ? `In this window · ${selectedCodes.join(', ')}` : 'In this window';
-      const compBanner = !activeCompetition ? '' : (competitionMode
-        ? `<div class="comp-banner active">
-             <span>🏁 Competition mode: <strong>${escapeHtml(activeCompetition.competition.name)}</strong>
-               <span class="text-muted text-small">(${activeCompetition.competition.start_date} → ${activeCompetition.competition.end_date})</span>
-             </span>
-             <button class="btn small ghost" onclick="window.__toggleCompetitionMode()">Back to all stats</button>
-           </div>`
-        : `<div class="comp-banner">
-             <span>🏁 Active competition: <strong>${escapeHtml(activeCompetition.competition.name)}</strong>
-               <span class="text-muted text-small">(${activeCompetition.competition.start_date} → ${activeCompetition.competition.end_date})</span>
-             </span>
-             <button class="btn small" onclick="window.__toggleCompetitionMode()">View competition stats</button>
-           </div>`);
 
       const hasTx = (store.transactions || []).length > 0;
       if (!hasTx) {
@@ -392,7 +251,6 @@
         </div>
         ${filterLabel ? `<div class="filter-row">${filterLabel}</div>` : ''}
 
-        ${compBanner}
 
         <div class="section-title">${rnTitle}</div>
         <div class="kpi-grid">
@@ -508,7 +366,6 @@
     refresh();
 
     return function cleanup() {
-      delete window.__toggleCompetitionMode;
       delete window.__clearFilter;
     };
   };

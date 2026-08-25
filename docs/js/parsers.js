@@ -124,7 +124,16 @@
         text: row[idx.text] ? String(row[idx.text]).trim() : null,
       });
     }
-    return txs.sort((a, b) => (a.tradeDate || '').localeCompare(b.tradeDate || ''));
+    // Chronological; within one date, buys replay before sells — Nordnet
+    // lists day-trade legs in arbitrary order, and processing a sell before
+    // the same-day buy that funded it clamps at zero inventory and leaves
+    // phantom shares (e.g. a 130-share day trade turning into 96 held).
+    const BUYISH = new Set(['KJØPT', 'BYTTE INNLEGG VP', 'BYTE INLÄGG VP', 'TEGNING INNLEGG VP',
+      'EMISJON INNLEGG VP', 'TILDELING INNLEGG RE', 'UTSKILLING FISJON IN', 'SPLITT INNLEGG VP',
+      'UTBYTTE INNLEGG VP', 'INNLEGG OVERFØRING']);
+    const rank = (t) => (BUYISH.has(t.type) ? 0 : 1);
+    return txs.sort((a, b) =>
+      (a.tradeDate || '').localeCompare(b.tradeDate || '') || (rank(a) - rank(b)));
   }
 
   // Dim-values layout:
