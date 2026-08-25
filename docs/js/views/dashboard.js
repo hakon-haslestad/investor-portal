@@ -39,7 +39,9 @@
       { id: 'all', label: 'All' }, { id: 'custom', label: 'Custom' },
     ];
 
-    const stored = JSON.parse(localStorage.getItem('portal.range') || '{}');
+    let stored = {};
+    try { stored = JSON.parse(localStorage.getItem('portal.range') || '{}') || {}; }
+    catch (_e) { /* corrupt stored range — fall back to defaults */ }
     let current = {
       preset: stored.preset || 'ytd',
       from: stored.from || null,

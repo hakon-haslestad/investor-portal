@@ -20,12 +20,17 @@
       result = await window.Sheet.batchGet(tabs);
     } catch (err) {
       // batchGet fails entirely if any one tab doesn't exist yet (Securities
-      // and StockPrices land in Phase 1). Fall back to per-tab fetches.
+      // and StockPrices land in Phase 1). Fall back to per-tab fetches — but
+      // only to paper over MISSING tabs. If the core tabs fail too, this is
+      // a real API/auth error: rethrow it instead of hydrating an empty
+      // store (which would masquerade as "you're not in the Members tab").
       result = {};
       await Promise.all(tabs.map(async (t) => {
         try { result[t] = await window.Sheet.getValues(t); }
-        catch (_e) { result[t] = []; }
+        catch (_e) { result[t] = null; }
       }));
+      if (result[T.transactions] == null && result[T.members] == null) throw err;
+      for (const t of tabs) if (result[t] == null) result[t] = [];
     }
 
     const securitiesList = window.Securities.parseSecurities(result[T.securities] || []);

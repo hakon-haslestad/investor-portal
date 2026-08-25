@@ -412,9 +412,14 @@
     }
 
     function renderRow(s) {
-      const selected = new Set(parseMembers(s.memberString));
+      // Pending (unsaved / failed / conflicted) edits overlay the sheet
+      // state so a re-render never wipes what the user typed.
+      const pending = dirty.get(s.security);
+      const memberString = pending ? pending.memberString : s.memberString;
+      const factor = pending ? pending.factor : s.factor;
+      const selected = new Set(parseMembers(memberString));
       return `
-        <tr data-sec="${escapeHtml(s.security)}" class="${s.mapped ? '' : 'unmapped'}">
+        <tr data-sec="${escapeHtml(s.security)}" class="${s.mapped ? '' : 'unmapped'}${pending ? ' dirty' : ''}">
           <td>${s.mapped ? '<span class="badge-mapped">mapped</span>' : '<span class="badge-unmapped">unmapped</span>'}</td>
           <td><strong>${escapeHtml(s.security)}</strong></td>
           <td>
@@ -426,7 +431,7 @@
               `).join('')}
             </div>
           </td>
-          <td><input name="factor" value="${s.factor != null ? s.factor : ''}" placeholder="auto" aria-label="Investment factor for ${escapeHtml(s.security)}" style="width:70px" /></td>
+          <td><input name="factor" value="${factor != null ? factor : ''}" placeholder="auto" aria-label="Investment factor for ${escapeHtml(s.security)}" style="width:70px" /></td>
           <td class="text-right text-small text-muted">${s.currentQty ? Number(s.currentQty).toFixed(0) : '—'}</td>
         </tr>
       `;
@@ -489,14 +494,15 @@
             expectedUpdatedAt: payload.expectedUpdatedAt || null,
           });
           if (res.action === 'conflict') conflicts.push({ security, other: res.existing.updatedBy, at: res.existing.updatedAt });
-          else ok += 1;
+          else { ok += 1; dirty.delete(security); }
         } catch (err) {
           failed.push(`${security}: ${err.message}`);
         }
         saveAllBtn.textContent = `Saving ${ok}/${total}…`;
       }
 
-      dirty.clear();
+      // Only successfully saved rows leave the dirty set — failed and
+      // conflicted edits stay pending so the user's input isn't wiped.
       dimIndex = await window.DimValues.readIndex();
       securities = buildSecuritiesList(store, dimIndex.map);
       render();

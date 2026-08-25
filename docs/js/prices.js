@@ -59,6 +59,26 @@
     return valueOn(matrix.series.get(ticker), date);
   }
 
+  // Like valueOn, but when the series starts AFTER `date`, returns its first
+  // value instead of null — for valuing dates before backfilled history
+  // (better the earliest known close than a phantom 0).
+  function valueAround(points, date) {
+    const v = valueOn(points, date);
+    if (v != null) return v;
+    return points && points.length ? points[0].v : null;
+  }
+
+  // NOK price with the valueAround fallback on both the price and FX legs.
+  function nokPriceAround(matrix, security, date) {
+    if (!security || !security.ticker) return null;
+    const px = valueAround(matrix.series.get(security.ticker), date);
+    if (px == null) return null;
+    const cur = (security.currency || 'NOK').toUpperCase();
+    if (cur === 'NOK') return px;
+    const fx = valueAround(matrix.series.get('CUR:' + cur + 'NOK'), date);
+    return fx != null && fx > 0 ? px * fx : null;
+  }
+
   function fxOn(matrix, currency, date) {
     const cur = (currency || 'NOK').toUpperCase();
     if (cur === 'NOK') return 1;
@@ -83,5 +103,5 @@
     return matrix.dates.filter((d) => d >= from && d <= to);
   }
 
-  window.Prices = { build, priceOn, fxOn, nokPriceOn, datesBetween, valueOn };
+  window.Prices = { build, priceOn, fxOn, nokPriceOn, nokPriceAround, datesBetween, valueOn };
 })();

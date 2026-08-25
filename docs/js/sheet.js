@@ -29,8 +29,13 @@
       },
     });
     if (r.status === 401) {
-      // Token may have expired mid-session — clear cache and bubble up so caller can retry.
-      sessionStorage.removeItem('portal.token');
+      // Token expired or was revoked mid-session — invalidate BOTH the
+      // in-memory and stored token so the next call silently re-auths,
+      // then retry this request once before bubbling up.
+      window.Auth.invalidateToken();
+      if (!opts._retried) {
+        return authedFetch(url, { ...opts, _retried: true });
+      }
       throw new Error('unauthenticated');
     }
     if (!r.ok) {

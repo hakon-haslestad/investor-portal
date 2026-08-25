@@ -129,10 +129,21 @@
     },
 
     async accessToken() {
-      const t = cachedToken || loadCachedToken();
+      // Check the in-memory token's expiry too — the SPA lives longer than
+      // one token TTL, and a stale cachedToken would 401 forever.
+      let t = cachedToken;
+      if (t && Date.now() >= t.expires_at - 60_000) t = null;
+      if (!t) t = loadCachedToken();
       if (t) { cachedToken = t; return t.access_token; }
       const fresh = await requestToken({ silent: true });
       return fresh.access_token;
+    },
+
+    // Drop the current token (memory + storage) so the next accessToken()
+    // call runs a silent GIS refresh. Called by the Sheets client on 401.
+    invalidateToken() {
+      cachedToken = null;
+      sessionStorage.removeItem(STORAGE_KEY);
     },
 
     // Trigger a separate consent prompt that adds the read+write Sheets

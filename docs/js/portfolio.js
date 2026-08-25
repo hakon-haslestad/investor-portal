@@ -61,7 +61,10 @@
     const map = new Map();
     for (const h of window.Positions.holdingsAt(store, date)) {
       const sec = registry.forName(h.security);
-      const nok = window.Prices.nokPriceOn(store.prices, sec, date);
+      // nokPriceAround: for dates before the backfilled history, value at the
+      // earliest known close rather than dropping the position — a missing
+      // entry reads as price 0 in windowMetrics and fabricates P/L.
+      const nok = window.Prices.nokPriceAround(store.prices, sec, date);
       if (nok == null) continue;
       const native = sec ? window.Prices.priceOn(store.prices, sec.ticker, date) : nok;
       map.set(h.security, { price: native, marketValueNok: nok * h.qty, qty: h.qty });
@@ -287,7 +290,10 @@
           security: h.security,
           qty: (h.qty || 0) * weight,
           currentPrice: h.current_price,
-          marketValueNok: (h.market_value_nok || 0) * weight,
+          // Keep null when unpriced — coercing to 0 would book a phantom
+          // 100% loss into every KPI downstream.
+          marketValueNok: h.market_value_nok != null ? h.market_value_nok * weight : null,
+          priced: h.priced !== false && h.market_value_nok != null,
           weight,
           currency: h.currency,
         });
@@ -380,8 +386,12 @@
       const state = states.get(code);
       let cost = 0, mv = 0;
       for (const [security, slot] of state.perSec.entries()) {
+        // An open position with no price is unknowable — excluding only its
+        // MV would book a phantom full-cost loss, so exclude cost too.
+        const px = pricesStart.get(security);
+        if (slot.qty > 0 && !px) continue;
         cost += slot.costSum;
-        mv += slot.qty * nokPerShare(pricesStart.get(security));
+        mv += slot.qty * nokPerShare(px);
       }
       state.costAtStart = cost; state.mvAtStart = mv;
     }
@@ -449,8 +459,10 @@
       const state = states.get(code);
       let cost = 0, mv = 0;
       for (const [security, slot] of state.perSec.entries()) {
+        const px = pricesEnd.get(security);
+        if (slot.qty > 0 && !px) continue;
         cost += slot.costSum;
-        mv += slot.qty * nokPerShare(pricesEnd.get(security));
+        mv += slot.qty * nokPerShare(px);
       }
       state.costAtEnd = cost; state.mvAtEnd = mv;
     }
@@ -525,13 +537,18 @@
       for (const h of held) {
         const cost = costBag.get(h.security);
         const avgCost = cost && cost.qty > 0 ? cost.costSum / cost.qty : (h.currentPrice || 0);
-        const unrealizedH = (h.marketValueNok || 0) - avgCost * h.qty;
-        const unrealizedPct = avgCost > 0 ? (unrealizedH / (avgCost * h.qty)) * 100 : 0;
+        // Unpriced holding (no ticker / no data yet): contributes nothing to
+        // MV or unrealized instead of a fabricated full-cost loss.
+        const unrealizedH = h.priced === false ? 0 : (h.marketValueNok || 0) - avgCost * h.qty;
+        const unrealizedPct = h.priced === false ? null
+          : (avgCost > 0 ? (unrealizedH / (avgCost * h.qty)) * 100 : 0);
         holdings.push({
           security: h.security, qty: h.qty,
           avgCost, currentPrice: h.currentPrice,
           marketValue: h.marketValueNok,
-          unrealized: unrealizedH, unrealizedPct,
+          unrealized: h.priced === false ? null : unrealizedH,
+          unrealizedPct,
+          priced: h.priced !== false,
           weight: h.weight,
         });
         mv += h.marketValueNok || 0;

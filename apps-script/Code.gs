@@ -194,6 +194,15 @@ function seedSecurities_(ss, sheet) {
   log_(ss, 'setupTabs', '', 'seeded ' + appended + ' securities; review rows marked REVIEW');
 }
 
+// Transaction-type classification — MUST mirror docs/js/ledger.js exactly,
+// otherwise the Apps Script's held/sold view drifts from the portal's.
+var BUY_TYPES = ['KJØPT', 'BYTTE INNLEGG VP', 'BYTE INLÄGG VP', 'TEGNING INNLEGG VP',
+  'TEGNING LIKVID', 'EMISJON INNLEGG VP', 'TILDELING INNLEGG RE', 'UTSKILLING FISJON IN',
+  'SPLITT INNLEGG VP', 'UTBYTTE INNLEGG VP', 'INNLEGG OVERFØRING', 'INNL. VP LIKVID'];
+var SELL_TYPES = ['SALG', 'BYTTE UTTAK VP', 'BYTTE UTTAK VERDIPAPIR', 'INNLØSN. UTTAK VP',
+  'SLETTING UTTAK VP', 'EMISJON UTTAK VP', 'SPLITT UTTAK VP', 'TEGNING UTTAK RETTER'];
+var REALIZING_SELL_TYPES = ['SALG', 'INNLØSN. UTTAK VP', 'SLETTING UTTAK VP'];
+
 // Replay the Nordnet log per security to maintain status/soldDate.
 // qty reaches 0 → sold (soldDate = last realizing sell date);
 // sold more than SOLD_TAIL_DAYS ago → expired; bought again → held.
@@ -206,12 +215,11 @@ function refreshSoldState_(ss, securities) {
     if (!s) return;
     var b = byTicker[s.ticker] || (byTicker[s.ticker] = { qty: 0, lastSell: '' });
     var type = String(t.type || '').toUpperCase();
-    var qty = Number(t.qty) || 0;
-    if (type === 'KJØPT' || type === 'BYTTE INNLAGT VP' || type === 'SPLITT INNLAGT VP') b.qty += qty;
-    if (type === 'SALG' || type === 'INNLØSN. UTTAK VP' || type === 'SLETTING UTTAK VP' ||
-        type === 'BYTTE UTTAK VP' || type === 'SPLITT UTTAK VP') {
+    var qty = Math.abs(Number(t.qty) || 0);
+    if (BUY_TYPES.indexOf(type) !== -1) b.qty += qty;
+    if (SELL_TYPES.indexOf(type) !== -1) {
       b.qty -= qty;
-      if (type === 'SALG' && t.date) b.lastSell = t.date;
+      if (REALIZING_SELL_TYPES.indexOf(type) !== -1 && t.date) b.lastSell = t.date;
     }
   });
   var sheet = ss.getSheetByName(TABS.securities);
@@ -440,9 +448,13 @@ function sortPricesByDate_(ss) {
   }
 }
 
+// Full header row INCLUDING blank cells — positions must stay aligned with
+// sheet columns (index i ↔ column i+1). Never compact this array: a blank
+// header would shift every ticker one column left and silently corrupt the
+// matrix on the next write.
 function headerRow_(sheet) {
   var lastCol = Math.max(sheet.getLastColumn(), 1);
-  return sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String).filter(function (h) { return h !== ''; });
+  return sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
 }
 
 function lastValueDates_(ss) {
@@ -452,6 +464,7 @@ function lastValueDates_(ss) {
   var headers = data[0].map(String);
   var out = {};
   for (var c = 1; c < headers.length; c++) {
+    if (!headers[c]) continue;
     for (var r = data.length - 1; r >= 1; r--) {
       if (data[r][c] !== '' && data[r][c] != null) { out[headers[c]] = isoDate_(data[r][0]); break; }
     }

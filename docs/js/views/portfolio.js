@@ -371,8 +371,10 @@
           const cat = classify(tx.type);
           if (cat !== 'BUY' && cat !== 'SELL') continue;
           if (tx.type !== 'KJØPT' && !isRealizingSell(tx.type)) continue;
-          const security = tx.security;
-          if (!security) continue;
+          if (!tx.security) continue;
+          // Canonicalize so buys and sells under different Nordnet name
+          // variants share one cost slot (else realized P/L is overstated).
+          const security = window.Portfolio.canonicalName(tx.security);
           const qty = tx.qty || 0;
           const amount = amountNok(tx);
           if (!costMap.has(security)) costMap.set(security, { qty: 0, costSum: 0 });

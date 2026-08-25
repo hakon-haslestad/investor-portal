@@ -21,7 +21,11 @@
   // Map(canonicalSecurity → {currency, dates[], qty[], costSum[], realized[]})
   // Arrays are cumulative states AFTER each event date (one entry per event).
   function bySecurity(store) {
-    if (store._positionsCache) return store._positionsCache;
+    // Memo keyed on the transactions array reference so a Store.refresh()
+    // (which replaces store.transactions) invalidates the cache.
+    if (store._positionsCache && store._positionsCacheKey === store.transactions) {
+      return store._positionsCache;
+    }
     const canonical = (s) => window.Portfolio.canonicalName(s);
     const states = new Map();
     for (const tx of store.transactions) {
@@ -64,6 +68,7 @@
       }
     }
     store._positionsCache = states;
+    store._positionsCacheKey = store.transactions;
     return states;
   }
 
