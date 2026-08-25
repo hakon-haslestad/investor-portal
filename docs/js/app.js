@@ -10,6 +10,23 @@
     gate().querySelector('#gate-status').innerHTML = html || '';
   }
 
+  // Visible boot trace — every startup step logs to the gate so a failing
+  // sign-in names its failing step on screen instead of dying silently.
+  const steps = [];
+  function trace(msg) {
+    steps.push(msg);
+    console.log('[boot]', msg);
+    const el = gate().querySelector('#gate-status');
+    if (el) {
+      el.innerHTML = `<div class="text-small text-muted" style="text-align:left">${steps.map(window.UI.esc).join('<br>')}</div>`;
+    }
+  }
+  function traceFail(msg, e) {
+    console.error('[boot]', msg, e);
+    steps.push(`✗ ${msg}: ${(e && e.message) || e}`);
+    showGate(`<div class="flash error" style="text-align:left">${steps.map(window.UI.esc).join('<br>')}</div>`);
+  }
+
   function buildNav(me) {
     const links = window.Router.ROUTES
       .filter((r) => !r.adminOnly || me.role === 'admin')
@@ -26,8 +43,11 @@
   }
 
   async function enter() {
+    trace('loading sheet data…');
     const store = await window.Store.hydrate();
+    trace(`sheet loaded: ${store.transactions.length} transactions, ${store.members.length} members, ${store.prices.dates.length} price rows`);
     const me = window.Store.whoami(store);
+    trace(me ? `member matched: ${me.investorCode} (${me.role})` : `no member match for ${window.Auth.getEmail() || '(no email)'}`);
     if (!me) {
       showGate(`
         <div class="flash error" style="text-align:left">
@@ -40,6 +60,7 @@
       });
       return;
     }
+    trace('entering app');
     gate().hidden = true;
     shell().hidden = false;
     buildNav(me);
@@ -60,28 +81,37 @@
     });
     // Returning from the OAuth redirect? Consume #access_token before the
     // router ever sees the hash.
-    window.Auth.consumeRedirectToken();
+    const consumed = window.Auth.consumeRedirectToken();
+    trace(consumed ? 'OAuth redirect token consumed ✓' : 'no OAuth fragment in URL');
     // Auto-login from the stored session; email via the userinfo endpoint.
     try {
       await window.Auth.ensureToken();
-      await window.Auth.ensureEmail();
+      trace('stored token valid ✓');
     } catch (e) {
-      // Genuinely not signed in — wait for the button click.
-      showGate('');
+      trace(`no stored session (${(e && e.message) || e}) — click Sign in`);
       return;
     }
     try {
-      showGate('Loading portfolio…');
+      await window.Auth.ensureEmail();
+      trace(`email resolved: ${window.Auth.getEmail()}`);
+    } catch (e) {
+      traceFail('resolving email (userinfo) failed', e);
+      return;
+    }
+    try {
       await enter();
     } catch (e) {
-      // Signed in but loading failed — surface the real error instead of
-      // silently bouncing back to the sign-in button.
-      console.error('load failed', e);
-      showGate(`<div class="flash error" style="text-align:left"><strong>Signed in, but loading the sheet failed.</strong><br>
-        <code>${window.UI.esc((e && e.message) || String(e))}</code><br>
-        <span class="text-small">Try the button above to re-authorize, or check the browser console.</span></div>`);
+      traceFail('loading the app failed', e);
     }
   }
+
+  // Any uncaught failure during boot lands in the on-screen trace too.
+  window.addEventListener('error', (e) => {
+    if (!gate().hidden) traceFail('uncaught error', e.error || e.message);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    if (!gate().hidden) traceFail('unhandled rejection', e.reason);
+  });
 
   document.addEventListener('DOMContentLoaded', () => {
     window.UI.enableInfoPopovers();
