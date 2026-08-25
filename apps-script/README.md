@@ -23,7 +23,10 @@ and would not preserve history.
 3. In the editor's function dropdown, run **`setupTabs`**. First run asks for
    authorization (spreadsheet + external requests) — accept.
    - This creates `Securities`, `StockPrices`, `_scratch`, `_log` and seeds
-     `Securities` from every distinct security in `Rådata fra nordnet`.
+     `Securities` from `Rådata fra nordnet`, **keyed by ISIN**: one row per
+     ISIN, with every name variant the log ever used (old short codes like
+     `SALM`, newer full names) collected into the `aliases` column. Only
+     names with no ISIN anywhere in the log need manual attention.
 4. Run **`resolveTickers`** — fills in missing tickers by looking up each
    row's ISIN (taken from the Nordnet log) via Yahoo's search API, picking
    the home-exchange listing (NO→`.OL`, SE→`.ST`, DK→`.CO`, DE→`.DE`,

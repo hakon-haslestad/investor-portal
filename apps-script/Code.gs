@@ -229,38 +229,88 @@ function readSecurities_(ss) {
   return out;
 }
 
-// Seed Securities from distinct Verdipapir names in the transaction log.
-// Existing rows are left untouched; only unseen names are appended.
+// Seed Securities from the transaction log, keyed by ISIN. Nordnet exports
+// carry no tickers, and the same security shows up under different names
+// across eras (short codes like "SALM" in old exports, "SalMar" in new
+// ones) — the ISIN is the stable identity. One row per ISIN; every name
+// variant seen in the log becomes an alias. Names without an ISIN seed one
+// row per distinct name. Existing rows are left untouched (new name
+// variants of an already-seeded ISIN are appended to its aliases).
 function seedSecurities_(ss, sheet) {
-  var seen = {};
-  readSecurities_(ss).forEach(function (s) {
-    seen[s.name.toLowerCase()] = true;
-    s.aliases.forEach(function (a) { seen[a] = true; });
+  var existing = readSecurities_(ss);
+  var seenName = {}, byIsinRow = {};
+  existing.forEach(function (s) {
+    seenName[s.name.toLowerCase()] = true;
+    s.aliases.forEach(function (a) { seenName[a] = true; });
+    if (s.isin) byIsinRow[s.isin.toUpperCase()] = s;
   });
-  var txs = readTransactions_(ss);
-  var names = {};
-  txs.forEach(function (t) {
-    if (t.security && !names[t.security.toLowerCase()]) names[t.security.toLowerCase()] = { name: t.security, isin: t.isin || '' };
+
+  // Group log names by ISIN, keeping the order variants first appeared.
+  var byIsin = {}, noIsin = {};
+  readTransactions_(ss).forEach(function (t) {
+    if (!t.security) return;
+    var isin = (t.isin || '').toUpperCase();
+    if (isin) {
+      var g = byIsin[isin] || (byIsin[isin] = { names: [], seen: {} });
+      if (!g.seen[t.security.toLowerCase()]) { g.seen[t.security.toLowerCase()] = true; g.names.push(t.security); }
+    } else if (!noIsin[t.security.toLowerCase()]) {
+      noIsin[t.security.toLowerCase()] = t.security;
+    }
   });
-  var appended = 0;
-  Object.keys(names).forEach(function (key) {
-    if (seen[key]) return;
-    var known = KNOWN[key] || {};
+
+  var appended = 0, aliased = 0;
+  Object.keys(byIsin).forEach(function (isin) {
+    var names = byIsin[isin].names;
+    var row = byIsinRow[isin];
+    if (row) {
+      // ISIN already seeded — just add any new name variants as aliases.
+      var fresh = names.filter(function (n) {
+        var k = n.toLowerCase();
+        return k !== row.name.toLowerCase() && row.aliases.indexOf(k) === -1;
+      });
+      if (fresh.length) {
+        var all = row.aliases.concat(fresh.map(function (n) { return n.toLowerCase(); }));
+        sheet.getRange(row.sourceRow || row.row, 3).setValue(all.join(';'));
+        aliased += fresh.length;
+      }
+      return;
+    }
+    // Prefer the longest name as the display name (full names beat codes);
+    // every other variant becomes an alias.
+    var display = names.slice().sort(function (a, b) { return b.length - a.length; })[0];
+    var aliases = names.filter(function (n) { return n !== display; })
+      .map(function (n) { return n.toLowerCase(); });
+    var known = null;
+    names.forEach(function (n) { if (!known && KNOWN[n.toLowerCase()]) known = KNOWN[n.toLowerCase()]; });
+    known = known || {};
     sheet.appendRow([
       known.ticker || '',
-      names[key].name,
-      key !== names[key].name.toLowerCase() ? key : '',
-      names[key].isin,
+      display,
+      aliases.join(';'),
+      isin,
       known.currency || 'NOK',
       known.exchange || '',
       known.source || 'yahoo',
       'held',
       '',
-      known.ticker ? '' : 'REVIEW: fill ticker/currency/source',
+      known.ticker ? '' : 'run resolveTickers to fill ticker from ISIN',
     ]);
     appended++;
   });
-  log_(ss, 'setupTabs', '', 'seeded ' + appended + ' securities; review rows marked REVIEW');
+
+  // Names with no ISIN anywhere in the log — seed per name, needs manual fill.
+  Object.keys(noIsin).forEach(function (key) {
+    if (seenName[key]) return;
+    var known = KNOWN[key] || {};
+    sheet.appendRow([
+      known.ticker || '', noIsin[key], '', '',
+      known.currency || 'NOK', known.exchange || '', known.source || 'yahoo',
+      'held', '',
+      known.ticker ? '' : 'REVIEW: no ISIN in log — fill ticker/currency/source',
+    ]);
+    appended++;
+  });
+  log_(ss, 'setupTabs', '', 'seeded ' + appended + ' securities (' + aliased + ' aliases added); now run resolveTickers');
 }
 
 // Transaction-type classification — MUST mirror docs/js/ledger.js exactly,
@@ -278,9 +328,9 @@ var REALIZING_SELL_TYPES = ['SALG', 'INNLØSN. UTTAK VP', 'SLETTING UTTAK VP'];
 function refreshSoldState_(ss, securities) {
   var txs = readTransactions_(ss);
   var byTicker = {};
-  var alias = aliasMap_(securities);
+  var match = matcherFor_(securities);
   txs.forEach(function (t) {
-    var s = alias[String(t.security || '').trim().toLowerCase()];
+    var s = match(t);
     if (!s) return;
     var b = byTicker[s.ticker] || (byTicker[s.ticker] = { qty: 0, lastSell: '' });
     var type = String(t.type || '').toUpperCase();
@@ -317,6 +367,20 @@ function aliasMap_(securities) {
     s.aliases.forEach(function (a) { map[a] = s; });
   });
   return map;
+}
+
+// Match a transaction to a Securities row: ISIN first (the stable key in
+// Nordnet exports), name/alias as fallback for rows that predate ISINs.
+function matcherFor_(securities) {
+  var byIsin = {};
+  securities.forEach(function (s) {
+    if (s.ticker && s.isin) byIsin[s.isin.toUpperCase()] = s;
+  });
+  var byName = aliasMap_(securities);
+  return function (t) {
+    if (t.isin && byIsin[String(t.isin).toUpperCase()]) return byIsin[String(t.isin).toUpperCase()];
+    return byName[String(t.security || '').trim().toLowerCase()] || null;
+  };
 }
 
 function activeCurrencies_(securities) {
@@ -568,12 +632,12 @@ function readTransactions_(ss) {
 
 function firstTransactionDates_(ss) {
   var securities = readSecurities_(ss);
-  var alias = aliasMap_(securities);
+  var match = matcherFor_(securities);
   var out = {};
   readTransactions_(ss).forEach(function (t) {
     if (!t.date) return;
     if (!out['*'] || t.date < out['*']) out['*'] = t.date;
-    var s = alias[String(t.security || '').trim().toLowerCase()];
+    var s = match(t);
     if (s && (!out[s.ticker] || t.date < out[s.ticker])) out[s.ticker] = t.date;
   });
   return out;

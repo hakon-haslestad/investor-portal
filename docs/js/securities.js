@@ -45,8 +45,10 @@
   function buildRegistry(list) {
     const byKey = new Map();   // lowercased name/alias/ticker → security
     const byTicker = new Map();
+    const byIsin = new Map();
     for (const s of list) {
       if (s.ticker) byTicker.set(s.ticker, s);
+      if (s.isin) byIsin.set(s.isin.toUpperCase(), s);
       const keys = [s.name, s.ticker, ...s.aliases];
       for (const k of keys) {
         if (k) byKey.set(k.toLowerCase(), s);
@@ -56,10 +58,22 @@
       if (!raw) return null;
       return byKey.get(String(raw).trim().toLowerCase()) || null;
     }
+    function forIsin(isin) {
+      if (!isin) return null;
+      return byIsin.get(String(isin).trim().toUpperCase()) || null;
+    }
+    // Runtime-only alias: Nordnet name variants unknown to the sheet are
+    // learned from transactions via their ISIN at hydration (nothing is
+    // written back — the sheet's aliases column stays the durable record).
+    function learnAlias(name, security) {
+      if (name && security) byKey.set(String(name).trim().toLowerCase(), security);
+    }
     return {
       list,
       byTicker,
       forName,
+      forIsin,
+      learnAlias,
       // Canonical display name for any Nordnet name variant. Falls back to
       // the trimmed input when the security isn't registered (yet).
       canonicalName(raw) {

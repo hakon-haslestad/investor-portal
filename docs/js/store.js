@@ -37,6 +37,17 @@
     const registry = window.Securities.buildRegistry(securitiesList);
     window.Portfolio._setRegistry(registry);
 
+    const transactions = window.Parsers.parseTransactions(result[T.transactions] || []);
+    // Nordnet exports carry ISINs but no tickers, and names drift across
+    // eras — teach the registry any name variant whose ISIN it knows, so
+    // every replay joins on one canonical security.
+    for (const tx of transactions) {
+      if (!tx.security || !tx.isin) continue;
+      if (registry.forName(tx.security)) continue;
+      const byIsin = registry.forIsin(tx.isin);
+      if (byIsin) registry.learnAlias(tx.security, byIsin);
+    }
+
     const dim = window.Parsers.parseDimValues(result[T.dimValues] || []);
     const attributionMap = new Map();
     for (const a of dim.attributions) {
@@ -45,7 +56,7 @@
     }
 
     cached = {
-      transactions: window.Parsers.parseTransactions(result[T.transactions] || []),
+      transactions,
       holdings: T.holdings ? window.Parsers.parseHoldings(result[T.holdings] || []) : [],
       kpis: window.Parsers.parseKpis(result[T.kpis] || []),
       attributions: dim.attributions,
