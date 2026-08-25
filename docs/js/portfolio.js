@@ -100,7 +100,12 @@
       // 'ignore' = deliberately untracked residue (expired subscription
       // rights, acceptance lines) — keep it out of holdings and KPIs.
       if (sec && sec.status === 'ignore') continue;
-      const nok = window.Prices.nokPriceOn(store.prices, sec, date);
+      // Strict NOK mark first (real close × real FX); when that's not
+      // possible (missing FX pair, delisted name) fall back to the own-trade
+      // approximation so big positions don't vanish from the totals — the
+      // row is flagged `approx` and rendered with a ≈.
+      const strict = window.Prices.nokPriceOn(store.prices, sec, date);
+      const nok = strict != null ? strict : window.Prices.nokPriceAround(store.prices, sec, date);
       const native = sec && sec.ticker ? window.Prices.priceOn(store.prices, sec.ticker, date) : null;
       const mv = nok != null ? nok * h.qty : null;
       const returnNok = mv != null ? mv - h.costSum : null;
@@ -118,6 +123,7 @@
         returnNok,
         returnPct: h.costSum > 0 && returnNok != null ? (returnNok / h.costSum) * 100 : null,
         priced: nok != null,
+        approx: strict == null && nok != null,
       });
     }
     return out.sort((a, b) => (b.marketValueNok || 0) - (a.marketValueNok || 0));

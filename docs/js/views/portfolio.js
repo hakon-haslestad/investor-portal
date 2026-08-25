@@ -39,7 +39,11 @@
     if (!window.Portfolio.usePriceMatrix(store)) {
       return `<span class="price-freshness stale">No price data — the StockPrices tab is empty. Install/run the Apps Script feed. ${window.UI.infoIcon('price-freshness')}</span>`;
     }
-    return `<span class="price-freshness">Prices as of ${store.prices.latestDate} ${window.UI.infoIcon('price-freshness')}</span>`;
+    const approxCount = window.Portfolio.currentHoldings(store).filter((h) => h.approx).length;
+    const approxNote = approxCount
+      ? ` · <span class="price-freshness stale">${approxCount} position${approxCount === 1 ? '' : 's'} ≈ at last trade price (FX/market data missing)</span>`
+      : '';
+    return `<span class="price-freshness">Prices as of ${store.prices.latestDate}${approxNote} ${window.UI.infoIcon('price-freshness')}</span>`;
   }
 
   function ownersOf(store, security) {
@@ -80,6 +84,7 @@
     const rows = holdings.map((h, i) => {
       const t = store.registry ? store.registry.forName(h.security) : null;
       const noPx = h.priced === false;
+      const ap = h.approx ? '<abbr title="Approximate: valued at the club\'s last trade price — market/FX data missing. Run the price-feed backfill for real marks.">≈</abbr> ' : '';
       const dash = '<span class="text-muted" title="No price data yet">—</span>';
       return `
         <tr class="row-link" tabindex="0" role="button" aria-expanded="false" data-idx="${i}" data-security="${escapeHtml(h.security)}">
@@ -87,8 +92,8 @@
           <td class="text-muted text-small">${t && t.ticker ? escapeHtml(t.ticker) : '—'}</td>
           <td class="text-right">${fmtQty(h.qty)}</td>
           <td class="text-right">${h.gav != null ? fmtQty(h.gav) : '—'}</td>
-          <td class="text-right">${noPx ? dash : `${fmtQty(h.currentPrice)} <span class="text-muted text-small">${escapeHtml(h.currency || '')}</span>`}</td>
-          <td class="text-right">${noPx ? dash : fmtNok(h.marketValueNok)}</td>
+          <td class="text-right">${noPx ? dash : `${h.currentPrice != null ? fmtQty(h.currentPrice) : '≈'} <span class="text-muted text-small">${escapeHtml(h.currency || '')}</span>`}</td>
+          <td class="text-right">${noPx ? dash : ap + fmtNok(h.marketValueNok)}</td>
           <td class="text-right ${h.returnNok != null ? pctClass(h.returnNok) : ''}">${noPx || h.returnNok == null ? dash : fmtNok(h.returnNok)}</td>
           <td class="text-right ${h.returnPct != null ? pctClass(h.returnPct) : ''}">${noPx || h.returnPct == null ? dash : fmtPct(h.returnPct)}</td>
           <td>${ownersOf(store, h.security)}</td>

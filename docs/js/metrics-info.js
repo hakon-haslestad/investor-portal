@@ -28,7 +28,7 @@
     'market-value': {
       title: 'Market value (stocks)',
       source: 'Rådata (quantities), StockPrices (closes + FX), Securities, Dim-values.',
-      calc: `Σ over open positions: quantity × latest NOK close.<br><br>${QTY}<br><br>${PRICE}<br><br>${ATTRIB} A position whose ticker has no price data yet is shown as "—" and excluded rather than counted as zero.`,
+      calc: `Σ over open positions: quantity × latest NOK close.<br><br>${QTY}<br><br>${PRICE}<br><br>${ATTRIB} A position with a price but no usable FX rate (or a delisted name) is valued at the club's own last trade price and marked ≈; one with no data at all shows "—" and is excluded rather than counted as zero.`,
     },
     'cash': {
       title: 'Cash / dry powder',
