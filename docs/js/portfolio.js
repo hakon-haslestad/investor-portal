@@ -6,7 +6,7 @@
 // active" notice.
 
 (function () {
-  const { INVESTOR_CODES, classify, splitForSecurity, isRealizingSell, amountNok } = window.Ledger;
+  const { INVESTOR_CODES, classify, splitForSecurity, isRealizingSell, isCashLeg, amountNok } = window.Ledger;
 
   // Legacy fallback aliases — used only until the Securities registry is
   // populated (it carries aliases per security and supersedes this map).
@@ -134,6 +134,7 @@
       if (!tx.security) continue;
       const cat = classify(tx.type);
       if (cat !== 'BUY' && cat !== 'SELL') continue;
+      if (isCashLeg(tx.type)) continue; // cash settlement — no share movement
       // Corporate actions (BYTTE, SPLITT, spinoffs) move qty but never touch
       // cost: a split halves avg cost implicitly, a spinoff parent keeps its
       // basis. Only KJØPT adds cost; only realizing sells remove it.
@@ -317,6 +318,7 @@
       if ((tx.tradeDate || '') >= from) break;
       const preCat = classify(tx.type);
       if (preCat !== 'BUY' && preCat !== 'SELL') continue;
+      if (isCashLeg(tx.type)) continue; // cash settlement — no share movement
       const split = splitForSecurity(attrMap, tx.security);
       if (!split.length) continue;
       const security = canonicalName(tx.security);
@@ -396,7 +398,7 @@
             state.sellCount += 1;
           }
         }
-      } else if (cat === 'BUY' || cat === 'SELL') {
+      } else if ((cat === 'BUY' || cat === 'SELL') && !isCashLeg(tx.type)) {
         // In-window corporate action: qty moves, no cost/realized/counters.
         const split = splitForSecurity(attrMap, tx.security);
         if (!split.length) continue;

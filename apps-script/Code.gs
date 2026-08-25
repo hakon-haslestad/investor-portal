@@ -411,6 +411,9 @@ var BUY_TYPES = ['KJØPT', 'BYTTE INNLEGG VP', 'BYTE INLÄGG VP', 'TEGNING INNLE
 var SELL_TYPES = ['SALG', 'BYTTE UTTAK VP', 'BYTTE UTTAK VERDIPAPIR', 'INNLØSN. UTTAK VP',
   'SLETTING UTTAK VP', 'EMISJON UTTAK VP', 'SPLITT UTTAK VP', 'TEGNING UTTAK RETTER'];
 var REALIZING_SELL_TYPES = ['SALG', 'INNLØSN. UTTAK VP', 'SLETTING UTTAK VP'];
+// Cash-settlement legs (redemption/subscription cash rows) — the quantity on
+// these rows is a reference, not a share movement. Never replay their qty.
+var CASH_LEG_TYPES = ['INNL. VP LIKVID', 'TEGNING LIKVID'];
 
 // Replay the Nordnet log per security to maintain status/soldDate.
 // qty reaches 0 → sold (soldDate = last realizing sell date);
@@ -427,6 +430,7 @@ function refreshSoldState_(ss, securities) {
     if (!s) return;
     var b = byRow[s.row] || (byRow[s.row] = { qty: 0, lastSell: '' });
     var type = String(t.type || '').toUpperCase();
+    if (CASH_LEG_TYPES.indexOf(type) !== -1) return; // cash leg — no shares move
     var qty = Math.abs(Number(t.qty) || 0);
     if (BUY_TYPES.indexOf(type) !== -1) b.qty += qty;
     if (SELL_TYPES.indexOf(type) !== -1) {

@@ -16,7 +16,7 @@
 // scaling is exact).
 
 (function () {
-  const { classify, isRealizingSell, amountNok } = window.Ledger;
+  const { classify, isRealizingSell, isCashLeg, amountNok } = window.Ledger;
 
   // Map(canonicalSecurity → {currency, dates[], qty[], costSum[], realized[]})
   // Arrays are cumulative states AFTER each event date (one entry per event).
@@ -32,6 +32,7 @@
       if (!tx.security) continue;
       const cat = classify(tx.type);
       if (cat !== 'BUY' && cat !== 'SELL') continue;
+      if (isCashLeg(tx.type)) continue; // cash settlement — no share movement
       const security = canonical(tx.security);
       if (!states.has(security)) {
         states.set(security, {

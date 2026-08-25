@@ -67,6 +67,14 @@
   ]);
   function isRealizingSell(type) { return REALIZING_SELL_TYPES.has(type); }
 
+  // Cash-settlement legs of corporate actions. Nordnet books a redemption
+  // as TWO rows: 'INNL. VP LIKVID' (the cash, quantity merely referenced)
+  // + 'INNLØSN. UTTAK VP' (the shares leaving). Treating the LIKVID row as
+  // a share inflow doubles the position and it never exits — these types
+  // must NEVER move quantity. Same for TEGNING LIKVID (subscription cash).
+  const CASH_LEG_TYPES = new Set(['INNL. VP LIKVID', 'TEGNING LIKVID']);
+  function isCashLeg(type) { return CASH_LEG_TYPES.has(type); }
+
   // FX helpers. Nordnet records `Beløp` and `Totale Avgifter` in the
   // transaction's trading currency (USD, SEK, EUR, …) plus `Vekslingskurs`
   // — the foreign→NOK rate. Saldo is
@@ -103,6 +111,7 @@
   window.Ledger = {
     INVESTOR_CODES, INVESTOR_COLORS, classify, splitForSecurity, evenSplit,
     isRealizingSell, REALIZING_SELL_TYPES,
+    isCashLeg, CASH_LEG_TYPES,
     amountNok, feeNok,
   };
 })();
