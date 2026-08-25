@@ -114,7 +114,9 @@
   // in the URL fragment. Requires this page's URL to be listed under
   // "Authorized redirect URIs" on the OAuth client.
   function redirectUri() {
-    return location.origin + location.pathname;
+    // Always the canonical directory URL — strip index.html so every entry
+    // point sends the same registered redirect URI.
+    return location.origin + location.pathname.replace(/index\.html$/, '');
   }
 
   function signInRedirect() {
