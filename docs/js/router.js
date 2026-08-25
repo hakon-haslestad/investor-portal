@@ -12,6 +12,7 @@
     { match: 'portfolio',    label: 'Portfolio',    view: 'portfolio' },
     { match: 'investors',    label: 'Investors',    view: 'investors' },
     { match: 'competitions', label: 'Competitions', view: 'competitions' },
+    { match: 'game',         label: 'The Game',     view: 'game' },
     { match: 'accounting',   label: 'Accounting',   view: 'accounting' },
     { match: 'admin',        label: 'Admin',        view: 'admin', adminOnly: true },
   ];

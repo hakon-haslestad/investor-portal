@@ -5,9 +5,10 @@
 (function () {
   window.Views = window.Views || {};
 
+  // (The Game lives at #/game in the top-level nav — no sub-tabs needed
+  // here, but keep the bar shape in case more investor sub-views arrive.)
   const SUBTABS = (active) => window.UI.subTabs([
     { key: 'overview', label: 'Investors', href: '#/investors' },
-    { key: 'game', label: 'The Game 🎲', href: '#/investors/game' },
   ], active);
 
   // Best-effort slug for Nordnet's /aksjer/kurser/<slug> URL pattern.
@@ -607,7 +608,6 @@
         { id: 'custom', label: 'Custom' },
       ];
       el.innerHTML = `
-        ${SUBTABS('game')}
         <div class="hero">
           <h2>The Game 🎲🍺 ${window.UI.infoIcon('the-game')}</h2>
           <div class="when">Spin to draw a random stock. Green = hand out a shot. Red = take a shot.</div>
@@ -692,7 +692,12 @@
   window.Views.investors = async function (el, ctx) {
     const sub = (ctx.params[0] || '').trim();
     if (!sub) { renderOverview(el, ctx); return; }
-    if (sub.toLowerCase() === 'game') return renderGame(el, ctx);
+    if (sub.toLowerCase() === 'game') { location.replace('#/game'); return; }
     renderDetail(el, ctx, decodeURIComponent(sub).toUpperCase());
+  };
+
+  // The Game is its own top-level tab.
+  window.Views.game = async function (el, ctx) {
+    return renderGame(el, ctx);
   };
 })();
