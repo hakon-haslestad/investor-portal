@@ -57,10 +57,13 @@ and would not preserve history.
 
 ## Operations
 
-- **New stock bought** — `dailyFetch` won't know its ticker: the seeded row
-  appears after the next `setupTabs` run, or simply add a `Securities` row
-  yourself (ticker, name, alias = the Nordnet `Verdipapir` text, currency,
-  source). Backfill it with one `backfill` run.
+- **New stock bought** — fully automatic. The next `dailyFetch` run seeds a
+  `Securities` row from the transaction's ISIN, resolves its ticker via
+  Yahoo, backfills its history (and a new FX pair if needed), and starts
+  fetching daily. Manual work only if Yahoo can't resolve the ISIN — the
+  row then carries a REVIEW note until you type the ticker in.
+- **Stock sold** — automatic: the replay flips it to `sold` on the next
+  run, fetches weekly for 6 months, then marks it `expired` and stops.
 - **Fetch failures** land in `_log` and leave a hole in the matrix — safe,
   the portal forward-fills the last known close.
 - **Force-refresh sold state** — `dailyFetch` does it on every run; nothing

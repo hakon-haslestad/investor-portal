@@ -142,9 +142,23 @@ function currencyForSymbol_(symbol) {
 
 function dailyFetch() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Self-maintenance: a security bought since the last run gets seeded from
+  // its ISIN, its ticker resolved, and its history backfilled — no manual
+  // setupTabs/resolveTickers/backfill needed for new buys. Both helpers are
+  // cheap no-ops when there's nothing new.
+  seedSecurities_(ss, ss.getSheetByName(TABS.securities));
+  resolveTickers();
+
   var securities = readSecurities_(ss);
   refreshSoldState_(ss, securities);
   var today = isoDate_(new Date());
+
+  // Auto-backfill columns that have no history yet (newly resolved tickers,
+  // and their FX pair if it's new too). Capped per run for time safety —
+  // leftovers are picked up tomorrow.
+  autoBackfillNew_(ss, securities);
+
   var list = fetchListFor_(ss, securities, today);
   if (!list.length) { log_(ss, 'dailyFetch', '', 'nothing to fetch today'); return; }
   var values = {};
@@ -160,6 +174,34 @@ function dailyFetch() {
   writeRow_(ss, today, values);
   var misses = list.length - Object.keys(values).length;
   if (misses > 0) log_(ss, 'dailyFetch', '', misses + '/' + list.length + ' fetches failed');
+}
+
+var AUTO_BACKFILL_MAX_PER_RUN = 4;
+
+function autoBackfillNew_(ss, securities) {
+  var firstVals = firstValueDates_(ss);
+  var firstTx = firstTransactionDates_(ss);
+  var done = 0;
+  for (var i = 0; i < securities.length && done < AUTO_BACKFILL_MAX_PER_RUN; i++) {
+    var s = securities[i];
+    if (!s.ticker || s.status === 'expired') continue;
+    if (firstVals[s.ticker]) continue; // column already has data
+    var start = firstTx[s.ticker] || firstTx['*'];
+    if (!start) continue;
+    try {
+      mergeSeries_(ss, s.ticker, fetchHistory_(s, start));
+      log_(ss, 'dailyFetch', s.ticker, 'auto-backfilled new security from ' + start);
+      done++;
+      var cur = (s.currency || 'NOK').toUpperCase();
+      if (cur !== 'NOK' && !firstVals['CUR:' + cur + 'NOK']) {
+        mergeSeries_(ss, 'CUR:' + cur + 'NOK', fetchFxHistory_(cur, start));
+        log_(ss, 'dailyFetch', 'CUR:' + cur + 'NOK', 'auto-backfilled new FX pair');
+      }
+    } catch (e) {
+      log_(ss, 'dailyFetch', s.ticker, 'auto-backfill failed: ' + e);
+    }
+  }
+  if (done > 0) sortPricesByDate_(ss);
 }
 
 // Resumable: skips any column whose history is already backfilled (its
