@@ -83,7 +83,9 @@
   function nokPriceForSecurity(store, security, date) {
     if (!usePriceMatrix(store)) return null;
     const sec = registry.forName(security);
-    return window.Prices.nokPriceOn(store.prices, sec, date);
+    // Historical lookup: real closes first, the club's own trade prices for
+    // securities the market no longer quotes (delisted/bankrupt).
+    return window.Prices.nokPriceHist(store.prices, sec, date);
   }
 
   // Current holdings, derived from the replay + latest prices. Field names

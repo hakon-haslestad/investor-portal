@@ -63,12 +63,40 @@
       members: window.Parsers.parseMembers(result[T.members] || []),
       securities: securitiesList,
       registry,
-      prices: window.Prices.build(result[T.stockPrices] || []),
+      prices: buildPricesWithTradeFallback(result[T.stockPrices] || [], transactions, registry),
       competitionsRaw: result[T.competitions] || [],
       participantsRaw: result[T.participants] || [],
       raw: result,
     };
     return cached;
+  }
+
+  // Build the price matrix, then synthesize own-trade NOK series
+  // ('TX:<name>') for securities with no market data — delisted or bankrupt
+  // names Yahoo no longer serves. Points = |NOK amount| ÷ shares on actual
+  // KJØPT / realizing-sell rows. Historical valuation only.
+  function buildPricesWithTradeFallback(rows, transactions, registry) {
+    const matrix = window.Prices.build(rows);
+    const { classify, isRealizingSell, amountNok } = window.Ledger;
+    const byName = new Map();
+    for (const tx of transactions) {
+      if (!tx.security || !tx.qty) continue;
+      const cat = classify(tx.type);
+      if (!(tx.type === 'KJØPT' || (cat === 'SELL' && isRealizingSell(tx.type)))) continue;
+      const sec = registry.forName(tx.security);
+      if (!sec) continue;
+      if (sec.ticker && matrix.series.has(sec.ticker)) continue; // market data exists
+      const date = tx.tradeDate || tx.bookDate;
+      const qty = Math.abs(tx.qty);
+      const amt = Math.abs(amountNok(tx));
+      if (!date || !(qty > 0) || !(amt > 0)) continue;
+      if (!byName.has(sec.name)) byName.set(sec.name, new Map());
+      byName.get(sec.name).set(date, { d: date, v: amt / qty });
+    }
+    for (const [name, pts] of byName.entries()) {
+      matrix.series.set('TX:' + name, [...pts.values()].sort((a, b) => a.d.localeCompare(b.d)));
+    }
+    return matrix;
   }
 
   function clear() { cached = null; }

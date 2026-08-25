@@ -102,7 +102,7 @@
     'chart-value': {
       title: 'Portfolio value over time',
       source: 'Rådata (quantities per date), StockPrices (closes + FX per date), Dim-values.',
-      calc: `One point per StockPrices date (thinned to ≤400 points): Σ qty-on-that-date × NOK close-on-that-date per security, attributed per investor. ${QTY}`,
+      calc: `One point per StockPrices date (thinned to ≤400 points): Σ qty-on-that-date × NOK close-on-that-date per security, attributed per investor. ${QTY}<br><br>Delisted securities (bankruptcies, buyouts) have no market data — while held, they are valued at the club's own trade prices from Rådata, forward-filled between trades.`,
     },
     'chart-pnl': {
       title: 'Cumulative realized P/L',

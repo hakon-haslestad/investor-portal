@@ -68,15 +68,39 @@
     return points && points.length ? points[0].v : null;
   }
 
-  // NOK price with the valueAround fallback on both the price and FX legs.
+  // Synthetic own-trade series: for securities the market no longer quotes
+  // (bankruptcies, buyouts — Yahoo deletes delisted symbols), Store.hydrate
+  // injects the club's actual NOK trade prices under 'TX:<name>'. Already
+  // NOK — no FX leg. Used for HISTORICAL valuation only, never for the
+  // current-holdings table.
+  function syntheticSeries(matrix, security) {
+    return security ? matrix.series.get('TX:' + security.name) : null;
+  }
+
+  // NOK price with the valueAround fallback on both the price and FX legs,
+  // then the own-trade synthetic series as a last resort.
   function nokPriceAround(matrix, security, date) {
-    if (!security || !security.ticker) return null;
-    const px = valueAround(matrix.series.get(security.ticker), date);
-    if (px == null) return null;
-    const cur = (security.currency || 'NOK').toUpperCase();
-    if (cur === 'NOK') return px;
-    const fx = valueAround(matrix.series.get('CUR:' + cur + 'NOK'), date);
-    return fx != null && fx > 0 ? px * fx : null;
+    if (!security) return null;
+    if (security.ticker) {
+      const px = valueAround(matrix.series.get(security.ticker), date);
+      if (px != null) {
+        const cur = (security.currency || 'NOK').toUpperCase();
+        if (cur === 'NOK') return px;
+        const fx = valueAround(matrix.series.get('CUR:' + cur + 'NOK'), date);
+        if (fx != null && fx > 0) return px * fx;
+      }
+    }
+    const syn = syntheticSeries(matrix, security);
+    return syn ? valueAround(syn, date) : null;
+  }
+
+  // Historical NOK price: real matrix close (forward-filled) first, the
+  // own-trade synthetic series when the market has no data.
+  function nokPriceHist(matrix, security, date) {
+    const real = nokPriceOn(matrix, security, date);
+    if (real != null) return real;
+    const syn = syntheticSeries(matrix, security);
+    return syn ? valueOn(syn, date) : null;
   }
 
   function fxOn(matrix, currency, date) {
@@ -103,5 +127,5 @@
     return matrix.dates.filter((d) => d >= from && d <= to);
   }
 
-  window.Prices = { build, priceOn, fxOn, nokPriceOn, nokPriceAround, datesBetween, valueOn };
+  window.Prices = { build, priceOn, fxOn, nokPriceOn, nokPriceAround, nokPriceHist, datesBetween, valueOn };
 })();
