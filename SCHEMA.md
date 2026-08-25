@@ -14,27 +14,57 @@ explicitly described.
 ## 1. `Rådata fra nordnet` — transactions
 
 Source of truth for every cash movement and trade. Exported as-is from
-Nordnet → "Last ned transaksjoner". The parser keys columns by **header
-name**, so column order can change without breaking anything as long as
-the headers stay.
+Nordnet → "Last ned transaksjoner" (`transactions-and-notes-export.csv`).
+The parser keys columns by **header name**, so column order can change
+without breaking anything as long as the headers stay.
 
-| Header                | Type    | Example         | Notes                                    |
-| --------------------- | ------- | --------------- | ---------------------------------------- |
-| `Id`                  | string  | `12345678`      | Nordnet's row id. Required.              |
-| `Bokføringsdag`       | date    | `2025-03-04`    | Booking date.                            |
-| `Handelsdag`          | date    | `2025-03-03`    | Trade date. Used for ordering.           |
-| `Oppgjørsdag`         | date    | `2025-03-05`    | Settlement date.                         |
-| `Transaksjonstype`    | enum    | `KJØPT`         | See enum table below.                    |
-| `Verdipapir`          | string  | `Equinor`       | Security name. Free text, normalized.    |
-| `ISIN`                | string  | `NO0010096985`  | Optional.                                |
-| `Antall`              | number  | `100`           | Quantity (shares).                       |
-| `Kurs`                | number  | `345.5`         | Per-unit price.                          |
-| `Totale Avgifter`     | number  | `99`            | Fees.                                    |
-| `Beløp`               | number  | `-34649`        | Cash amount. Negative = outflow.         |
-| `Valuta`              | string  | `NOK`           | Should sit immediately right of `Beløp`. |
-| `Saldo`               | number  | `12345.67`      | Running balance.                         |
-| `Vekslingskurs`       | number  | `10.85`         | FX rate when foreign trade.              |
-| `Transaksjonstekst`   | string  | `Ord 12345`     | Free-text notes.                         |
+**Export format** (verified against a real 2026 export): the download is
+a **UTF-16 LE file with BOM, tab-separated** (despite the `.csv` name),
+with **decimal commas** (`0,0275`), ISO dates (`2026-06-18`), and empty
+cells for missing values. Google Sheets handles all of this on paste /
+File → Import; the portal's `numOrNull`/`excelDateToISO` normalize both
+comma-decimals and serials, so appending rows to the tab as-is is safe.
+
+The full current header row is:
+
+```
+Id  Bokføringsdag  Handelsdag  Oppgjørsdag  Portefølje  Transaksjonstype
+Verdipapir  ISIN  Antall  Kurs  Rente  Totale Avgifter  Valuta  Beløp
+Valuta  Kjøpsverdi  Valuta  Resultat  Valuta  Totalt antall  Saldo
+Vekslingskurs  Transaksjonstekst  Makuleringsdato  Sluttseddelnummer
+Verifikationsnummer  Kurtasje  Valuta  Valutakurs  Innledende rente
+```
+
+Note there are **five separate `Valuta` columns** — one after each money
+column (`Totale Avgifter`, `Beløp`, `Kjøpsverdi`, `Resultat`,
+`Kurtasje`). The parser resolves the ambiguity by taking the `Valuta`
+column **immediately to the right of `Beløp`** as the cash-amount
+currency.
+
+Columns the portal actually reads:
+
+| Header                | Type    | Example          | Notes                                    |
+| --------------------- | ------- | ---------------- | ---------------------------------------- |
+| `Id`                  | string  | `2583783747`     | Nordnet's row id. Required.              |
+| `Bokføringsdag`       | date    | `2026-06-22`     | Booking date.                            |
+| `Handelsdag`          | date    | `2026-06-22`     | Trade date. Used for ordering.           |
+| `Oppgjørsdag`         | date    | `2026-06-24`     | Settlement date.                         |
+| `Transaksjonstype`    | enum    | `KJØPT`          | See enum table below.                    |
+| `Verdipapir`          | string  | `Tomra Systems`  | Security name. Free text — variants are reconciled via ISIN. |
+| `ISIN`                | string  | `NO0012470089`   | **The stable security key.** Drives Securities seeding and ticker resolution. |
+| `Antall`              | number  | `398`            | Quantity (shares).                       |
+| `Kurs`                | number  | `96,85`          | Per-unit price (decimal comma).          |
+| `Totale Avgifter`     | number  | `29`             | Fees.                                    |
+| `Beløp`               | number  | `38517,3`        | Cash amount. Negative = outflow.         |
+| `Valuta` (after Beløp)| string  | `NOK`            | Currency of `Beløp`.                     |
+| `Saldo`               | number  | `128485,83`      | Running balance (NOK).                   |
+| `Vekslingskurs`       | number  | `1,0089`         | FX rate when foreign trade.              |
+| `Transaksjonstekst`   | string  | `FÖRSÄLJNING …`  | Free-text notes.                         |
+
+Ignored by the portal (kept in the tab, harmless): `Portefølje`
+(account id), `Rente`, `Kjøpsverdi`, `Resultat` (+ their `Valuta`
+columns), `Totalt antall`, `Makuleringsdato`, `Sluttseddelnummer`,
+`Verifikationsnummer`, `Kurtasje`, `Valutakurs`, `Innledende rente`.
 
 ### `Transaksjonstype` enum
 
