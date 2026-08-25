@@ -131,6 +131,7 @@
             { label: 'Market value', className: 'text-right' },
             { label: 'Unrealized', className: 'text-right' },
             { label: 'U/L %', className: 'text-right' },
+            { label: 'Realized so far', className: 'text-right' },
             { label: 'Research', className: 'links' },
           ], s.holdings.map((h) => [
             `${UI.esc(h.security)} ${h.weight < 1 ? `<span class="tag">${(h.weight * 100).toFixed(0)}% share</span>` : ''}`,
@@ -140,6 +141,9 @@
             h.marketValue != null ? fmtNok(h.marketValue) : '<span class="text-muted">—</span>',
             `<span class="${pctClass(h.unrealized)}">${fmtNok(h.unrealized)}</span>`,
             `<span class="${pctClass(h.unrealizedPct)}">${fmtPct(h.unrealizedPct)}</span>`,
+            Math.abs(h.realized || 0) > 0.5
+              ? `<span class="${pctClass(h.realized)}" title="Profit already banked on partial sells of this position">${fmtNok(h.realized)}</span>`
+              : '<span class="text-muted">—</span>',
             researchLinks(h.security),
           ]))}
 

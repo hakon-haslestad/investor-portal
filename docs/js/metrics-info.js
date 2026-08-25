@@ -43,7 +43,7 @@
     'realized': {
       title: 'Realized P/L',
       source: 'Rådata (buys and realizing sells), Dim-values.',
-      calc: `On every realizing sell: sale proceeds (NOK) − average cost at that moment × shares sold, accumulated over all time.<br><br>${COST} Foreign-currency amounts are converted with the row\'s own <em>Vekslingskurs</em>. ${ATTRIB}`,
+      calc: `On every realizing sell: sale proceeds (NOK) − average cost at that moment × shares sold, accumulated over all time.<br><br><strong>Includes partial sells of positions still held</strong> — so total realized can be positive even when every fully-exited position lost money (the "Realized so far" column on still-held positions shows where it came from). ${COST} Foreign-currency amounts are converted with the row\'s own <em>Vekslingskurs</em>. ${ATTRIB}`,
     },
     'dividends': {
       title: 'Dividends',

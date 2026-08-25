@@ -552,6 +552,9 @@
           marketValue: h.marketValueNok,
           unrealized: h.priced === false ? null : unrealizedH,
           unrealizedPct,
+          // Profit already banked on this position's partial sells — the
+          // reason the Realized KPI can beat the sum of exited positions.
+          realized: cost ? cost.realized : 0,
           priced: h.priced !== false,
           weight: h.weight,
         });
