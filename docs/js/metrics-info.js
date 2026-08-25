@@ -50,6 +50,11 @@
       source: 'Rådata — UTBYTTE and KUPONGSKATT rows.',
       calc: `Σ of dividend amounts minus withholding tax (KUPONGSKATT rows are negative), converted to NOK with each row\'s <em>Vekslingskurs</em>. ${ATTRIB}`,
     },
+    'fees': {
+      title: 'Fees',
+      source: 'Rådata — the <em>Totale Avgifter</em> column on every buy/sell, plus standalone fee rows (PLATTFORMAVGIFT, DEBETRENTE).',
+      calc: 'Σ per-trade commissions + platform/interest charges, NOK-converted. Informational: Nordnet already embeds trade fees in each row\'s <em>Beløp</em>, so realized P/L and cost basis are net of them — this total is what trading has cost, not an extra deduction from returns.',
+    },
     'invested': {
       title: 'Invested',
       source: 'Rådata — KJØPT rows.',

@@ -488,7 +488,7 @@
           <div class="kpi-card"><div class="label">Net deployed ${ii('trading-activity')}</div><div class="value">${fmtNok(bought - sold)}</div><div class="sub">bought − sold</div></div>
           <div class="kpi-card"><div class="label">Realized P/L ${ii('realized')}</div><div class="value ${pctClass(realized)}">${fmtNok(realized)}</div></div>
           <div class="kpi-card"><div class="label">Dividends ${ii('dividends')}</div><div class="value">${fmtNok(dividends)}</div></div>
-          <div class="kpi-card"><div class="label">Fees</div><div class="value text-muted">${fmtNok(fees)}</div></div>
+          <div class="kpi-card"><div class="label">Fees ${ii('fees')}</div><div class="value text-muted">${fmtNok(fees)}</div></div>
         </div>
 
         <div class="section-title">Buys &amp; sells ${ii('trade-scatter')} <span class="text-muted text-small">blue = purchase (up), red = sale (down); dot size ∝ amount</span></div>

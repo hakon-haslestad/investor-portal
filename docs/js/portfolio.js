@@ -290,6 +290,10 @@
     for (const tx of store.transactions) {
       const cat = classify(tx.type);
       const amount = amountNok(tx);
+      // Per-trade commissions (Totale Avgifter) count toward the fees total.
+      // Informational only: Nordnet embeds them in Beløp, so realized and
+      // cost basis already net them — never subtract this from returns.
+      if (cat === 'BUY' || cat === 'SELL') totalFees += Math.abs(window.Ledger.feeNok(tx));
       if (cat === 'DEPOSIT') totalDeposits += amount;
       else if (cat === 'WITHDRAWAL') totalWithdrawals += Math.abs(amount);
       else if (cat === 'FEE') totalFees += Math.abs(amount);
