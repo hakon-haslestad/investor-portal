@@ -83,7 +83,7 @@ function resolveTickers() {
   var securities = readSecurities_(ss);
   var resolved = 0, missed = 0;
   securities.forEach(function (s) {
-    if (s.ticker || !s.isin) return;
+    if (s.ticker || !s.isin || s.status === 'ignore') return;
     try {
       var hit = yahooLookupByIsin_(s.isin);
       if (hit) {
@@ -99,7 +99,7 @@ function resolveTickers() {
         sheet.getRange(s.row, 10).setValue('REVIEW: ISIN ' + s.isin + ' not found on Yahoo — fill ticker manually');
         missed++;
       }
-      Utilities.sleep(400); // be polite to the search endpoint
+      Utilities.sleep(800); // be polite to the search endpoint (429s otherwise)
     } catch (e) {
       log_(ss, 'resolveTickers', s.name, String(e));
       missed++;
@@ -109,11 +109,9 @@ function resolveTickers() {
 }
 
 function yahooLookupByIsin_(isin) {
-  var url = 'https://query1.finance.yahoo.com/v1/finance/search?q=' + encodeURIComponent(isin) +
-    '&quotesCount=6&newsCount=0';
-  var resp = UrlFetchApp.fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, muteHttpExceptions: true });
-  if (resp.getResponseCode() !== 200) throw new Error('Yahoo search HTTP ' + resp.getResponseCode());
-  var quotes = (JSON.parse(resp.getContentText()).quotes || []).filter(function (q) {
+  var data = yahooFetchJson_('https://query1.finance.yahoo.com/v1/finance/search?q=' + encodeURIComponent(isin) +
+    '&quotesCount=6&newsCount=0', 'search ' + isin);
+  var quotes = (data.quotes || []).filter(function (q) {
     return q.symbol && (q.quoteType === 'EQUITY' || !q.quoteType);
   });
   if (!quotes.length) return null;
@@ -184,7 +182,7 @@ function autoBackfillNew_(ss, securities) {
   var done = 0;
   for (var i = 0; i < securities.length && done < AUTO_BACKFILL_MAX_PER_RUN; i++) {
     var s = securities[i];
-    if (!s.ticker || s.status === 'expired') continue;
+    if (!s.ticker || s.status === 'expired' || s.status === 'ignore') continue;
     if (firstVals[s.ticker]) continue; // column already has data
     var start = firstTx[s.ticker] || firstTx['*'];
     if (!start) continue;
@@ -230,7 +228,7 @@ function backfill() {
   var jobs = [];
   var globalStart = null;
   securities.forEach(function (s) {
-    if (!s.ticker || s.status === 'expired') return;
+    if (!s.ticker || s.status === 'expired' || s.status === 'ignore') return;
     var start = firstTx[s.ticker] || firstTx['*'];
     if (!start) return;
     if (!globalStart || start < globalStart) globalStart = start;
@@ -329,7 +327,11 @@ function seedSecurities_(ss, sheet) {
   var seenName = {}, byIsinRow = {};
   existing.forEach(function (s) {
     seenName[s.name.toLowerCase()] = true;
-    s.aliases.forEach(function (a) { seenName[a] = true; });
+    s.aliases.forEach(function (a) {
+      seenName[a] = true;
+      // Retired ISINs listed as aliases (merged eras) count as seeded too.
+      if (ISIN_RE.test(a.toUpperCase())) byIsinRow[a.toUpperCase()] = s;
+    });
     if (s.isin) byIsinRow[s.isin.toUpperCase()] = s;
   });
 
@@ -432,7 +434,7 @@ function refreshSoldState_(ss, securities) {
   var sheet = ss.getSheetByName(TABS.securities);
   var today = new Date();
   securities.forEach(function (s) {
-    if (!s.ticker) return;
+    if (!s.ticker || s.status === 'ignore') return;
     var b = byTicker[s.ticker];
     if (!b) return;
     var held = b.qty > 0.0001;
@@ -459,10 +461,19 @@ function aliasMap_(securities) {
 
 // Match a transaction to a Securities row: ISIN first (the stable key in
 // Nordnet exports), name/alias as fallback for rows that predate ISINs.
+// Aliases that LOOK like ISINs (e.g. a company's old ISIN after a re-listing
+// or ticker change) also register as ISIN keys — put the retired ISIN in the
+// surviving row's aliases to merge the two eras.
+var ISIN_RE = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/;
 function matcherFor_(securities) {
   var byIsin = {};
   securities.forEach(function (s) {
-    if (s.ticker && s.isin) byIsin[s.isin.toUpperCase()] = s;
+    if (!s.ticker) return;
+    if (s.isin) byIsin[s.isin.toUpperCase()] = s;
+    s.aliases.forEach(function (a) {
+      var u = a.toUpperCase();
+      if (ISIN_RE.test(u)) byIsin[u] = s;
+    });
   });
   var byName = aliasMap_(securities);
   return function (t) {
@@ -474,7 +485,7 @@ function matcherFor_(securities) {
 function activeCurrencies_(securities) {
   var set = {};
   securities.forEach(function (s) {
-    if (s.status === 'expired' || !s.ticker) return;
+    if (s.status === 'expired' || s.status === 'ignore' || !s.ticker) return;
     if (s.currency && s.currency !== 'NOK' && FX_CURRENCIES.indexOf(s.currency) !== -1) set[s.currency] = true;
   });
   return Object.keys(set);
@@ -486,7 +497,7 @@ function fetchListFor_(ss, securities, today) {
   var lastByCol = lastValueDates_(ss);
   var list = [];
   securities.forEach(function (s) {
-    if (!s.ticker || s.status === 'expired') return;
+    if (!s.ticker || s.status === 'expired' || s.status === 'ignore') return;
     if (s.status === 'sold') {
       var last = lastByCol[s.ticker];
       if (last && daysBetween_(last, today) < SOLD_FETCH_EVERY_DAYS) return;
@@ -514,8 +525,9 @@ function fetchQuote_(item) {
   if (item.source === 'googlefinance') {
     var v = evalGoogleFinance_('=GOOGLEFINANCE("' + item.gfSymbol + '", "price")');
     if (typeof v === 'number' && isFinite(v)) return v;
-    // fall through to Yahoo for stocks (not FX)
-    if (item.column.indexOf('CUR:') === 0) return null;
+    // GF unavailable — fall through to Yahoo. FX pairs use Yahoo's
+    // '<PAIR>=X' symbols (e.g. SEKNOK=X).
+    if (item.column.indexOf('CUR:') === 0) return yahooQuote_(item.ticker + '=X');
   }
   return yahooQuote_(item.ticker);
 }
@@ -526,7 +538,7 @@ function evalGoogleFinance_(formula) {
   try {
     cell.setFormula(formula);
     SpreadsheetApp.flush();
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 8; i++) {
       var v = cell.getValue();
       if (typeof v === 'number' && isFinite(v)) return v;
       Utilities.sleep(1000);
@@ -538,11 +550,22 @@ function evalGoogleFinance_(formula) {
   }
 }
 
+// Fetch JSON from Yahoo with retry + backoff on 429 (rate limit) and 5xx.
+// Yahoo throttles bursts — resolveTickers and big backfills hit this.
+function yahooFetchJson_(url, label) {
+  for (var attempt = 1; attempt <= 4; attempt++) {
+    var resp = UrlFetchApp.fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, muteHttpExceptions: true });
+    var code = resp.getResponseCode();
+    if (code === 200) return JSON.parse(resp.getContentText());
+    if (code === 429 || code >= 500) { Utilities.sleep(1500 * attempt * attempt); continue; }
+    throw new Error('Yahoo HTTP ' + code + ' for ' + label);
+  }
+  throw new Error('Yahoo rate-limited (429) after retries for ' + label);
+}
+
 function yahooQuote_(symbol) {
-  var url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(symbol) + '?range=1d&interval=1d';
-  var resp = UrlFetchApp.fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, muteHttpExceptions: true });
-  if (resp.getResponseCode() !== 200) throw new Error('Yahoo HTTP ' + resp.getResponseCode() + ' for ' + symbol);
-  var data = JSON.parse(resp.getContentText());
+  var data = yahooFetchJson_('https://query1.finance.yahoo.com/v8/finance/chart/' +
+    encodeURIComponent(symbol) + '?range=1d&interval=1d', symbol);
   var result = data.chart && data.chart.result && data.chart.result[0];
   var px = result && result.meta && result.meta.regularMarketPrice;
   return typeof px === 'number' && isFinite(px) ? px : null;
@@ -559,7 +582,10 @@ function fetchHistory_(s, startIso) {
 }
 
 function fetchFxHistory_(cur, startIso) {
-  return gfHistory_('CURRENCY:' + cur + 'NOK', startIso);
+  var series = gfHistory_('CURRENCY:' + cur + 'NOK', startIso);
+  if (series.length) return series;
+  // GF FX unavailable in some locales/contexts — Yahoo covers all pairs.
+  return yahooHistory_(cur + 'NOK=X', startIso);
 }
 
 function gfHistory_(symbol, startIso) {
@@ -587,11 +613,8 @@ function gfHistory_(symbol, startIso) {
 function yahooHistory_(symbol, startIso) {
   var p1 = Math.floor(new Date(startIso + 'T00:00:00Z').getTime() / 1000);
   var p2 = Math.floor(Date.now() / 1000);
-  var url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(symbol) +
-    '?period1=' + p1 + '&period2=' + p2 + '&interval=1d';
-  var resp = UrlFetchApp.fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, muteHttpExceptions: true });
-  if (resp.getResponseCode() !== 200) throw new Error('Yahoo HTTP ' + resp.getResponseCode() + ' for ' + symbol);
-  var data = JSON.parse(resp.getContentText());
+  var data = yahooFetchJson_('https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(symbol) +
+    '?period1=' + p1 + '&period2=' + p2 + '&interval=1d', symbol);
   var result = data.chart && data.chart.result && data.chart.result[0];
   if (!result || !result.timestamp) return [];
   var closes = result.indicators.quote[0].close;

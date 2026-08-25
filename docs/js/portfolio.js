@@ -61,6 +61,7 @@
     const map = new Map();
     for (const h of window.Positions.holdingsAt(store, date)) {
       const sec = registry.forName(h.security);
+      if (sec && sec.status === 'ignore') continue;
       // nokPriceAround: for dates before the backfilled history, value at the
       // earliest known close rather than dropping the position — a missing
       // entry reads as price 0 in windowMetrics and fabricates P/L.
@@ -101,6 +102,9 @@
     const out = [];
     for (const h of window.Positions.holdingsAt(store, date)) {
       const sec = registry.forName(h.security);
+      // 'ignore' = deliberately untracked residue (expired subscription
+      // rights, acceptance lines) — keep it out of holdings and KPIs.
+      if (sec && sec.status === 'ignore') continue;
       const nok = window.Prices.nokPriceOn(store.prices, sec, date);
       const native = sec && sec.ticker ? window.Prices.priceOn(store.prices, sec.ticker, date) : null;
       const mv = nok != null ? nok * h.qty : null;

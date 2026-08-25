@@ -46,12 +46,16 @@
     const byKey = new Map();   // lowercased name/alias/ticker → security
     const byTicker = new Map();
     const byIsin = new Map();
+    const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/;
     for (const s of list) {
       if (s.ticker) byTicker.set(s.ticker, s);
       if (s.isin) byIsin.set(s.isin.toUpperCase(), s);
       const keys = [s.name, s.ticker, ...s.aliases];
       for (const k of keys) {
-        if (k) byKey.set(k.toLowerCase(), s);
+        if (!k) continue;
+        byKey.set(k.toLowerCase(), s);
+        // A retired ISIN in aliases merges that era into this row.
+        if (ISIN_RE.test(k.toUpperCase())) byIsin.set(k.toUpperCase(), s);
       }
     }
     function forName(raw) {

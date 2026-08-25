@@ -97,12 +97,12 @@ order-tolerant. One row per security ever traded.
 | ---------- | ------ | -------------- | ------------------------------------------------------------ |
 | `ticker`   | string | `EQNR.OL`      | Yahoo-style symbol. StockPrices column key. Required to price.|
 | `name`     | string | `Equinor`      | Canonical display name.                                       |
-| `aliases`  | string | `equinor;EQNR` | `;`-separated Nordnet display-name variants.                  |
+| `aliases`  | string | `equinor;EQNR` | `;`-separated Nordnet display-name variants. A retired **ISIN** here merges that era into this row (re-listings, ticker changes). |
 | `isin`     | string | `NO0010096985` | Optional.                                                     |
 | `currency` | string | `NOK`          | The ticker's native quote currency.                           |
 | `exchange` | string | `OSL`          | Informational; GF symbol derives from it when needed.         |
 | `source`   | enum   | `yahoo`        | `yahoo` (Oslo Børs) or `googlefinance` (STO/ETR/FX).          |
-| `status`   | enum   | `held`         | `held` / `sold` / `expired`. Maintained by the script.        |
+| `status`   | enum   | `held`         | `held` / `sold` / `expired` (script-maintained) / `ignore` (manual: excluded from fetching AND from portal holdings — expired subscription rights, acceptance lines). |
 | `soldDate` | date   | `2026-05-02`   | Set when the replay hits qty 0; drives the 6-month tail.      |
 | `notes`    | string |                | Free text. `REVIEW` marks unmapped seeds; `gf=EXCH:SYM` overrides the GF symbol. |
 
