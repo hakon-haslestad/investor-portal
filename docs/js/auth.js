@@ -8,6 +8,28 @@
   let cachedToken = null;
   let cachedEmail = null;
 
+  // Google returns granted scopes in normalized form — the shorthand
+  // "email"/"profile" we request comes back as the full
+  // https://www.googleapis.com/auth/userinfo.* URL. Compare normalized,
+  // or every fresh token gets discarded as "missing email".
+  function normScope(s) {
+    if (s === 'email') return 'https://www.googleapis.com/auth/userinfo.email';
+    if (s === 'profile') return 'https://www.googleapis.com/auth/userinfo.profile';
+    return s;
+  }
+  function scopeSet(str) {
+    return new Set((str || '').split(/\s+/).filter(Boolean).map(normScope));
+  }
+  function coversScopes(haveStr, neededStr) {
+    const have = scopeSet(haveStr);
+    // 'openid' is implied whenever any userinfo/identity scope was granted.
+    for (const s of scopeSet(neededStr)) {
+      if (s === 'openid' && (have.has('openid') || have.has(normScope('email')))) continue;
+      if (!have.has(s)) return false;
+    }
+    return true;
+  }
+
   function loadCachedToken() {
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
@@ -17,10 +39,7 @@
       if (Date.now() >= parsed.expires_at - 60_000) return null;
       // Drop tokens that don't cover the currently configured scopes
       // (so changing config.js OAUTH_SCOPE invalidates stale tokens).
-      const needed = (window.PORTAL_CONFIG.OAUTH_SCOPE || '').split(/\s+/).filter(Boolean);
-      const have = (parsed.scope || '').split(/\s+/).filter(Boolean);
-      const missing = needed.filter((s) => !have.includes(s));
-      if (missing.length) {
+      if (!coversScopes(parsed.scope, window.PORTAL_CONFIG.OAUTH_SCOPE)) {
         sessionStorage.removeItem(STORAGE_KEY);
         sessionStorage.removeItem('portal.email');
         return null;
@@ -91,9 +110,7 @@
 
   function tokenHasScope(tok, scopeString) {
     if (!tok) return false;
-    const have = (tok.scope || '').split(/\s+/).filter(Boolean);
-    const want = (scopeString || '').split(/\s+/).filter(Boolean);
-    return want.every((s) => have.includes(s));
+    return coversScopes(tok.scope, scopeString);
   }
 
   async function fetchUserInfo(accessToken) {
