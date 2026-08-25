@@ -44,8 +44,11 @@ and would not preserve history.
    - For a `googlefinance` row whose GF symbol differs from
      `exchange:ticker`, put `gf=EXCH:SYM` in `notes`.
 6. Run **`backfill`** — fetches historical closes per ticker from its first
-   transaction date, plus FX history. Idempotent; safe to re-run (it never
-   overwrites an existing cell). May take a few minutes.
+   transaction date, plus FX history. **Resumable:** Apps Script kills any
+   run at 6 minutes, so backfill stops itself at ~4.5 and logs
+   "RUN backfill AGAIN to continue" — just run it repeatedly until `_log`
+   says "backfill complete". Already-fetched tickers are skipped, and it
+   never overwrites an existing cell.
 7. Run **`dailyFetch`** manually once and check:
    - `StockPrices` has today's row with a value per held ticker + FX columns.
    - `_log` (unhide via right-click a tab → Show) has no errors.

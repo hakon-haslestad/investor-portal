@@ -162,37 +162,83 @@ function dailyFetch() {
   if (misses > 0) log_(ss, 'dailyFetch', '', misses + '/' + list.length + ' fetches failed');
 }
 
+// Resumable: skips any column whose history is already backfilled (its
+// earliest StockPrices value sits within BACKFILL_DONE_SLACK_DAYS of the
+// intended start), and stops cleanly before Apps Script's 6-minute cap.
+// Just run it again until it logs "backfill complete".
+var BACKFILL_TIME_BUDGET_MS = 4.5 * 60 * 1000;
+var BACKFILL_DONE_SLACK_DAYS = 10; // start can land on a weekend/holiday
+
 function backfill() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var t0 = Date.now();
   var securities = readSecurities_(ss);
   var firstTx = firstTransactionDates_(ss);
+  var firstVals = firstValueDates_(ss);
+  var done = 0, skipped = 0, outOfTime = false;
+
+  function isDone(column, start) {
+    var first = firstVals[column];
+    return first && daysBetween_(start, first) <= BACKFILL_DONE_SLACK_DAYS;
+  }
+  function timeLeft() { return Date.now() - t0 < BACKFILL_TIME_BUDGET_MS; }
+
+  // Build the work list first (stocks + FX), then chew through it until
+  // finished or out of time.
+  var jobs = [];
   var globalStart = null;
   securities.forEach(function (s) {
     if (!s.ticker || s.status === 'expired') return;
     var start = firstTx[s.ticker] || firstTx['*'];
     if (!start) return;
     if (!globalStart || start < globalStart) globalStart = start;
-    try {
-      var series = fetchHistory_(s, start);
-      mergeSeries_(ss, s.ticker, series);
-      log_(ss, 'backfill', s.ticker, series.length + ' points from ' + start);
-    } catch (e) {
-      log_(ss, 'backfill', s.ticker, String(e));
-    }
+    jobs.push({ column: s.ticker, start: start, fetch: function () { return fetchHistory_(s, start); } });
   });
-  // FX history over the whole span.
   if (globalStart) {
     activeCurrencies_(securities).forEach(function (cur) {
-      try {
-        var series = fetchFxHistory_(cur, globalStart);
-        mergeSeries_(ss, 'CUR:' + cur + 'NOK', series);
-        log_(ss, 'backfill', 'CUR:' + cur + 'NOK', series.length + ' points');
-      } catch (e) {
-        log_(ss, 'backfill', 'CUR:' + cur + 'NOK', String(e));
-      }
+      var col = 'CUR:' + cur + 'NOK';
+      jobs.push({ column: col, start: globalStart, fetch: function () { return fetchFxHistory_(cur, globalStart); } });
     });
   }
+
+  for (var i = 0; i < jobs.length; i++) {
+    var job = jobs[i];
+    if (isDone(job.column, job.start)) { skipped++; continue; }
+    if (!timeLeft()) { outOfTime = true; break; }
+    try {
+      var series = job.fetch();
+      mergeSeries_(ss, job.column, series);
+      log_(ss, 'backfill', job.column, series.length + ' points from ' + job.start);
+      done++;
+    } catch (e) {
+      log_(ss, 'backfill', job.column, String(e));
+    }
+  }
+
   sortPricesByDate_(ss);
+  if (outOfTime) {
+    log_(ss, 'backfill', '', 'time budget reached after ' + done + ' fetched, ' + skipped +
+      ' already done — RUN backfill AGAIN to continue');
+  } else {
+    log_(ss, 'backfill', '', 'backfill complete: ' + done + ' fetched, ' + skipped + ' already done');
+  }
+}
+
+// Earliest date with a value, per StockPrices column.
+function firstValueDates_(ss) {
+  var sheet = ss.getSheetByName(TABS.prices);
+  if (!sheet) return {};
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return {};
+  var headers = data[0].map(String);
+  var out = {};
+  for (var c = 1; c < headers.length; c++) {
+    if (!headers[c]) continue;
+    for (var r = 1; r < data.length; r++) {
+      if (data[r][c] !== '' && data[r][c] != null) { out[headers[c]] = isoDate_(data[r][0]); break; }
+    }
+  }
+  return out;
 }
 
 function setupTrigger() {
