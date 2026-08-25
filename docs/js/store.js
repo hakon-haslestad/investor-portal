@@ -86,7 +86,11 @@
       if (!(isPricedBuy(tx) || (cat === 'SELL' && isRealizingSell(tx.type)))) continue;
       const sec = registry.forName(tx.security);
       if (!sec) continue;
-      if (sec.ticker && matrix.series.has(sec.ticker)) continue; // market data exists
+      // Market data counts as usable only when the FULL NOK path exists:
+      // the ticker's own series plus, for non-NOK securities, its FX pair.
+      const cur = (sec.currency || 'NOK').toUpperCase();
+      const fxOk = cur === 'NOK' || matrix.series.has('CUR:' + cur + 'NOK');
+      if (sec.ticker && matrix.series.has(sec.ticker) && fxOk) continue;
       const date = tx.tradeDate || tx.bookDate;
       const qty = Math.abs(tx.qty);
       const amt = Math.abs(amountNok(tx));

@@ -112,10 +112,12 @@
         // native currency (USD/SEK/…), but marketValueNok is already converted,
         // so derive a NOK-per-share (marketValueNok / qty) — otherwise foreign
         // holdings get marked ~FX-rate too low against their NOK cost basis.
-        // Fall back to the raw price only when the snapshot lacks MV/qty.
+        // An UNPRICEABLE open lot (no close and no own-trade fallback) is
+        // valued AT COST — neutral — instead of at 0, which would fabricate
+        // a −100% loss on the position.
         const endPrice = px
           ? ((px.marketValueNok != null && px.qty) ? px.marketValueNok / px.qty : (px.price || 0))
-          : 0;
+          : (lot.qty > 0 ? lot.costSum / lot.qty : 0);
         const mv = lot.qty * (endPrice || 0);
         const unrealized = mv - lot.costSum;
         mvAtEnd += mv;
