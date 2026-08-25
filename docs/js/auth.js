@@ -4,7 +4,7 @@
 
 (function () {
   const STORAGE_KEY = 'portal.token';
-  let tokenClient = null;
+  // (token clients are created per-request — see requestToken)
   let cachedToken = null;
   let cachedEmail = null;
 
@@ -41,15 +41,8 @@
     cachedEmail = null;
   }
 
-  // Reject handler for the in-flight token request — GIS reports popup
-  // failures (blocked, closed by user) via error_callback, not callback.
-  // Without this the sign-in promise would hang forever on a blocked popup.
-  let pendingReject = null;
-
-  async function ensureTokenClient(scope) {
-    if (tokenClient && tokenClient._scope === scope) return tokenClient;
-    // Wait for GIS script to load
-    await new Promise((resolve) => {
+  function waitForGis() {
+    return new Promise((resolve) => {
       if (window.google && window.google.accounts && window.google.accounts.oauth2) return resolve();
       const t = setInterval(() => {
         if (window.google && window.google.accounts && window.google.accounts.oauth2) {
@@ -57,37 +50,40 @@
         }
       }, 50);
     });
-    tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: window.PORTAL_CONFIG.OAUTH_CLIENT_ID,
-      scope: scope || window.PORTAL_CONFIG.OAUTH_SCOPE,
-      callback: () => {}, // assigned per-request
-      error_callback: (err) => {
-        if (pendingReject) {
-          const r = pendingReject; pendingReject = null;
-          r(new Error(err && (err.message || err.type) || 'popup failed'));
-        }
-      },
-    });
-    tokenClient._scope = scope || window.PORTAL_CONFIG.OAUTH_SCOPE;
-    return tokenClient;
   }
 
+  // One FRESH GIS token client per request. Reusing a client after a
+  // blocked/abandoned popup poisons it: the next requestAccessToken routes
+  // its response to the stale internal request and the promise hangs
+  // forever — exactly the "sign in and land back at the gate" loop.
+  // error_callback catches popup-blocked/closed so callers get a rejection
+  // instead of a hang.
   function requestToken({ silent, scope }) {
     const requestScope = scope || window.PORTAL_CONFIG.OAUTH_SCOPE;
     return new Promise((resolve, reject) => {
-      ensureTokenClient(requestScope).then((client) => {
-        pendingReject = reject;
-        client.callback = (resp) => {
-          pendingReject = null;
-          if (resp.error) return reject(new Error(resp.error_description || resp.error));
-          const tok = {
-            access_token: resp.access_token,
-            expires_at: Date.now() + (Number(resp.expires_in || 3600) * 1000),
-            scope: resp.scope,
-          };
-          storeToken(tok);
-          resolve(tok);
-        };
+      waitForGis().then(() => {
+        let settled = false;
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: window.PORTAL_CONFIG.OAUTH_CLIENT_ID,
+          scope: requestScope,
+          callback: (resp) => {
+            if (settled) return;
+            settled = true;
+            if (resp.error) return reject(new Error(resp.error_description || resp.error));
+            const tok = {
+              access_token: resp.access_token,
+              expires_at: Date.now() + (Number(resp.expires_in || 3600) * 1000),
+              scope: resp.scope,
+            };
+            storeToken(tok);
+            resolve(tok);
+          },
+          error_callback: (err) => {
+            if (settled) return;
+            settled = true;
+            reject(new Error((err && (err.message || err.type)) || 'popup failed'));
+          },
+        });
         client.requestAccessToken({ prompt: silent ? '' : 'consent' });
       }).catch(reject);
     });
@@ -125,7 +121,10 @@
         cachedToken = t;
         return t;
       }
-      return requestToken({ silent: true });
+      // No stored session → don't touch GIS here. A token request always
+      // opens a popup, and without a user gesture the browser blocks it —
+      // the caller should show the sign-in button instead.
+      throw new Error('not signed in');
     },
 
     async signOut() {
