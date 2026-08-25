@@ -87,7 +87,7 @@
       el.innerHTML = `
         <style>${VIEW_CSS}</style>
         <div class="hero">
-          <h2>Competitions & rivalries</h2>
+          <h2>Competitions &amp; rivalries ${window.UI.infoIcon('competition-scoring')}</h2>
           <a href="#/competitions" class="btn small" id="jump-new">+ New competition</a>
         </div>
 

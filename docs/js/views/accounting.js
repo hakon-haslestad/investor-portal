@@ -55,7 +55,7 @@
 
     el.innerHTML = `
       <div class="hero">
-        <h2>Accounting — Geysir Invest AS</h2>
+        <h2>Accounting — Geysir Invest AS ${window.UI.infoIcon('accounting-kpis')}</h2>
         <div class="when" id="meta-line"></div>
       </div>
       <div id="year-picker-mount" style="margin-bottom:14px"></div>

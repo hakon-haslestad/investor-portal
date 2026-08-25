@@ -8,6 +8,7 @@
   window.Views.dashboard = async function (el, ctx) {
     const { store } = ctx;
     const { fmtNok, fmtPct, fmtQty, pctClass, PODIUM, escapeHtml } = window.Fmt;
+    const ii = window.UI.infoIcon;
     const INVESTOR_COLORS = window.Ledger.INVESTOR_COLORS;
     const INVESTOR_CODES = window.Ledger.INVESTOR_CODES;
     const names = window.Copy.namesFromMembers(store.members);
@@ -421,7 +422,7 @@
           </tr>`;
       }).join('');
       return `
-        <div class="section-title">Current portfolio <span class="text-muted text-small">(${holds.length} positions${asOf}; YTD/12m are price return)</span></div>
+        <div class="section-title">Current portfolio <span class="text-muted text-small">(${holds.length} positions${asOf}; YTD/12m are price return)</span> ${ii('holdings-table')}</div>
         <div style="overflow-x:auto">
           <table class="investor-table">
             <thead><tr>
@@ -447,12 +448,12 @@
 
     function priceFreshnessLine() {
       if (!window.Portfolio.usePriceMatrix(store)) {
-        return '<div class="price-freshness stale">No price data — the StockPrices tab is empty. Install/run the Apps Script feed (see apps-script/README.md).</div>';
+        return `<div class="price-freshness stale">No price data — the StockPrices tab is empty. Install/run the Apps Script feed (see apps-script/README.md). ${ii('price-freshness')}</div>`;
       }
       const latest = store.prices.latestDate;
       const ageDays = Math.round((Date.now() - new Date(latest).getTime()) / 86400000);
       const stale = ageDays > 3;
-      return `<div class="price-freshness ${stale ? 'stale' : ''}">Prices per ${latest}${stale ? ' (stale)' : ''}</div>`;
+      return `<div class="price-freshness ${stale ? 'stale' : ''}">Prices per ${latest}${stale ? ' (stale)' : ''} ${ii('price-freshness')}</div>`;
     }
 
     function paint(d) {
@@ -503,32 +504,32 @@
         <div class="section-title">Leaderboards</div>
         <div class="leaderboard">
           <div class="lb-card">
-            <h3>This period</h3>
+            <h3>This period ${ii('lb-period')}</h3>
             ${d.leaderboards.period.map((r, i) => `
               <div class="row"><span class="who">${PODIUM[i]} ${r.code} <span class="text-muted text-small">${names[r.code] || ''}</span></span><span class="v ${pctClass(r.value)}">${fmtPct(r.value)}</span></div>
             `).join('')}
           </div>
           <div class="lb-card">
-            <h3>All-time, no contest</h3>
+            <h3>All-time, no contest ${ii('lb-alltime')}</h3>
             ${d.leaderboards.allTime.map((r, i) => `
               <div class="row"><span class="who">${PODIUM[i]} ${r.code}</span><span class="v ${pctClass(r.value)}">${fmtPct(r.value)}</span></div>
             `).join('')}
           </div>
           <div class="lb-card">
-            <h3>Year to date <span class="text-muted text-small">(realized + dividends)</span></h3>
+            <h3>Year to date <span class="text-muted text-small">(realized + dividends)</span> ${ii('lb-ytd')}</h3>
             ${d.leaderboards.ytd.map((r, i) => `
               <div class="row"><span class="who">${PODIUM[i]} ${r.code} <span class="text-muted text-small">${names[r.code] || ''}</span></span><span class="v ${pctClass(r.value)}">${fmtPct(r.value)}</span></div>
             `).join('')}
           </div>
           <div class="lb-card">
-            <h3>Best single position (all-time)</h3>
+            <h3>Best single position (all-time) ${ii('lb-bestpicks')}</h3>
             ${d.leaderboards.bestPicks.map((r) => {
               if (!r.pick) return `<div class="row"><span class="who">${r.code}</span><span class="v text-muted">no picks</span></div>`;
               return `<div class="row"><span class="who">${r.code} <span class="text-muted text-small">${escapeHtml(r.pick.security)}</span></span><span class="v positive">${fmtNok(r.pick.return)} (${fmtPct(r.pick.pct)})</span></div>`;
             }).join('')}
           </div>
           <div class="lb-card">
-            <h3>Last 6 months — top of the table</h3>
+            <h3>Last 6 months — top of the table ${ii('lb-monthly')}</h3>
             ${d.leaderboards.monthly.map((m) => `
               <div class="row"><span class="who">${m.month}</span><span class="v">${m.ranks.slice(0,3).map((r,i)=>`${PODIUM[i]} ${r.code}`).join(' · ')}</span></div>
             `).join('')}
@@ -537,18 +538,20 @@
 
         <div class="section-title">Timelines per investor <span class="text-muted text-small">click investors to filter (multi-select)</span></div>
         <div id="chart-legend"></div>
+        <div class="section-title text-small">Cumulative realized P/L ${ii('chart-pnl')}</div>
         <div class="chart-wrap" id="chart-pnl"></div>
+        <div class="section-title text-small">Portfolio value ${ii('chart-value')}</div>
         <div class="chart-wrap" id="chart-mv"></div>
 
         <div class="section-title">${rnTitle}</div>
         <div class="kpi-grid">
-          <div class="kpi-card"><div class="label">Total portfolio</div><div class="value">${fmtNok(rn.totalValue)}</div><div class="sub">positions + cash</div></div>
-          <div class="kpi-card"><div class="label">Holdings MV</div><div class="value">${fmtNok(rn.marketValue)}</div><div class="sub">active positions</div></div>
-          <div class="kpi-card"><div class="label">Dry powder</div><div class="value">${fmtNok(rn.cash)}</div><div class="sub">${selectedCodes.length ? 'investor share' : 'uncommitted cash'}</div></div>
-          <div class="kpi-card"><div class="label">Unrealized P/L</div><div class="value ${pctClass(rn.unrealized)}">${fmtNok(rn.unrealized)}</div><div class="sub">mark-to-market</div></div>
+          <div class="kpi-card"><div class="label">Total portfolio ${ii('total-value')}</div><div class="value">${fmtNok(rn.totalValue)}</div><div class="sub">positions + cash</div></div>
+          <div class="kpi-card"><div class="label">Holdings MV ${ii('market-value')}</div><div class="value">${fmtNok(rn.marketValue)}</div><div class="sub">active positions</div></div>
+          <div class="kpi-card"><div class="label">Dry powder ${ii('cash')}</div><div class="value">${fmtNok(rn.cash)}</div><div class="sub">${selectedCodes.length ? 'investor share' : 'uncommitted cash'}</div></div>
+          <div class="kpi-card"><div class="label">Unrealized P/L ${ii('unrealized')}</div><div class="value ${pctClass(rn.unrealized)}">${fmtNok(rn.unrealized)}</div><div class="sub">mark-to-market</div></div>
         </div>
 
-        <div class="section-title">${winTitle} <span class="text-muted text-small">${prettyRange(d.window)}</span></div>
+        <div class="section-title">${winTitle} <span class="text-muted text-small">${prettyRange(d.window)}</span> ${ii('window-metrics')}</div>
         <div class="kpi-grid">
           <div class="kpi-card"><div class="label">Period return</div><div class="value ${pctClass(win.periodReturnPct)}">${fmtPct(win.periodReturnPct)}</div><div class="sub">realized + dividends + price delta</div></div>
           <div class="kpi-card"><div class="label">Realized P/L</div><div class="value ${pctClass(win.realizedInWindow)}">${fmtNok(win.realizedInWindow)}</div><div class="sub">${win.sellCount || 0} sells</div></div>
@@ -559,7 +562,7 @@
 
         ${renderCurrentPortfolio()}
 
-        <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${prettyRange(d.window)}${ik ? '; revenue/profit/P/E from Offisielle nøkkeltall, your share' : ''})</span></div>
+        <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${prettyRange(d.window)}${ik ? '; revenue/profit/P/E from Offisielle nøkkeltall, your share' : ''})</span> ${ii('investor-kpis')}</div>
         <div style="overflow-x:auto">
         <table class="investor-table">
           <thead><tr>

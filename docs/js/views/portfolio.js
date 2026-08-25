@@ -34,9 +34,9 @@
 
   function priceFreshnessNote(store) {
     if (!window.Portfolio.usePriceMatrix(store)) {
-      return '<span class="price-freshness stale">No price data — the StockPrices tab is empty. Install/run the Apps Script feed.</span>';
+      return `<span class="price-freshness stale">No price data — the StockPrices tab is empty. Install/run the Apps Script feed. ${window.UI.infoIcon('price-freshness')}</span>`;
     }
-    return `<span class="price-freshness">Prices as of ${store.prices.latestDate}</span>`;
+    return `<span class="price-freshness">Prices as of ${store.prices.latestDate} ${window.UI.infoIcon('price-freshness')}</span>`;
   }
 
   function ownersOf(store, security) {
@@ -56,10 +56,10 @@
     document.getElementById('pf-when').innerHTML = priceFreshnessNote(store);
 
     const kpis = window.UI.kpiGrid([
-      { label: 'Market value', value: fmtNok(totalMv) },
-      { label: 'Cash', value: fmtNok(cash), sub: 'latest Nordnet saldo' },
-      { label: 'Total value', value: fmtNok(totalMv + cash) },
-      { label: 'Unrealized', value: fmtNok(unrealized), tone: unrealized >= 0 ? 'positive' : 'negative' },
+      { label: 'Market value', value: fmtNok(totalMv), info: 'market-value' },
+      { label: 'Cash', value: fmtNok(cash), sub: 'latest Nordnet saldo', info: 'cash' },
+      { label: 'Total value', value: fmtNok(totalMv + cash), info: 'total-value' },
+      { label: 'Unrealized', value: fmtNok(unrealized), tone: unrealized >= 0 ? 'positive' : 'negative', info: 'unrealized' },
     ]);
 
     const COLS = 9;
@@ -85,7 +85,7 @@
 
     body.innerHTML = `
       ${kpis}
-      ${window.UI.section('Current holdings', '<span class="text-muted text-small">click a row for the price history</span>')}
+      ${window.UI.section('Current holdings', { info: 'holdings-table', extra: '<span class="text-muted text-small">click a row for the price history</span>' })}
       ${holdings.length === 0
         ? window.UI.emptyState('No open positions', 'Buys will appear here once transactions are synced.')
         : `<div class="table-scroll"><table>
@@ -214,18 +214,18 @@
 
       body.innerHTML = `
         <div class="section-head">
-          <h3 class="section-title" style="margin-top:0">Trading activity · ${win.from} → ${win.to}</h3>
+          <h3 class="section-title" style="margin-top:0">Trading activity · ${win.from} → ${win.to} ${window.UI.infoIcon('trading-activity')}</h3>
           ${renderPicker(win)}
         </div>
 
         <div class="kpi-grid">
-          <div class="kpi-card"><div class="label">Bought</div><div class="value positive">${fmtNok(bought)}</div><div class="sub">${buys.length} purchase${buys.length === 1 ? '' : 's'}</div></div>
-          <div class="kpi-card"><div class="label">Sold</div><div class="value negative">${fmtNok(sold)}</div><div class="sub">${sells.length} sale${sells.length === 1 ? '' : 's'}</div></div>
-          <div class="kpi-card"><div class="label">Net deployed</div><div class="value">${fmtNok(bought - sold)}</div><div class="sub">bought − sold</div></div>
-          <div class="kpi-card"><div class="label">Trades</div><div class="value">${trades.length}</div></div>
+          <div class="kpi-card"><div class="label">Bought ${window.UI.infoIcon('trading-activity')}</div><div class="value positive">${fmtNok(bought)}</div><div class="sub">${buys.length} purchase${buys.length === 1 ? '' : 's'}</div></div>
+          <div class="kpi-card"><div class="label">Sold ${window.UI.infoIcon('trading-activity')}</div><div class="value negative">${fmtNok(sold)}</div><div class="sub">${sells.length} sale${sells.length === 1 ? '' : 's'}</div></div>
+          <div class="kpi-card"><div class="label">Net deployed ${window.UI.infoIcon('trading-activity')}</div><div class="value">${fmtNok(bought - sold)}</div><div class="sub">bought − sold</div></div>
+          <div class="kpi-card"><div class="label">Trades ${window.UI.infoIcon('trading-activity')}</div><div class="value">${trades.length}</div></div>
         </div>
 
-        <div class="section-title">Buys &amp; sells <span class="text-muted text-small">blue = purchase (up), red = sale (down); dot size ∝ amount; hover for detail</span></div>
+        <div class="section-title">Buys &amp; sells ${window.UI.infoIcon('trade-scatter')} <span class="text-muted text-small">blue = purchase (up), red = sale (down); dot size ∝ amount; hover for detail</span></div>
         <div class="chart-wrap" id="trade-chart"></div>
 
         <div class="section-title">All trades</div>
@@ -249,27 +249,28 @@
         </div>
         `}
 
-        <div class="section-title">Monthly accounting</div>
+        <div class="section-title">Monthly accounting ${window.UI.infoIcon('monthly-accounting')}</div>
         <p class="text-muted text-small">
-          Every row is one calendar month. Net result = realized P/L + dividends − fees − withholding tax.
-          Ending cash is the latest Nordnet <code>Saldo</code> recorded in that month;
-          ending MV is the portfolio valued at the month-end closes from the price feed.
-          D/E proxy = cash / (cash + MV) — a higher number means more idle capital.
+          Every row is one calendar month, built from the actual Nordnet transactions.
+          End cash is the last <code>Saldo</code> on or before month-end; end MV values the
+          month-end holdings at that date's closes from the price feed. Total = cash + MV;
+          Δ is the change in Total vs the previous month.
         </p>
         <div class="chart-wrap" style="overflow-x:auto">
           <table class="report-table">
             <thead><tr>
               <th>Month</th>
-              <th class="text-right">Net result</th>
-              <th class="text-right">Realized</th>
-              <th class="text-right">Dividends</th>
-              <th class="text-right">Tx fees</th>
-              <th class="text-right">Withholding tax</th>
               <th class="text-right">Deposits</th>
               <th class="text-right">Withdrawals</th>
-              <th class="text-right">Ending cash</th>
-              <th class="text-right">Ending MV</th>
-              <th class="text-right">D/E proxy</th>
+              <th class="text-right">Buys</th>
+              <th class="text-right">Sells</th>
+              <th class="text-right">Dividends</th>
+              <th class="text-right">Fees</th>
+              <th class="text-right">Realized P/L</th>
+              <th class="text-right">End cash</th>
+              <th class="text-right">End MV</th>
+              <th class="text-right">Total</th>
+              <th class="text-right">Δ</th>
             </tr></thead>
             <tbody>${renderLedgerRows(months)}</tbody>
           </table>
@@ -321,44 +322,62 @@
       if (toInput) toInput.addEventListener('change', onChange);
     }
 
-    // ── Monthly ledger (from reports.js) ──────────────────────────────────
+    // ── Monthly ledger: actual transaction flows + month-end MV from the
+    // price matrix. One bucket per calendar month, first tx month → now.
     function buildMonthlyLedger(store) {
       const { isRealizingSell, feeNok } = window.Ledger;
       const buckets = new Map();
+      const ensure = (ym) => {
+        if (!buckets.has(ym)) buckets.set(ym, blank(ym));
+        return buckets.get(ym);
+      };
       for (const tx of store.transactions) {
         const date = tx.bookDate || tx.tradeDate;
         if (!date) continue;
-        const ym = date.slice(0, 7);
-        if (!buckets.has(ym)) buckets.set(ym, blank(ym));
-        const b = buckets.get(ym);
+        const b = ensure(date.slice(0, 7));
         const cat = classify(tx.type);
         const amt = amountNok(tx);
         const fee = Math.abs(feeNok(tx));
         if (cat === 'BUY' || cat === 'SELL') b.fees += fee;
         if (cat === 'FEE') b.fees += Math.abs(amt);
-        if (cat === 'DIVIDEND') b.dividends += amt;
-        if (cat === 'TAX') b.tax += amt;
+        if (cat === 'BUY' && tx.type === 'KJØPT') b.buys += Math.abs(amt);
+        if (cat === 'SELL' && isRealizingSell(tx.type)) b.sells += amt;
+        // Dividends net of withholding: KUPONGSKATT rows carry negative amounts.
+        if (cat === 'DIVIDEND' || cat === 'TAX') b.dividends += amt;
         if (cat === 'DEPOSIT') b.deposits += amt;
         if (cat === 'WITHDRAWAL') b.withdrawals += Math.abs(amt);
       }
       const realizedByMonth = monthlyRealized(store);
       for (const [ym, val] of realizedByMonth.entries()) {
-        if (!buckets.has(ym)) buckets.set(ym, blank(ym));
-        buckets.get(ym).realized = val;
+        ensure(ym).realized = val;
       }
 
-      const monthList = Array.from(buckets.keys()).sort();
+      // Fill the full range (first transaction month → current month) so quiet
+      // months still show a row with their end-of-month valuation.
+      const known = Array.from(buckets.keys()).sort();
+      if (known.length) {
+        const nowYm = new Date().toISOString().slice(0, 7);
+        let [y, m] = known[0].split('-').map(Number);
+        let ym = known[0];
+        while (ym <= nowYm) {
+          ensure(ym);
+          m += 1; if (m > 12) { m = 1; y += 1; }
+          ym = `${y}-${String(m).padStart(2, '0')}`;
+        }
+      }
+
+      const monthList = Array.from(buckets.keys()).sort(); // ascending
+      let prevTotal = null;
       for (const ym of monthList) {
         const monthEnd = lastDayOf(ym);
         const b = buckets.get(ym);
         b.endingCash = window.Portfolio.cash.saldoOnOrBefore(store, monthEnd);
         b.endingMv = monthEndMv(store, monthEnd);
-        b.netResult = b.realized + b.dividends - b.fees + b.tax; // tax is signed negative already
-        b.deProxy = (b.endingCash != null && b.endingMv != null && (b.endingCash + b.endingMv) > 0)
-          ? b.endingCash / (b.endingCash + b.endingMv)
-          : null;
+        b.total = (b.endingCash != null && b.endingMv != null) ? b.endingCash + b.endingMv : null;
+        b.delta = (b.total != null && prevTotal != null) ? b.total - prevTotal : null;
+        if (b.total != null) prevTotal = b.total;
       }
-      return monthList.map((ym) => buckets.get(ym)).reverse(); // newest first
+      return monthList.map((ym) => buckets.get(ym)); // ascending; renderer groups by year
 
       function monthlyRealized(store) {
         const out = new Map();
@@ -413,9 +432,9 @@
       function blank(ym) {
         return {
           ym,
-          realized: 0, dividends: 0, fees: 0, tax: 0,
-          deposits: 0, withdrawals: 0,
-          endingCash: null, endingMv: null, deProxy: null, netResult: 0,
+          deposits: 0, withdrawals: 0, buys: 0, sells: 0,
+          dividends: 0, fees: 0, realized: 0,
+          endingCash: null, endingMv: null, total: null, delta: null,
         };
       }
 
@@ -425,66 +444,76 @@
       }
     }
 
+    // months arrive ascending; render newest YEAR first, months ascending
+    // inside each year group under a year-summary header row.
     function renderLedgerRows(months) {
       const byYear = new Map();
       for (const m of months) {
         const y = m.ym.slice(0, 4);
         if (!byYear.has(y)) byYear.set(y, []);
-        byYear.get(y).push(m);
+        byYear.get(y).push(m); // ascending within the year
       }
+      const years = Array.from(byYear.keys()).sort().reverse(); // newest year first
+
       const sumMonths = (ms) => ms.reduce((acc, m) => ({
-        netResult: acc.netResult + m.netResult,
-        realized: acc.realized + m.realized,
-        dividends: acc.dividends + m.dividends,
-        fees: acc.fees + m.fees,
-        tax: acc.tax + m.tax,
         deposits: acc.deposits + m.deposits,
         withdrawals: acc.withdrawals + m.withdrawals,
-      }), { netResult: 0, realized: 0, dividends: 0, fees: 0, tax: 0, deposits: 0, withdrawals: 0 });
-      const yearEnd = (ms) => ms[0]
-        ? { endingCash: ms[0].endingCash, endingMv: ms[0].endingMv, deProxy: ms[0].deProxy }
-        : { endingCash: null, endingMv: null, deProxy: null };
+        buys: acc.buys + m.buys,
+        sells: acc.sells + m.sells,
+        dividends: acc.dividends + m.dividends,
+        fees: acc.fees + m.fees,
+        realized: acc.realized + m.realized,
+      }), { deposits: 0, withdrawals: 0, buys: 0, sells: 0, dividends: 0, fees: 0, realized: 0 });
 
-      let lastYear = null;
-      return months.map((m) => {
-        const year = m.ym.slice(0, 4);
-        let header = '';
-        if (year !== lastYear) {
-          const yr = byYear.get(year);
-          const sum = sumMonths(yr);
-          const end = yearEnd(yr);
-          header = `
-            <tr class="year-header">
-              <td><strong>${year}</strong></td>
-              <td class="text-right ${pctClass(sum.netResult)}"><strong>${fmtNok(sum.netResult)}</strong></td>
-              <td class="text-right ${pctClass(sum.realized)}">${fmtNok(sum.realized)}</td>
-              <td class="text-right">${fmtNok(sum.dividends)}</td>
-              <td class="text-right">${fmtNok(sum.fees)}</td>
-              <td class="text-right">${fmtNok(sum.tax)}</td>
-              <td class="text-right">${fmtNok(sum.deposits)}</td>
-              <td class="text-right">${fmtNok(sum.withdrawals)}</td>
-              <td class="text-right">${end.endingCash != null ? fmtNok(end.endingCash) : '—'}</td>
-              <td class="text-right">${end.endingMv != null ? fmtNok(end.endingMv) : '—'}</td>
-              <td class="text-right">${end.deProxy != null ? fmtPct(end.deProxy * 100, false) : '—'}</td>
-            </tr>
-          `;
-        }
-        lastYear = year;
-        return header + `
-          <tr>
-            <td>${m.ym}</td>
-            <td class="text-right ${pctClass(m.netResult)}"><strong>${fmtNok(m.netResult)}</strong></td>
-            <td class="text-right ${pctClass(m.realized)}">${fmtNok(m.realized)}</td>
-            <td class="text-right">${fmtNok(m.dividends)}</td>
-            <td class="text-right text-muted">${fmtNok(m.fees)}</td>
-            <td class="text-right text-muted">${fmtNok(m.tax)}</td>
-            <td class="text-right">${fmtNok(m.deposits)}</td>
-            <td class="text-right text-muted">${fmtNok(m.withdrawals)}</td>
-            <td class="text-right">${m.endingCash != null ? fmtNok(m.endingCash) : '—'}</td>
-            <td class="text-right">${m.endingMv != null ? fmtNok(m.endingMv) : '—'}</td>
-            <td class="text-right">${m.deProxy != null ? fmtPct(m.deProxy * 100, false) : '—'}</td>
+      // Year-end state = the year's last month; year Δ = sum of month deltas.
+      const yearEnd = (ms) => ms[ms.length - 1] || { endingCash: null, endingMv: null, total: null };
+      const yearDelta = (ms) => {
+        let d = null;
+        for (const m of ms) if (m.delta != null) d = (d || 0) + m.delta;
+        return d;
+      };
+
+      const dash = '—';
+      const money = (v, cls) => `<td class="text-right ${cls || ''}">${v != null ? fmtNok(v) : dash}</td>`;
+
+      return years.map((year) => {
+        const yr = byYear.get(year);
+        const sum = sumMonths(yr);
+        const end = yearEnd(yr);
+        const dY = yearDelta(yr);
+        const header = `
+          <tr class="year-header">
+            <td><strong>${year}</strong></td>
+            ${money(sum.deposits)}
+            ${money(sum.withdrawals)}
+            ${money(sum.buys)}
+            ${money(sum.sells)}
+            ${money(sum.dividends)}
+            ${money(sum.fees)}
+            ${money(sum.realized, pctClass(sum.realized))}
+            ${money(end.endingCash)}
+            ${money(end.endingMv)}
+            ${money(end.total)}
+            ${money(dY, dY != null ? pctClass(dY) : '')}
           </tr>
         `;
+        const rows = yr.map((m) => `
+          <tr>
+            <td>${m.ym}</td>
+            ${money(m.deposits)}
+            ${money(m.withdrawals, 'text-muted')}
+            ${money(m.buys)}
+            ${money(m.sells)}
+            ${money(m.dividends)}
+            ${money(m.fees, 'text-muted')}
+            ${money(m.realized, pctClass(m.realized))}
+            ${money(m.endingCash)}
+            ${money(m.endingMv)}
+            <td class="text-right"><strong>${m.total != null ? fmtNok(m.total) : dash}</strong></td>
+            ${money(m.delta, m.delta != null ? pctClass(m.delta) : '')}
+          </tr>
+        `).join('');
+        return header + rows;
       }).join('');
     }
   }
@@ -597,6 +626,7 @@
         <input type="search" id="filter" placeholder="Filter…" aria-label="Filter rows" />
         <span class="grow"></span>
         <span class="count" id="count"></span>
+        ${window.UI.infoIcon('explorer')}
       </div>
 
       <div class="range-picker" id="range-picker" style="margin-bottom:14px">

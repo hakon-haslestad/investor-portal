@@ -59,7 +59,7 @@
     });
 
     el.innerHTML = `
-      <div class="hero"><h2>Investors</h2>
+      <div class="hero"><h2>Investors ${UI.infoIcon('investor-kpis')}</h2>
         <div class="when">Every krone attributed via Dim-values — argue with the sheet, not the portal.</div>
       </div>
       ${SUBTABS('overview')}
@@ -107,19 +107,19 @@
       <div class="flash success">${verdict}</div>
 
       ${UI.kpiGrid([
-        { label: 'Total value', value: fmtNok(s.totalValue) },
-        { label: 'Stocks MV', value: fmtNok(s.marketValue) },
-        { label: 'Dry powder (share)', value: fmtNok(s.cash) },
-        { label: 'Total invested', value: fmtNok(s.invested) },
-        { label: 'Realized', value: fmtNok(s.realized), tone: pctClass(s.realized) },
-        { label: 'Unrealized', value: fmtNok(s.unrealized), tone: pctClass(s.unrealized) },
-        { label: 'Dividends', value: fmtNok(s.dividends) },
-        { label: 'Return %', value: `<strong>${fmtPct(s.portfolioReturnPct)}</strong>`, tone: pctClass(s.portfolioReturnPct) },
+        { label: 'Total value', value: fmtNok(s.totalValue), info: 'investor-kpis' },
+        { label: 'Stocks MV', value: fmtNok(s.marketValue), info: 'market-value' },
+        { label: 'Dry powder (share)', value: fmtNok(s.cash), info: 'cash' },
+        { label: 'Total invested', value: fmtNok(s.invested), info: 'invested' },
+        { label: 'Realized', value: fmtNok(s.realized), tone: pctClass(s.realized), info: 'realized' },
+        { label: 'Unrealized', value: fmtNok(s.unrealized), tone: pctClass(s.unrealized), info: 'unrealized' },
+        { label: 'Dividends', value: fmtNok(s.dividends), info: 'dividends' },
+        { label: 'Return %', value: `<strong>${fmtPct(s.portfolioReturnPct)}</strong>`, tone: pctClass(s.portfolioReturnPct), info: 'return-pct' },
       ])}
 
       <div id="equity-chart"></div>
 
-      ${UI.section(`Current holdings (${s.holdings.length})`)}
+      ${UI.section(`Current holdings (${s.holdings.length})`, { info: 'holdings-table' })}
       ${s.holdings.length === 0
         ? '<p class="text-muted">No active positions. All cashed out.</p>'
         : UI.table([
@@ -143,7 +143,7 @@
           ]))}
 
       ${detail.previous.length === 0 ? '' : `
-        ${UI.section(`Previous holdings (${detail.previous.length})`, '<span class="text-muted text-small">closed positions</span>')}
+        ${UI.section(`Previous holdings (${detail.previous.length})`, { info: 'previous-holdings', extra: '<span class="text-muted text-small">closed positions</span>' })}
         ${UI.table([
           { label: 'Security' },
           { label: 'Invested', className: 'text-right' },
@@ -192,6 +192,10 @@
       if (series.length >= 2) {
         const mount = el.querySelector('#equity-chart');
         mount.className = 'chart-wrap';
+        const head = document.createElement('div');
+        head.className = 'section-head';
+        head.innerHTML = `<h3 class="section-title">Equity curve ${UI.infoIcon('equity-curve')}</h3>`;
+        mount.appendChild(head);
         mount.appendChild(window.Charts.multiLine({
           series: [{ name: displayName, color: window.Ledger.INVESTOR_COLORS[code] || '#1FE0CE', points: series }],
           width: 1180, height: 300, interactive: true,
@@ -605,7 +609,7 @@
       el.innerHTML = `
         ${SUBTABS('game')}
         <div class="hero">
-          <h2>The Game 🎲🍺</h2>
+          <h2>The Game 🎲🍺 ${window.UI.infoIcon('the-game')}</h2>
           <div class="when">Spin to draw a random stock. Green = hand out a shot. Red = take a shot.</div>
         </div>
 

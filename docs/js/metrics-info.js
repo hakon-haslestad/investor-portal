@@ -136,6 +136,11 @@
       source: 'Rådata (every flow, bucketed by booking month), StockPrices (month-end valuation).',
       calc: 'Per calendar month, from actual transactions: deposits, withdrawals, buys, sells, dividends (net of withholding), fees, and realized P/L (average-cost, NOK).<br><br><strong>End cash</strong> = the last Nordnet <em>Saldo</em> on or before month-end.<br><strong>End MV</strong> = Σ qty at month-end × NOK close at month-end (forward-filled).<br><strong>Total</strong> = end cash + end MV; Δ shows the month-over-month change.',
     },
+    'trading-activity': {
+      title: 'Trading activity',
+      source: 'Rådata — KJØPT and realizing-sell rows inside the selected window.',
+      calc: 'Bought = Σ |KJØPT amounts|, Sold = Σ realizing-sell proceeds, Net deployed = bought − sold, Trades = row count. All NOK, converted with each row\'s <em>Vekslingskurs</em>.',
+    },
     'trade-scatter': {
       title: 'Trade timeline',
       source: 'Rådata — KJØPT and realizing-sell rows in the selected window.',

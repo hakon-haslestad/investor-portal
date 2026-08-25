@@ -96,7 +96,7 @@
     }));
 
     el.innerHTML = `
-      <div class="hero"><h2>Admin</h2><div class="when">${list.length} securities${reviewCount ? ` · ${reviewCount} need review` : ''}</div></div>
+      <div class="hero"><h2>Admin ${window.UI.infoIcon('securities-registry')}</h2><div class="when">${list.length} securities${reviewCount ? ` · ${reviewCount} need review` : ''}</div></div>
       ${TABS('securities')}
       <p class="text-muted text-small" style="max-width:720px">
         The security master lives in the <strong>Securities</strong> tab of the sheet —
@@ -137,11 +137,11 @@
     }
 
     el.innerHTML = `
-      <div class="hero"><h2>Admin</h2><div class="when">price feed</div></div>
+      <div class="hero"><h2>Admin ${window.UI.infoIcon('feed-health')}</h2><div class="when">price feed</div></div>
       ${TABS('feed')}
       ${prices && prices.hasData ? kpiGrid([
-        { label: 'Latest price date', value: esc(prices.latestDate || '—') },
-        { label: 'Columns with data', value: String(prices.series.size), sub: 'tickers + FX' },
+        { label: 'Latest price date', value: esc(prices.latestDate || '—'), info: 'price-freshness' },
+        { label: 'Columns with data', value: String(prices.series.size), sub: 'tickers + FX', info: 'feed-health' },
         { label: 'Price rows', value: String(prices.dates.length), sub: 'days in StockPrices' },
       ]) : emptyState('No price data yet',
         'The StockPrices tab is empty or missing. Install the Apps Script feed and run <code>backfill()</code> — see <code>apps-script/README.md</code>.')}
@@ -198,7 +198,7 @@
 
     el.innerHTML = `
       <div class="hero">
-        <h2>Admin</h2>
+        <h2>Admin ${window.UI.infoIcon('ownership')}</h2>
         <div class="when" id="meta-line"></div>
       </div>
       ${TABS('ownership')}
