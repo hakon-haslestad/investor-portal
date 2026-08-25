@@ -417,12 +417,15 @@ var REALIZING_SELL_TYPES = ['SALG', 'INNLØSN. UTTAK VP', 'SLETTING UTTAK VP'];
 // sold more than SOLD_TAIL_DAYS ago → expired; bought again → held.
 function refreshSoldState_(ss, securities) {
   var txs = readTransactions_(ss);
-  var byTicker = {};
+  // Keyed by the Securities sheet row so ticker-less rows (REVIEW seeds,
+  // rights/BTA lines) get their status maintained too — they used to sit
+  // on the seeded 'held' forever even when sold years ago.
+  var byRow = {};
   var match = matcherFor_(securities);
   txs.forEach(function (t) {
     var s = match(t);
     if (!s) return;
-    var b = byTicker[s.ticker] || (byTicker[s.ticker] = { qty: 0, lastSell: '' });
+    var b = byRow[s.row] || (byRow[s.row] = { qty: 0, lastSell: '' });
     var type = String(t.type || '').toUpperCase();
     var qty = Math.abs(Number(t.qty) || 0);
     if (BUY_TYPES.indexOf(type) !== -1) b.qty += qty;
@@ -434,8 +437,8 @@ function refreshSoldState_(ss, securities) {
   var sheet = ss.getSheetByName(TABS.securities);
   var today = new Date();
   securities.forEach(function (s) {
-    if (!s.ticker || s.status === 'ignore') return;
-    var b = byTicker[s.ticker];
+    if (s.status === 'ignore') return;
+    var b = byRow[s.row];
     if (!b) return;
     var held = b.qty > 0.0001;
     var next = s.status, nextSold = s.soldDate;
@@ -452,7 +455,6 @@ function refreshSoldState_(ss, securities) {
 function aliasMap_(securities) {
   var map = {};
   securities.forEach(function (s) {
-    if (!s.ticker) return;
     map[s.name.toLowerCase()] = s;
     s.aliases.forEach(function (a) { map[a] = s; });
   });
@@ -468,7 +470,6 @@ var ISIN_RE = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/;
 function matcherFor_(securities) {
   var byIsin = {};
   securities.forEach(function (s) {
-    if (!s.ticker) return;
     if (s.isin) byIsin[s.isin.toUpperCase()] = s;
     s.aliases.forEach(function (a) {
       var u = a.toUpperCase();
