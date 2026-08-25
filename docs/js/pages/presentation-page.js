@@ -5,10 +5,12 @@
     document.getElementById('root').innerHTML = 'Setup needed: edit js/config.js';
     return;
   }
-  try { await window.Auth.ensureToken(); } catch (_e) { location.href = './index.html'; return; }
-  if (!window.Auth.getEmail()) {
-    try { await window.Auth.signIn(); } catch (_e) { location.href = './index.html'; return; }
-  }
+  // Auth is redirect-based and lives in the SPA shell — this page only
+  // reuses an existing session; without one, bounce to the shell to sign in.
+  try {
+    await window.Auth.ensureToken();
+    await window.Auth.ensureEmail();
+  } catch (_e) { location.href = './index.html'; return; }
   const store = await window.Store.hydrate({ includeCompetitions: true });
 
   const { fmtNok, fmtPct, fmtQty, pctClass, escapeHtml, PODIUM } = window.Fmt;

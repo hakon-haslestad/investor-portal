@@ -107,13 +107,63 @@
     return j;
   }
 
+  // ── Redirect-based sign-in ─────────────────────────────────────────────
+  // The GIS popup flow proved unreliable (COOP/popup-relay breakage leaves
+  // the promise hanging with no callback). The classic implicit redirect
+  // flow has no popup at all: navigate to Google, come back with the token
+  // in the URL fragment. Requires this page's URL to be listed under
+  // "Authorized redirect URIs" on the OAuth client.
+  function redirectUri() {
+    return location.origin + location.pathname;
+  }
+
+  function signInRedirect() {
+    const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    sessionStorage.setItem('portal.oauth_state', state);
+    const params = new URLSearchParams({
+      client_id: window.PORTAL_CONFIG.OAUTH_CLIENT_ID,
+      redirect_uri: redirectUri(),
+      response_type: 'token',
+      scope: window.PORTAL_CONFIG.OAUTH_SCOPE,
+      include_granted_scopes: 'true',
+      state,
+      prompt: 'select_account',
+    });
+    location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + params);
+  }
+
+  // Parse a returning OAuth fragment (#access_token=…). Returns true when a
+  // token was consumed; cleans the fragment either way so the hash router
+  // never sees it. Call BEFORE the router starts.
+  function consumeRedirectToken() {
+    const h = location.hash || '';
+    if (!h.includes('access_token=')) return false;
+    const p = new URLSearchParams(h.replace(/^#/, ''));
+    const expected = sessionStorage.getItem('portal.oauth_state');
+    sessionStorage.removeItem('portal.oauth_state');
+    const ok = p.get('access_token') && (!expected || p.get('state') === expected);
+    if (ok) {
+      storeToken({
+        access_token: p.get('access_token'),
+        expires_at: Date.now() + (Number(p.get('expires_in') || 3600) * 1000),
+        scope: p.get('scope') || window.PORTAL_CONFIG.OAUTH_SCOPE,
+      });
+    }
+    history.replaceState(null, '', location.pathname + location.search);
+    return !!ok;
+  }
+
   // Public API
   window.Auth = {
-    async signIn() {
-      const tok = await requestToken({ silent: false });
-      const info = await fetchUserInfo(tok.access_token);
-      return info;
+    // Redirect flow — full-page navigation, no popup. The page reloads on
+    // return and consumeRedirectToken() picks the token up at boot.
+    signIn() {
+      signInRedirect();
+      // Never resolves — the browser is navigating away.
+      return new Promise(() => {});
     },
+
+    consumeRedirectToken,
 
     async ensureToken() {
       const t = loadCachedToken();
@@ -159,8 +209,9 @@
       if (t && Date.now() >= t.expires_at - 60_000) t = null;
       if (!t) t = loadCachedToken();
       if (t) { cachedToken = t; return t.access_token; }
-      const fresh = await requestToken({ silent: true });
-      return fresh.access_token;
+      // No valid token and no user gesture available here — bubble up so
+      // the UI can offer the sign-in button (which redirects).
+      throw new Error('unauthenticated');
     },
 
     // Drop the current token (memory + storage) so the next accessToken()
@@ -182,12 +233,11 @@
       if (tokenHasScope(existing, writeScope)) {
         cachedToken = existing; return existing;
       }
-      // Try silent first (in case the user previously granted write access).
-      try {
-        const silent = await requestToken({ silent: true, scope: writeScope });
-        if (tokenHasScope(silent, writeScope)) return silent;
-      } catch (_e) { /* fall through to interactive */ }
-      return requestToken({ silent: false, scope: writeScope });
+      // Popup with a hard timeout — if the popup relay is broken in this
+      // browser, fail with guidance instead of hanging forever.
+      const timeout = new Promise((_, rej) => setTimeout(() =>
+        rej(new Error('write-access popup timed out — allow popups for this site and retry')), 25_000));
+      return Promise.race([requestToken({ silent: false, scope: writeScope }), timeout]);
     },
 
     hasWriteScope() {

@@ -52,21 +52,16 @@
       document.getElementById('gate-signin').disabled = true;
       return;
     }
-    document.getElementById('gate-signin').addEventListener('click', async () => {
-      try {
-        showGate('Authorizing…');
-        await window.Auth.signIn();
-        showGate('Loading portfolio…');
-        await enter();
-      } catch (e) {
-        console.error('sign-in failed', e);
-        showGate(`<div class="flash error">Sign-in failed: <code>${window.UI.esc(e.message)}</code><br>
-          <span class="text-small">If a popup was blocked, allow popups for this site and try again.</span></div>`);
-      }
+    document.getElementById('gate-signin').addEventListener('click', () => {
+      // Redirect flow: full-page navigation to Google and back — no popup,
+      // nothing for the browser to block.
+      showGate('Redirecting to Google…');
+      window.Auth.signIn();
     });
-    // Silent auto-login: token via GIS silent flow, email via the userinfo
-    // endpoint (NEVER an interactive popup here — without a user gesture the
-    // browser blocks it and the login dead-ends at the gate).
+    // Returning from the OAuth redirect? Consume #access_token before the
+    // router ever sees the hash.
+    window.Auth.consumeRedirectToken();
+    // Auto-login from the stored session; email via the userinfo endpoint.
     try {
       await window.Auth.ensureToken();
       await window.Auth.ensureEmail();
