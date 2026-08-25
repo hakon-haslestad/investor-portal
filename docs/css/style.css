@@ -479,3 +479,8 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 .info-popover-body h5:first-child { margin-top: 0; }
 .info-popover-body p { margin: 0; font-size: 0.85rem; line-height: 1.55; color: var(--text); }
 .info-popover-body em { color: var(--accent-2); font-style: normal; }
+
+/* The hidden attribute must always win — .login-shell's display:flex (and
+   any other explicit display) would otherwise override it and keep the
+   auth gate painted on top of the running app. */
+[hidden] { display: none !important; }
