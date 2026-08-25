@@ -14,6 +14,16 @@
   const store = await window.Store.hydrate({ includeCompetitions: true });
 
   const { fmtNok, fmtPct, fmtQty, pctClass, escapeHtml, PODIUM } = window.Fmt;
+
+  // Shown when nobody made a single pivot trade in the second half.
+  // House rules: if you won't roast your friends, why have a deck at all.
+  const NO_PIVOT_ROASTS = [
+    'Not a single pivot in the second half. Absolute cowards, all of you.',
+    'Zero pivots. Gutless. You didn\'t "hold the line" — you fell asleep on it.',
+    'Nobody dared touch a thing. Call it conviction all you want; the deck calls it fear.',
+    'No pivots registered. Five grown investors, zero spine between them.',
+    'The second half came and went and none of you had the stones to move. Pathetic. Magnificent, but pathetic.',
+  ];
   const params = new URLSearchParams(location.search);
   const id = params.get('competition');
   const root = document.getElementById('root');
@@ -78,6 +88,12 @@
         series: s.series, width: 960, height: 360,
         title: 'Cumulative return % by participant', interactive: true,
       }));
+      if ((s.series || []).some((ser) => (ser.markers || []).length)) {
+        const note = document.createElement('div');
+        note.className = 'chart-note';
+        note.innerHTML = 'daily · <span style="color:#2D5BFF">●</span> buy &nbsp; <span style="color:#FF3B3B">●</span> sell';
+        el.appendChild(note);
+      }
     } else if (s.type === 'picks') {
       if (s.noActivity) return;
       (s.charts || []).forEach((ch, i) => {
@@ -203,7 +219,7 @@
       return `
         <h2>${escapeHtml(s.title)}</h2>
         <p class="lead">${escapeHtml(s.teaser)}</p>
-        <p class="text-muted">No "pivot" trades inside the second half of this window. Everyone held the line.</p>
+        <p class="text-muted">${escapeHtml(NO_PIVOT_ROASTS[Math.floor(Math.random() * NO_PIVOT_ROASTS.length)])}</p>
       `;
     }
     return `

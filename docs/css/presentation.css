@@ -138,3 +138,9 @@
   .slide h2 { font-size: 1.5rem; }
   .slide-title h1 { font-size: 2.5rem; }
 }
+
+/* Marker legend under the return-over-window chart */
+.chart-note {
+  margin-top: 8px; text-align: center;
+  color: var(--muted, #8a92a6); font-size: 0.85rem; letter-spacing: 0.3px;
+}

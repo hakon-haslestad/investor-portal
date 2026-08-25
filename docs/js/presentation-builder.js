@@ -347,12 +347,32 @@
     // and anchor each line at 0% on the start date (return is 0 at entry).
     const priceDates = ((store.prices && store.prices.dates) || [])
       .filter((d) => d > c.start_date && d <= c.end_date);
-    const step = Math.max(1, Math.ceil(priceDates.length / 14));
+    // Daily status: keep every trading day up to ~130 points (a 6-month
+    // window stays fully daily; longer windows thin evenly).
+    const step = Math.max(1, Math.ceil(priceDates.length / 130));
     const thinned = priceDates.filter((_, i) => i % step === 0);
     const interior = thinned.length
       ? thinned
       : sampleDates(c.start_date, c.end_date, 14).filter((d) => d > c.start_date && d <= c.end_date);
     const dates = interior.includes(c.end_date) ? interior : [...interior, c.end_date];
+
+    // Buy/sell markers per participant: their attributed in-window trades,
+    // rendered in the same style as The Game's chart.
+    const { classify, isRealizingSell } = window.Ledger;
+    const markersByCode = {};
+    for (const tx of store.transactions || []) {
+      if (!tx.security || !tx.tradeDate) continue;
+      if (tx.tradeDate < c.start_date || tx.tradeDate > c.end_date) continue;
+      const cat = classify(tx.type);
+      const isBuy = cat === 'BUY' && tx.type === 'KJØPT';
+      const isSell = cat === 'SELL' && isRealizingSell(tx.type);
+      if (!isBuy && !isSell) continue;
+      for (const sp of splitForSecurity(store.attributionMap, tx.security)) {
+        (markersByCode[sp.code] = markersByCode[sp.code] || []).push({
+          date: tx.tradeDate, type: isSell ? 'sell' : 'buy',
+        });
+      }
+    }
 
     const acc = {};
     for (const d of dates) {
@@ -368,6 +388,7 @@
       name: `${code}${names[code] ? ' ' + names[code] : ''}`,
       color: INVESTOR_COLORS[code] || palette[i++ % palette.length],
       points: acc[code],
+      markers: markersByCode[code] || [],
     }));
     return { type: 'curve', title: 'Return over the window', series, asOf: c.end_date, noActivity, emptyNote };
   }

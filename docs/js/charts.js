@@ -281,6 +281,24 @@
       g.appendChild(svgEl('circle', { cx: last.x, cy: last.y, r: 4, fill: s.color, stroke: '#0e0f13', 'stroke-width': 1.5 }));
     }
 
+    // Optional per-series trade markers — same design language as
+    // priceChart / The Game: blue = buy, red = sell, halo + solid dot,
+    // pinned to the series' value at the trade date.
+    const MBUY = '#2D5BFF', MSELL = '#FF3B3B';
+    for (let i = 0; i < series.length; i++) {
+      const s = series[i];
+      if (!s.markers || !s.markers.length) continue;
+      const pts = seriesPts[i];
+      for (const m of s.markers) {
+        let at = pts[0];
+        for (const p of pts) { if (p.raw.date <= m.date) at = p; else break; }
+        const color = m.type === 'sell' ? MSELL : MBUY;
+        const mx = xScale(dateToTs(m.date));
+        g.appendChild(svgEl('circle', { cx: mx, cy: at.y, r: 8, fill: color, opacity: '0.25' }));
+        g.appendChild(svgEl('circle', { cx: mx, cy: at.y, r: 4.5, fill: color, stroke: '#fff', 'stroke-width': 1.2 }));
+      }
+    }
+
     if (title) {
       const tEl = svgEl('text', {
         x: PAD.left, y: 12, fill: '#e7e9ee', 'font-size': 12, 'font-weight': 600,
