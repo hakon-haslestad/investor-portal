@@ -134,12 +134,17 @@
     'monthly-accounting': {
       title: 'Monthly accounting',
       source: 'Rådata (every flow, bucketed by booking month), StockPrices (month-end valuation).',
-      calc: 'Per calendar month, from actual transactions: deposits, withdrawals, buys, sells, dividends (net of withholding), fees, and realized P/L (average-cost, NOK).<br><br><strong>End cash</strong> = the last Nordnet <em>Saldo</em> on or before month-end.<br><strong>End MV</strong> = Σ qty at month-end × NOK close at month-end (forward-filled).<br><strong>Total</strong> = end cash + end MV; Δ shows the month-over-month change.',
+      calc: 'Per calendar month, from actual transactions: deposits, withdrawals, buys, sells, dividends (net of withholding), fees, and realized P/L (average-cost, NOK).<br><br><strong>End cash</strong> = the last Nordnet <em>Saldo</em> on or before month-end.<br><strong>End MV</strong> = Σ qty at month-end × NOK close at month-end (forward-filled).<br><strong>Total</strong> = end cash + end MV; Δ shows the month-over-month change.<br><br>The valuation columns hide while a security/type/investor filter is active — they are portfolio-level figures that cannot be filtered honestly. Click a month for its transactions and where those stocks stand today.',
     },
     'trading-activity': {
       title: 'Trading activity',
       source: 'Rådata — KJØPT and realizing-sell rows inside the selected window.',
       calc: 'Bought = Σ |KJØPT amounts|, Sold = Σ realizing-sell proceeds, Net deployed = bought − sold, Trades = row count. All NOK, converted with each row\'s <em>Vekslingskurs</em>.',
+    },
+    'activity-total-trend': {
+      title: 'Total value by month',
+      source: 'Rådata (Saldo + quantities), StockPrices (month-end closes + FX).',
+      calc: 'One point per month-end: End cash (last Nordnet Saldo on or before month-end) + End MV (holdings at month-end × that date\'s NOK closes, forward-filled). Same numbers as the Total column in the By month table.',
     },
     'trade-scatter': {
       title: 'Trade timeline',
@@ -147,9 +152,9 @@
       calc: 'Each dot is one actual trade: date on the x-axis, NOK amount on the y-axis (fx-converted). Blue = buy, red = sell.',
     },
     'explorer': {
-      title: 'Data explorer',
-      source: 'Rådata joined with Dim-values and the derived current holdings.',
-      calc: 'The raw transaction rows as parsed by the portal (dates normalized, amounts fx-converted to NOK), joined with each security\'s attribution and, where still held, its replay-derived quantity and current value. What you see here is exactly what every other number is computed from.',
+      title: 'Activity view & filters',
+      source: 'Rådata (every transaction, NOK-converted), StockPrices (valuations), Dim-values (investor filter).',
+      calc: 'One view over the raw transaction log: the search box matches security/ISIN/type/notes, the type pills and investor chips filter by classification and Dim-values attribution, and the range picker bounds the dates. Every KPI, chart and month bucket below recomputes from the filtered set. Realized P/L per sell is stamped by a full-history average-cost replay, so filtered sums stay consistent.',
     },
 
     // ── Investors ──────────────────────────────────────────────────────────

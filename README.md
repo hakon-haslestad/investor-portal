@@ -10,8 +10,9 @@ Hosted on GitHub Pages from `docs/`.
 ## What you get
 
 - Single-page app with six tabs: **Dashboard**, **Portfolio** (holdings /
-  report / data explorer), **Investors** (per-investor drill-down + The
-  Game), **Competitions**, **Accounting**, **Admin**.
+  activity — KPIs, charts, month-by-month ledger with drill-down, filters),
+  **Investors** (per-investor drill-down + The Game), **Competitions**,
+  **Accounting**, **Admin**.
 - True daily portfolio-value charts — the `StockPrices` tab holds a
   date × ticker matrix of daily closes, fetched automatically.
 - Group + per-investor KPIs (total value, realized / unrealized P/L,

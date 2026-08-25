@@ -10,12 +10,16 @@
 
   const SUBTABS = [
     { key: 'holdings', label: 'Holdings', href: '#/portfolio/holdings' },
-    { key: 'report', label: 'Report', href: '#/portfolio/report' },
-    { key: 'explorer', label: 'Data explorer', href: '#/portfolio/explorer' },
+    { key: 'activity', label: 'Activity', href: '#/portfolio/activity' },
   ];
 
   window.Views.portfolio = async function (el, ctx) {
-    const active = ctx.params[0] || 'holdings';
+    let active = ctx.params[0] || 'holdings';
+    // The old Report / Data explorer sub-tabs merged into Activity.
+    if (active === 'report' || active === 'explorer') {
+      location.replace('#/portfolio/activity');
+      return;
+    }
     el.innerHTML = `
       <div class="hero">
         <h2>Portfolio</h2>
@@ -25,8 +29,7 @@
       <div id="pf-body"></div>
     `;
     const body = el.querySelector('#pf-body');
-    if (active === 'report') renderReport(body, ctx);
-    else if (active === 'explorer') renderExplorer(body, ctx);
+    if (active === 'activity') renderActivity(body, ctx);
     else renderHoldings(body, ctx);
   };
 
@@ -140,420 +143,64 @@
     mount.appendChild(window.Charts.priceChart({ points, markers, yUnit: 'NOK' }));
   }
 
-  // ─── Report (trading activity + monthly ledger) ────────────────────────────
+  // ─── Activity — one view over the transaction log × StockPrices ───────────
+  // Merges the old Report (KPIs + trade scatter + monthly ledger) and Data
+  // explorer (filterable flat grid) sub-tabs. Filters at the top drive every
+  // section; each month row expands into its actual transactions plus the
+  // current fate (still held → MV + unrealized; exited → realized) of the
+  // securities traded that month.
 
-  function renderReport(body, ctx) {
-    const { store } = ctx;
-    const { fmtNok, fmtQty, fmtPct, pctClass, escapeHtml } = window.Fmt;
-    const { classify, amountNok, splitForSecurity } = window.Ledger;
-    const canon = window.Portfolio.canonicalName;
-
-    document.getElementById('pf-when').textContent = 'All purchases and sales, plus the formal monthly ledger.';
-
-    const PRESETS = [
-      { id: '1m', label: '1M' }, { id: '6m', label: '6M' }, { id: 'ytd', label: 'YTD' },
-      { id: '1y', label: '1Y' }, { id: 'all', label: 'All' }, { id: 'custom', label: 'Custom' },
-    ];
-    const stored = JSON.parse(localStorage.getItem('portal.report.range') || '{}');
-    const current = { preset: stored.preset || 'ytd', from: stored.from || null, to: stored.to || null };
-
-    function earliestTradeDate() {
-      let min = null;
-      for (const t of store.transactions || []) {
-        if (t.tradeDate && (!min || t.tradeDate < min)) min = t.tradeDate;
-      }
-      return min || new Date().toISOString().slice(0, 10);
-    }
-    function computeWindow() {
-      const today = new Date();
-      const todayStr = today.toISOString().slice(0, 10);
-      if (current.preset === 'custom' && current.from && current.to) return { from: current.from, to: current.to, preset: 'custom' };
-      const minus = (months) => { const d = new Date(today); d.setUTCMonth(d.getUTCMonth() - months); return d.toISOString().slice(0, 10); };
-      switch (current.preset) {
-        case '1m': return { from: minus(1), to: todayStr, preset: '1m' };
-        case '6m': return { from: minus(6), to: todayStr, preset: '6m' };
-        case '1y': return { from: minus(12), to: todayStr, preset: '1y' };
-        case 'all': return { from: earliestTradeDate(), to: todayStr, preset: 'all' };
-        case 'ytd':
-        default: return { from: `${today.getUTCFullYear()}-01-01`, to: todayStr, preset: 'ytd' };
-      }
-    }
-
-    function tradesIn(from, to) {
-      const out = [];
-      for (const tx of store.transactions || []) {
-        if (!tx.security || !tx.tradeDate) continue;
-        if (tx.tradeDate < from || tx.tradeDate > to) continue;
-        const cat = classify(tx.type);
-        if (cat !== 'BUY' && cat !== 'SELL') continue;
-        const codes = splitForSecurity(store.attributionMap, tx.security).map((s) => s.code);
-        out.push({
-          date: tx.tradeDate,
-          type: cat === 'SELL' ? 'sell' : 'buy',
-          label: canon(tx.security),
-          amount: Math.abs(amountNok(tx)),
-          qty: tx.qty,
-          codes,
-        });
-      }
-      return out.sort((a, b) => b.date.localeCompare(a.date));
-    }
-
-    const months = buildMonthlyLedger(store);
-
-    refresh();
-
-    function refresh() {
-      const win = computeWindow();
-      localStorage.setItem('portal.report.range', JSON.stringify(current));
-      const trades = tradesIn(win.from, win.to);
-      const buys = trades.filter((t) => t.type === 'buy');
-      const sells = trades.filter((t) => t.type === 'sell');
-      const bought = buys.reduce((a, t) => a + t.amount, 0);
-      const sold = sells.reduce((a, t) => a + t.amount, 0);
-
-      body.innerHTML = `
-        <div class="section-head">
-          <h3 class="section-title" style="margin-top:0">Trading activity · ${win.from} → ${win.to} ${window.UI.infoIcon('trading-activity')}</h3>
-          ${renderPicker(win)}
-        </div>
-
-        <div class="kpi-grid">
-          <div class="kpi-card"><div class="label">Bought ${window.UI.infoIcon('trading-activity')}</div><div class="value positive">${fmtNok(bought)}</div><div class="sub">${buys.length} purchase${buys.length === 1 ? '' : 's'}</div></div>
-          <div class="kpi-card"><div class="label">Sold ${window.UI.infoIcon('trading-activity')}</div><div class="value negative">${fmtNok(sold)}</div><div class="sub">${sells.length} sale${sells.length === 1 ? '' : 's'}</div></div>
-          <div class="kpi-card"><div class="label">Net deployed ${window.UI.infoIcon('trading-activity')}</div><div class="value">${fmtNok(bought - sold)}</div><div class="sub">bought − sold</div></div>
-          <div class="kpi-card"><div class="label">Trades ${window.UI.infoIcon('trading-activity')}</div><div class="value">${trades.length}</div></div>
-        </div>
-
-        <div class="section-title">Buys &amp; sells ${window.UI.infoIcon('trade-scatter')} <span class="text-muted text-small">blue = purchase (up), red = sale (down); dot size ∝ amount; hover for detail</span></div>
-        <div class="chart-wrap" id="trade-chart"></div>
-
-        <div class="section-title">All trades</div>
-        ${trades.length === 0 ? '<div class="flash">No purchases or sales in this period.</div>' : `
-        <div class="table-scroll">
-          <table class="investor-table">
-            <thead><tr><th>Date</th><th>Security</th><th>Type</th><th class="text-right">Qty</th><th class="text-right">Amount NOK</th><th>Investor</th></tr></thead>
-            <tbody>
-              ${trades.map((t) => `
-                <tr>
-                  <td data-label="Date" class="text-small">${t.date}</td>
-                  <td data-label="Security">${escapeHtml(t.label)}</td>
-                  <td data-label="Type"><span class="tag ${t.type}">${t.type === 'sell' ? 'SALG' : 'KJØPT'}</span></td>
-                  <td data-label="Qty" class="text-right">${fmtQty(t.qty)}</td>
-                  <td data-label="Amount NOK" class="text-right">${fmtNok(t.amount)}</td>
-                  <td data-label="Investor" class="text-muted text-small">${t.codes.join(', ') || '—'}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-        `}
-
-        <div class="section-title">Monthly accounting ${window.UI.infoIcon('monthly-accounting')}</div>
-        <p class="text-muted text-small">
-          Every row is one calendar month, built from the actual Nordnet transactions.
-          End cash is the last <code>Saldo</code> on or before month-end; end MV values the
-          month-end holdings at that date's closes from the price feed. Total = cash + MV;
-          Δ is the change in Total vs the previous month.
-        </p>
-        <div class="chart-wrap" style="overflow-x:auto">
-          <table class="report-table">
-            <thead><tr>
-              <th>Month</th>
-              <th class="text-right">Deposits</th>
-              <th class="text-right">Withdrawals</th>
-              <th class="text-right">Buys</th>
-              <th class="text-right">Sells</th>
-              <th class="text-right">Dividends</th>
-              <th class="text-right">Fees</th>
-              <th class="text-right">Realized P/L</th>
-              <th class="text-right">End cash</th>
-              <th class="text-right">End MV</th>
-              <th class="text-right">Total</th>
-              <th class="text-right">Δ</th>
-            </tr></thead>
-            <tbody>${renderLedgerRows(months)}</tbody>
-          </table>
-        </div>
-      `;
-
-      const mount = body.querySelector('#trade-chart');
-      if (mount) mount.appendChild(window.Charts.tradeScatter({ trades, from: win.from, to: win.to }));
-      wirePicker();
-    }
-
-    function renderPicker(win) {
-      return `
-        <div class="range-picker" id="range-picker">
-          ${PRESETS.map((p) => `<button class="preset ${current.preset === p.id ? 'active' : ''}" data-preset="${p.id}">${p.label}</button>`).join('')}
-          <span class="sep" id="custom-sep" style="display:${current.preset === 'custom' ? 'inline' : 'none'}">·</span>
-          <input type="date" id="date-from" aria-label="From date" value="${current.from || win.from || ''}" style="display:${current.preset === 'custom' ? 'inline-block' : 'none'}" />
-          <span class="sep" id="custom-sep2" style="display:${current.preset === 'custom' ? 'inline' : 'none'}">→</span>
-          <input type="date" id="date-to" aria-label="To date" value="${current.to || win.to || ''}" style="display:${current.preset === 'custom' ? 'inline-block' : 'none'}" />
-        </div>
-      `;
-    }
-
-    function wirePicker() {
-      body.querySelectorAll('#range-picker .preset').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const p = btn.dataset.preset;
-          if (p === 'custom') {
-            current.preset = 'custom';
-            body.querySelector('#custom-sep').style.display = 'inline';
-            body.querySelector('#custom-sep2').style.display = 'inline';
-            body.querySelector('#date-from').style.display = 'inline-block';
-            body.querySelector('#date-to').style.display = 'inline-block';
-            body.querySelectorAll('#range-picker .preset').forEach((b) => b.classList.toggle('active', b.dataset.preset === 'custom'));
-            return;
-          }
-          current.preset = p; current.from = null; current.to = null;
-          refresh();
-        });
-      });
-      const fromInput = body.querySelector('#date-from');
-      const toInput = body.querySelector('#date-to');
-      const onChange = () => {
-        if (!fromInput.value || !toInput.value) return;
-        current.preset = 'custom'; current.from = fromInput.value; current.to = toInput.value;
-        refresh();
-      };
-      if (fromInput) fromInput.addEventListener('change', onChange);
-      if (toInput) toInput.addEventListener('change', onChange);
-    }
-
-    // ── Monthly ledger: actual transaction flows + month-end MV from the
-    // price matrix. One bucket per calendar month, first tx month → now.
-    function buildMonthlyLedger(store) {
-      const { isRealizingSell, feeNok } = window.Ledger;
-      const buckets = new Map();
-      const ensure = (ym) => {
-        if (!buckets.has(ym)) buckets.set(ym, blank(ym));
-        return buckets.get(ym);
-      };
-      for (const tx of store.transactions) {
-        const date = tx.bookDate || tx.tradeDate;
-        if (!date) continue;
-        const b = ensure(date.slice(0, 7));
-        const cat = classify(tx.type);
-        const amt = amountNok(tx);
-        const fee = Math.abs(feeNok(tx));
-        if (cat === 'BUY' || cat === 'SELL') b.fees += fee;
-        if (cat === 'FEE') b.fees += Math.abs(amt);
-        if (cat === 'BUY' && tx.type === 'KJØPT') b.buys += Math.abs(amt);
-        if (cat === 'SELL' && isRealizingSell(tx.type)) b.sells += amt;
-        // Dividends net of withholding: KUPONGSKATT rows carry negative amounts.
-        if (cat === 'DIVIDEND' || cat === 'TAX') b.dividends += amt;
-        if (cat === 'DEPOSIT') b.deposits += amt;
-        if (cat === 'WITHDRAWAL') b.withdrawals += Math.abs(amt);
-      }
-      const realizedByMonth = monthlyRealized(store);
-      for (const [ym, val] of realizedByMonth.entries()) {
-        ensure(ym).realized = val;
-      }
-
-      // Fill the full range (first transaction month → current month) so quiet
-      // months still show a row with their end-of-month valuation.
-      const known = Array.from(buckets.keys()).sort();
-      if (known.length) {
-        const nowYm = new Date().toISOString().slice(0, 7);
-        let [y, m] = known[0].split('-').map(Number);
-        let ym = known[0];
-        while (ym <= nowYm) {
-          ensure(ym);
-          m += 1; if (m > 12) { m = 1; y += 1; }
-          ym = `${y}-${String(m).padStart(2, '0')}`;
-        }
-      }
-
-      const monthList = Array.from(buckets.keys()).sort(); // ascending
-      let prevTotal = null;
-      for (const ym of monthList) {
-        const monthEnd = lastDayOf(ym);
-        const b = buckets.get(ym);
-        b.endingCash = window.Portfolio.cash.saldoOnOrBefore(store, monthEnd);
-        b.endingMv = monthEndMv(store, monthEnd);
-        b.total = (b.endingCash != null && b.endingMv != null) ? b.endingCash + b.endingMv : null;
-        b.delta = (b.total != null && prevTotal != null) ? b.total - prevTotal : null;
-        if (b.total != null) prevTotal = b.total;
-      }
-      return monthList.map((ym) => buckets.get(ym)); // ascending; renderer groups by year
-
-      function monthlyRealized(store) {
-        const out = new Map();
-        const costMap = new Map();
-        for (const tx of store.transactions.slice().sort((a, b) => {
-          const ak = a.tradeDate || a.bookDate || '';
-          const bk = b.tradeDate || b.bookDate || '';
-          return ak.localeCompare(bk);
-        })) {
-          const cat = classify(tx.type);
-          if (cat !== 'BUY' && cat !== 'SELL') continue;
-          if (tx.type !== 'KJØPT' && !isRealizingSell(tx.type)) continue;
-          if (!tx.security) continue;
-          // Canonicalize so buys and sells under different Nordnet name
-          // variants share one cost slot (else realized P/L is overstated).
-          const security = window.Portfolio.canonicalName(tx.security);
-          const qty = tx.qty || 0;
-          const amount = amountNok(tx);
-          if (!costMap.has(security)) costMap.set(security, { qty: 0, costSum: 0 });
-          const slot = costMap.get(security);
-          if (cat === 'BUY') {
-            slot.qty += qty;
-            slot.costSum += Math.abs(amount);
-          } else {
-            const avg = slot.qty > 0 ? slot.costSum / slot.qty : 0;
-            const sold = Math.abs(qty);
-            const realized = amount - avg * sold;
-            const ym = (tx.bookDate || tx.tradeDate || '').slice(0, 7);
-            if (ym) out.set(ym, (out.get(ym) || 0) + realized);
-            const fracSold = slot.qty > 0 ? sold / slot.qty : 0;
-            slot.costSum = Math.max(0, slot.costSum - slot.costSum * fracSold);
-            slot.qty = Math.max(0, slot.qty - sold);
-          }
-        }
-        return out;
-      }
-
-      // Month-end MV: true valuation at the month-end closes from the
-      // price matrix. Null when nothing is priceable yet.
-      function monthEndMv(store, monthEnd) {
-        if (!window.Portfolio.usePriceMatrix(store)) return null;
-        const held = window.Positions.holdingsAt(store, monthEnd);
-        if (!held.length) return 0;
-        let mv = 0, priced = false;
-        for (const h of held) {
-          const px = window.Portfolio.nokPriceForSecurity(store, h.security, monthEnd);
-          if (px != null) { mv += px * h.qty; priced = true; }
-        }
-        return priced ? mv : null;
-      }
-
-      function blank(ym) {
-        return {
-          ym,
-          deposits: 0, withdrawals: 0, buys: 0, sells: 0,
-          dividends: 0, fees: 0, realized: 0,
-          endingCash: null, endingMv: null, total: null, delta: null,
-        };
-      }
-
-      function lastDayOf(ym) {
-        const [y, m] = ym.split('-').map(Number);
-        return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-      }
-    }
-
-    // months arrive ascending; render newest YEAR first, months ascending
-    // inside each year group under a year-summary header row.
-    function renderLedgerRows(months) {
-      const byYear = new Map();
-      for (const m of months) {
-        const y = m.ym.slice(0, 4);
-        if (!byYear.has(y)) byYear.set(y, []);
-        byYear.get(y).push(m); // ascending within the year
-      }
-      const years = Array.from(byYear.keys()).sort().reverse(); // newest year first
-
-      const sumMonths = (ms) => ms.reduce((acc, m) => ({
-        deposits: acc.deposits + m.deposits,
-        withdrawals: acc.withdrawals + m.withdrawals,
-        buys: acc.buys + m.buys,
-        sells: acc.sells + m.sells,
-        dividends: acc.dividends + m.dividends,
-        fees: acc.fees + m.fees,
-        realized: acc.realized + m.realized,
-      }), { deposits: 0, withdrawals: 0, buys: 0, sells: 0, dividends: 0, fees: 0, realized: 0 });
-
-      // Year-end state = the year's last month; year Δ = sum of month deltas.
-      const yearEnd = (ms) => ms[ms.length - 1] || { endingCash: null, endingMv: null, total: null };
-      const yearDelta = (ms) => {
-        let d = null;
-        for (const m of ms) if (m.delta != null) d = (d || 0) + m.delta;
-        return d;
-      };
-
-      const dash = '—';
-      const money = (v, cls) => `<td class="text-right ${cls || ''}">${v != null ? fmtNok(v) : dash}</td>`;
-
-      return years.map((year) => {
-        const yr = byYear.get(year);
-        const sum = sumMonths(yr);
-        const end = yearEnd(yr);
-        const dY = yearDelta(yr);
-        const header = `
-          <tr class="year-header">
-            <td><strong>${year}</strong></td>
-            ${money(sum.deposits)}
-            ${money(sum.withdrawals)}
-            ${money(sum.buys)}
-            ${money(sum.sells)}
-            ${money(sum.dividends)}
-            ${money(sum.fees)}
-            ${money(sum.realized, pctClass(sum.realized))}
-            ${money(end.endingCash)}
-            ${money(end.endingMv)}
-            ${money(end.total)}
-            ${money(dY, dY != null ? pctClass(dY) : '')}
-          </tr>
-        `;
-        const rows = yr.map((m) => `
-          <tr>
-            <td>${m.ym}</td>
-            ${money(m.deposits)}
-            ${money(m.withdrawals, 'text-muted')}
-            ${money(m.buys)}
-            ${money(m.sells)}
-            ${money(m.dividends)}
-            ${money(m.fees, 'text-muted')}
-            ${money(m.realized, pctClass(m.realized))}
-            ${money(m.endingCash)}
-            ${money(m.endingMv)}
-            <td class="text-right"><strong>${m.total != null ? fmtNok(m.total) : dash}</strong></td>
-            ${money(m.delta, m.delta != null ? pctClass(m.delta) : '')}
-          </tr>
-        `).join('');
-        return header + rows;
-      }).join('');
-    }
-  }
-
-  // ─── Data explorer (from data.js) ──────────────────────────────────────────
-
-  // The old data.html carried these styles in its <head>; the SPA shell has a
-  // single stylesheet, so they ride along with the view for now (shared-file
-  // candidate: move into css/style.css).
-  const EXPLORER_CSS = `
+  const ACTIVITY_CSS = `
     .data-toolbar {
       display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
       margin-bottom: 14px; background: var(--panel);
       border: 1px solid var(--border); border-radius: var(--radius);
       padding: 12px 14px;
     }
-    .data-toolbar label {
-      display: inline-flex; align-items: center; gap: 6px;
-      color: var(--muted); font-size: 0.82rem; text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .data-toolbar select, .data-toolbar input[type="search"] {
+    .data-toolbar input[type="search"] {
       background: var(--bg); color: var(--text);
       border: 1px solid var(--border); border-radius: 8px;
-      padding: 7px 10px; font-size: 0.9rem; width: auto;
+      padding: 7px 10px; font-size: 0.9rem; width: 200px;
     }
     .data-toolbar .grow { flex: 1; }
     .data-toolbar .count { color: var(--muted); font-size: 0.85rem; }
-    .measure-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; align-items: center; }
-    .measure-chips .m-chip {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 4px 9px; border-radius: 999px;
+    .type-pills, .code-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+    .type-pills button, .code-chips button {
+      padding: 4px 10px; border-radius: 999px; cursor: pointer;
       background: var(--bg); border: 1px solid var(--border);
-      color: var(--muted); font-size: 0.78rem; font-weight: 500;
-      cursor: pointer; user-select: none; transition: all 0.12s;
-      text-transform: none; letter-spacing: 0;
+      color: var(--muted); font-size: 0.8rem; font-weight: 500;
+      transition: all 0.12s;
     }
-    .measure-chips .m-chip input { display: none; }
-    .measure-chips .m-chip:hover { border-color: var(--accent); color: var(--text); }
-    .measure-chips .m-chip.checked { background: var(--accent); color: #051a0a; border-color: var(--accent); }
+    .type-pills button:hover, .code-chips button:hover { border-color: var(--accent); color: var(--text); }
+    .type-pills button.active, .code-chips button.active { background: var(--accent); color: #051a0a; border-color: var(--accent); }
+    .type-pill {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 0.74rem; font-weight: 600; background: var(--panel-2);
+      color: var(--muted); border: 1px solid var(--border);
+    }
+    .type-KJØPT { color: #ff9da4; border-color: rgba(255, 91, 91, 0.35); }
+    .type-SALG, .type-SOLGT { color: var(--positive); border-color: rgba(62, 224, 127, 0.35); }
+    .type-UTBYTTE { color: var(--accent-2); border-color: rgba(255, 201, 79, 0.35); }
+    .report-table tr.month-row { cursor: pointer; }
+    .report-table tr.month-row:hover td { background: rgba(106, 209, 255, 0.05); }
+    .report-table tr.month-row td:first-child::before { content: '▸ '; color: var(--muted); font-size: 0.72rem; }
+    .report-table tr.month-row[aria-expanded="true"] td:first-child::before { content: '▾ '; color: var(--accent); }
+    .month-detail { background: var(--bg); }
+    .month-detail > td { padding: 14px 16px 18px; }
+    .month-detail h5 {
+      margin: 12px 0 6px; font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 1.2px; color: var(--muted); font-weight: 600;
+    }
+    .month-detail h5:first-child { margin-top: 0; }
+    .month-detail table { font-size: 0.82rem; background: var(--panel); }
+    .month-detail th, .month-detail td { padding: 6px 10px; white-space: nowrap; }
+    .all-tx-details > summary {
+      cursor: pointer; color: var(--link); font-size: 0.9rem; padding: 8px 0;
+      list-style: none; user-select: none;
+    }
+    .all-tx-details > summary::-webkit-details-marker { display: none; }
+    .all-tx-details > summary::before { content: '▸ '; font-size: 0.78rem; }
+    .all-tx-details[open] > summary::before { content: '▾ '; }
     .data-table-wrap {
       width: 100%; overflow-x: auto;
       border: 1px solid var(--border); border-radius: var(--radius);
@@ -564,532 +211,559 @@
       border: 0; border-radius: 0; box-shadow: none;
     }
     .data-table th, .data-table td { padding: 6px 10px; white-space: nowrap; }
-    .data-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+    .data-table th.sortable { cursor: pointer; user-select: none; }
     .data-table th.sortable:hover { color: var(--text); }
-    .data-table th .sort-arrow {
-      display: inline-block; width: 10px; margin-left: 4px;
-      color: var(--muted); font-size: 0.72rem;
-    }
+    .data-table th .sort-arrow { display: inline-block; width: 10px; margin-left: 4px; color: var(--muted); font-size: 0.72rem; }
     .data-table th.sorted .sort-arrow { color: var(--accent); }
     .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
     .data-table th.num { text-align: right; }
-    .data-table tr.summary-top td {
-      background: var(--panel-2); border-bottom: 2px solid var(--border);
-      font-weight: 600; color: var(--text); position: sticky; top: 0;
-    }
-    .data-table tr.summary-top td.label { color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; font-size: 0.78rem; }
-    .data-table tr:hover td { background: rgba(106, 209, 255, 0.04); }
-    .type-pill {
-      display: inline-block; padding: 2px 8px; border-radius: 999px;
-      font-size: 0.74rem; font-weight: 600; background: var(--panel-2);
-      color: var(--muted); border: 1px solid var(--border);
-    }
-    .type-KJØPT { color: #ff9da4; border-color: rgba(255, 91, 91, 0.35); }
-    .type-SALG, .type-SOLGT { color: var(--positive); border-color: rgba(62, 224, 127, 0.35); }
-    .type-UTBYTTE { color: var(--accent-2); border-color: rgba(255, 201, 79, 0.35); }
   `;
 
-  function renderExplorer(el, ctx) {
-    const { store, me } = ctx;
-    const { canonicalName } = window.Portfolio;
-    const Fmt = window.Fmt;
+  const TYPE_PILLS = [
+    { id: 'all', label: 'All' },
+    { id: 'buys', label: 'Buys' },
+    { id: 'sells', label: 'Sells' },
+    { id: 'dividends', label: 'Dividends' },
+    { id: 'cash', label: 'Deposits/Withdrawals' },
+    { id: 'fees', label: 'Fees' },
+    { id: 'other', label: 'Other' },
+  ];
 
-    el.innerHTML = `
-      <style>${EXPLORER_CSS}</style>
-      <div class="data-toolbar">
-        <label>Mode
-          <select id="mode">
-            <option value="flat">Flat</option>
-            <option value="pivot">Pivot</option>
-          </select>
-        </label>
-        <label id="pivot-group-wrap" hidden>Group by
-          <select id="pivot-group">
-            <option value="security">Stock</option>
-            <option value="type">Type</option>
-            <option value="year">Year</option>
-            <option value="month">Year-month</option>
-            <option value="currency">Currency</option>
-          </select>
-        </label>
-        <label id="pivot-group2-wrap" hidden>Then by
-          <select id="pivot-group2">
-            <option value="">(none)</option>
-            <option value="security">Stock</option>
-            <option value="type">Type</option>
-            <option value="year">Year</option>
-            <option value="month">Year-month</option>
-            <option value="currency">Currency</option>
-          </select>
-        </label>
-        <span id="pivot-measure-wrap" class="measure-chips" hidden></span>
-        <input type="search" id="filter" placeholder="Filter…" aria-label="Filter rows" />
-        <span class="grow"></span>
-        <span class="count" id="count"></span>
-        ${window.UI.infoIcon('explorer')}
-      </div>
+  function renderActivity(body, ctx) {
+    const { store } = ctx;
+    const { fmtNok, fmtQty, fmtPct, pctClass, escapeHtml } = window.Fmt;
+    const { classify, amountNok, feeNok, isRealizingSell, splitForSecurity, INVESTOR_CODES } = window.Ledger;
+    const canon = window.Portfolio.canonicalName;
+    const ii = window.UI.infoIcon;
 
-      <div class="range-picker" id="range-picker" style="margin-bottom:14px">
-        <button class="preset" data-preset="1m">1M</button>
-        <button class="preset" data-preset="6m">6M</button>
-        <button class="preset" data-preset="ytd">YTD</button>
-        <button class="preset" data-preset="1y">1Y</button>
-        <button class="preset active" data-preset="all">All</button>
-        <button class="preset" data-preset="custom">Custom</button>
-        <span class="sep" id="custom-sep" style="display:none">·</span>
-        <input type="date" id="date-from" aria-label="From date" style="display:none" />
-        <span class="sep" id="custom-sep2" style="display:none">→</span>
-        <input type="date" id="date-to" aria-label="To date" style="display:none" />
-      </div>
+    // ── Persisted filter state ───────────────────────────────────────────
+    let state = { preset: 'all', from: null, to: null, type: 'all', codes: [], q: '' };
+    try {
+      const st = JSON.parse(localStorage.getItem('portal.activity') || '{}') || {};
+      state = { ...state, ...st, codes: Array.isArray(st.codes) ? st.codes : [] };
+    } catch (_e) { /* defaults */ }
+    const persist = () => localStorage.setItem('portal.activity', JSON.stringify(state));
 
-      <div id="root">Loading…</div>
-    `;
-
-    const $ = (sel) => el.querySelector(sel);
-
-    // Join keys: current derived holdings + Dim-values.
-    const currentHoldings = window.Portfolio.currentHoldings(store);
-    const holdingsBySec = new Map();
-    let latestSnapTotalMv = 0;
-    for (const h of currentHoldings) {
-      if (!holdingsBySec.has(h.security)) holdingsBySec.set(h.security, h);
-      latestSnapTotalMv += Number(h.marketValueNok) || 0;
-    }
-    const latestSnap = window.Portfolio.snapshotDate(store);
-    const metaBySec = new Map();
-    for (const m of store.meta) metaBySec.set(m.security, m);
-
-    const rows = store.transactions.map((t) => {
-      const can = canonicalName(t.security);
-      const h = holdingsBySec.get(can);
-      const m = metaBySec.get(t.security) || metaBySec.get(can);
-      return {
-        trade_date: t.tradeDate,
-        settle_date: t.settleDate,
-        type: t.type,
-        security: t.security,
-        isin: t.isin,
-        qty: t.qty,
-        price: t.price,
-        amount_nok: t.amount,
-        currency: t.currency,
-        fee: t.fee,
-        running_balance: t.saldo,
-        transaction_text: t.text,
-        member: m ? m.memberString : '',
-        factor: m ? m.factor : null,
-        current_price: h ? h.currentPrice : null,
-        current_qty: h ? h.qty : null,
-        market_value_nok: h ? h.marketValueNok : null,
-        return_pct: h ? h.returnPct : null,
-      };
-    });
-
-    const FLAT_COLS = [
-      { key: 'trade_date',       label: 'Trade date',  type: 'date' },
-      { key: 'type',             label: 'Type',        type: 'pill' },
-      { key: 'security',         label: 'Stock',       type: 'string' },
-      { key: 'member',           label: 'Investors',   type: 'string' },
-      { key: 'factor',           label: 'Factor',      type: 'num' },
-      { key: 'qty',              label: 'Tx Qty',      type: 'num' },
-      { key: 'price',            label: 'Tx Price',    type: 'num' },
-      { key: 'amount_nok',       label: 'Amount NOK',  type: 'money' },
-      { key: 'fee',              label: 'Fee',         type: 'money' },
-      { key: 'currency',         label: 'Curr',        type: 'string' },
-      { key: 'current_price',    label: 'Price now',   type: 'num' },
-      { key: 'current_qty',      label: 'Qty now',     type: 'num' },
-      { key: 'market_value_nok', label: 'MV now',      type: 'money' },
-    ];
-    const SUM_COLS = new Set(['qty', 'amount_nok', 'fee', 'market_value_nok']);
-
-    const modeSel = $('#mode');
-    const groupSel = $('#pivot-group');
-    const group2Sel = $('#pivot-group2');
-    const measureWrap = $('#pivot-measure-wrap');
-    const groupWrap = $('#pivot-group-wrap');
-    const group2Wrap = $('#pivot-group2-wrap');
-    const filterEl = $('#filter');
-    const countEl = $('#count');
-    const fromInput = $('#date-from');
-    const toInput = $('#date-to');
-
-    const MEASURES = [
-      { id: 'count',      label: 'Count',         type: 'int',   sumField: 'count' },
-      { id: 'sum-amount', label: 'Σ Amount NOK',  type: 'money', sumField: 'sumAmount' },
-      { id: 'sum-qty',    label: 'Σ Qty',         type: 'num',   sumField: 'sumQty' },
-      { id: 'sum-fee',    label: 'Σ Fee',         type: 'money', sumField: 'sumFee' },
-      { id: 'sum-mv',     label: 'Σ MV now',      type: 'money', sumField: 'sumMv',  dedupeBy: 'security' },
-    ];
-    const storedMeasures = JSON.parse(localStorage.getItem('portal.data.measures') || '["count","sum-amount"]');
-    const activeMeasures = new Set(storedMeasures);
-
-    measureWrap.innerHTML = MEASURES.map((m) => `
-      <label class="m-chip ${activeMeasures.has(m.id) ? 'checked' : ''}">
-        <input type="checkbox" value="${m.id}" ${activeMeasures.has(m.id) ? 'checked' : ''}> ${Fmt.escapeHtml(m.label)}
-      </label>
-    `).join('');
-    measureWrap.querySelectorAll('input').forEach((cb) => {
-      cb.addEventListener('change', () => {
-        cb.closest('.m-chip').classList.toggle('checked', cb.checked);
-        if (cb.checked) activeMeasures.add(cb.value); else activeMeasures.delete(cb.value);
-        localStorage.setItem('portal.data.measures', JSON.stringify(Array.from(activeMeasures)));
-        render();
+    // ── One-pass row prep: NOK amounts, categories, per-sell realized ────
+    // Realized P/L is stamped onto each realizing sell by a full-history
+    // average-cost replay (canonical names), so filtered sums stay honest.
+    const txRows = [];
+    {
+      const costMap = new Map();
+      const sorted = store.transactions.slice().sort((a, b) => {
+        const ak = a.tradeDate || a.bookDate || '';
+        const bk = b.tradeDate || b.bookDate || '';
+        return ak.localeCompare(bk);
       });
-    });
-
-    let sortBy = { column: 'trade_date', direction: 'desc' };
-
-    let minTradeDate = null, maxTradeDate = null;
-    for (const r of rows) {
-      if (!r.trade_date) continue;
-      if (!minTradeDate || r.trade_date < minTradeDate) minTradeDate = r.trade_date;
-      if (!maxTradeDate || r.trade_date > maxTradeDate) maxTradeDate = r.trade_date;
+      for (const tx of sorted) {
+        const date = tx.tradeDate || tx.bookDate;
+        if (!date) continue;
+        const cat = classify(tx.type);
+        const c = tx.security ? canon(tx.security) : null;
+        const row = {
+          date, ym: date.slice(0, 7),
+          type: tx.type, cat,
+          security: c, rawSecurity: tx.security, isin: tx.isin,
+          qty: tx.qty, price: tx.price,
+          amountNok: amountNok(tx), feeNok: Math.abs(feeNok(tx)),
+          saldo: tx.saldo, currency: tx.currency, text: tx.text,
+          codes: tx.security ? splitForSecurity(store.attributionMap, tx.security).map((s) => s.code) : INVESTOR_CODES.slice(),
+          realizedNok: null,
+        };
+        if (c && (cat === 'BUY' || cat === 'SELL') && (tx.type === 'KJØPT' || isRealizingSell(tx.type))) {
+          if (!costMap.has(c)) costMap.set(c, { qty: 0, costSum: 0 });
+          const slot = costMap.get(c);
+          const q = Math.abs(tx.qty || 0);
+          if (tx.type === 'KJØPT') {
+            slot.qty += q; slot.costSum += Math.abs(row.amountNok);
+          } else {
+            const avg = slot.qty > 0 ? slot.costSum / slot.qty : 0;
+            row.realizedNok = row.amountNok - avg * q;
+            const frac = slot.qty > 0 ? Math.min(q / slot.qty, 1) : 0;
+            slot.costSum = Math.max(0, slot.costSum - slot.costSum * frac);
+            slot.qty = Math.max(0, slot.qty - q);
+          }
+        }
+        txRows.push(row);
+      }
     }
-    if (minTradeDate) { fromInput.min = minTradeDate; toInput.min = minTradeDate; }
-    if (maxTradeDate) { fromInput.max = maxTradeDate; toInput.max = maxTradeDate; }
-
-    const storedRange = JSON.parse(localStorage.getItem('portal.data.range') || '{"preset":"all"}');
-    let range = { preset: storedRange.preset || 'all', from: storedRange.from || null, to: storedRange.to || null };
-    if (range.preset === 'custom' && range.from && range.to) {
-      fromInput.value = range.from;
-      toInput.value = range.to;
-      showCustomInputs(true);
+    const minDate = txRows.length ? txRows[0].date : null;
+    const holdingsBySec = new Map();
+    for (const h of window.Portfolio.currentHoldings(store)) {
+      if (!holdingsBySec.has(h.security)) holdingsBySec.set(h.security, h);
     }
-    setActivePreset(range.preset);
 
-    function dateBounds(preset) {
+    // ── Filter machinery ─────────────────────────────────────────────────
+    function windowBounds() {
       const today = new Date();
       const todayStr = today.toISOString().slice(0, 10);
-      const addMonths = (d, n) => { const x = new Date(d); x.setUTCMonth(x.getUTCMonth() + n); return x.toISOString().slice(0, 10); };
-      const addYears  = (d, n) => { const x = new Date(d); x.setUTCFullYear(x.getUTCFullYear() + n); return x.toISOString().slice(0, 10); };
-      switch (preset) {
-        case '1m':  return { from: addMonths(today, -1), to: todayStr };
-        case '6m':  return { from: addMonths(today, -6), to: todayStr };
+      const minus = (m) => { const d = new Date(today); d.setUTCMonth(d.getUTCMonth() - m); return d.toISOString().slice(0, 10); };
+      switch (state.preset) {
+        case '1m': return { from: minus(1), to: todayStr };
+        case '6m': return { from: minus(6), to: todayStr };
         case 'ytd': return { from: `${today.getUTCFullYear()}-01-01`, to: todayStr };
-        case '1y':  return { from: addYears(today, -1),  to: todayStr };
-        case 'all': return { from: null, to: null };
-        default:    return { from: null, to: null };
+        case '1y': return { from: minus(12), to: todayStr };
+        case 'custom': return { from: state.from || minDate, to: state.to || todayStr };
+        case 'all':
+        default: return { from: minDate, to: todayStr };
       }
     }
-
-    function inRange(tradeDate) {
-      if (!range.from && !range.to) return true;
-      if (!tradeDate) return false;
-      if (range.from && tradeDate < range.from) return false;
-      if (range.to && tradeDate > range.to) return false;
+    function typeMatch(row) {
+      switch (state.type) {
+        case 'buys': return row.cat === 'BUY';
+        case 'sells': return row.cat === 'SELL';
+        case 'dividends': return row.cat === 'DIVIDEND' || row.cat === 'TAX';
+        case 'cash': return row.cat === 'DEPOSIT' || row.cat === 'WITHDRAWAL';
+        case 'fees': return row.cat === 'FEE';
+        case 'other': return row.cat === 'OTHER' || row.cat === 'REFUND';
+        default: return true;
+      }
+    }
+    function matches(row, win) {
+      if (row.date < win.from || row.date > win.to) return false;
+      if (!typeMatch(row)) return false;
+      if (state.codes.length && !row.codes.some((cd) => state.codes.includes(cd))) return false;
+      if (state.q) {
+        const q = state.q.toLowerCase();
+        const hay = `${row.security || ''} ${row.rawSecurity || ''} ${row.isin || ''} ${row.type || ''} ${row.text || ''} ${row.currency || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       return true;
     }
+    const nonRangeFilterActive = () => state.type !== 'all' || state.codes.length > 0 || state.q.trim() !== '';
 
-    function setActivePreset(preset) {
-      el.querySelectorAll('#range-picker .preset').forEach((b) => {
-        b.classList.toggle('active', b.dataset.preset === preset);
-      });
-    }
-    function showCustomInputs(show) {
-      $('#custom-sep').style.display  = show ? 'inline' : 'none';
-      $('#custom-sep2').style.display = show ? 'inline' : 'none';
-      fromInput.style.display = show ? 'inline-block' : 'none';
-      toInput.style.display   = show ? 'inline-block' : 'none';
-    }
-
-    function persistRange() {
-      localStorage.setItem('portal.data.range', JSON.stringify(range));
-    }
-
-    el.querySelectorAll('#range-picker .preset').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const p = btn.dataset.preset;
-        if (p === 'custom') {
-          if (!fromInput.value) fromInput.value = range.from || minTradeDate || '';
-          if (!toInput.value)   toInput.value   = range.to   || maxTradeDate || '';
-          range = { preset: 'custom', from: fromInput.value || null, to: toInput.value || null };
-          showCustomInputs(true);
-          setActivePreset('custom');
-          if (range.from && range.to) { persistRange(); render(); }
-          return;
-        }
-        const b = dateBounds(p);
-        range = { preset: p, from: b.from, to: b.to };
-        showCustomInputs(false);
-        setActivePreset(p);
-        persistRange();
-        render();
-      });
-    });
-    const onCustomChange = () => {
-      if (!fromInput.value || !toInput.value) return;
-      range = { preset: 'custom', from: fromInput.value, to: toInput.value };
-      persistRange();
-      render();
-    };
-    fromInput.addEventListener('change', onCustomChange);
-    toInput.addEventListener('change', onCustomChange);
-
-    document.getElementById('pf-when').textContent =
-      `${rows.length} transactions · joined with derived holdings (${latestSnap || 'no prices yet'}) + Dim-values · signed in as ${me.displayName} (${me.investorCode})`;
-
-    for (const sel of [groupSel, group2Sel]) {
-      if (sel && !sel.querySelector('option[value="member"]')) {
-        const opt = document.createElement('option');
-        opt.value = 'member'; opt.textContent = 'Investors';
-        sel.appendChild(opt);
-      }
-    }
-
-    [modeSel, groupSel, group2Sel].forEach((elm) => elm.addEventListener('change', () => {
-      if (modeSel.value === 'pivot') {
-        const first = [...activeMeasures][0] || 'count';
-        sortBy = { column: 'measure:' + first, direction: 'desc' };
-      } else {
-        sortBy = { column: 'trade_date', direction: 'desc' };
-      }
-      render();
-    }));
-    filterEl.addEventListener('input', render);
-
-    render();
-
-    function render() {
-      const pivot = modeSel.value === 'pivot';
-      groupWrap.hidden = !pivot;
-      group2Wrap.hidden = !pivot;
-      measureWrap.hidden = !pivot;
-      if (pivot) renderPivot(); else renderFlat();
-    }
-
-    function renderFlat() {
-      const filtered = applyFilter(rows);
-      const sorted = filtered.slice().sort(compareFlat);
-      countEl.textContent = `${sorted.length} / ${rows.length} rows`;
-
-      const totals = {};
-      for (const col of SUM_COLS) totals[col] = 0;
-      for (const r of sorted) {
-        for (const col of SUM_COLS) {
-          if (col === 'market_value_nok') continue;
-          const v = Number(r[col]);
-          if (Number.isFinite(v)) totals[col] += v;
-        }
-      }
-      totals.market_value_nok = latestSnapTotalMv;
-
-      $('#root').innerHTML = `
-        <div class="data-table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                ${FLAT_COLS.map((c) => `
-                  <th class="sortable ${sortBy.column === c.key ? 'sorted' : ''} ${c.type === 'num' || c.type === 'money' ? 'num' : ''}"
-                      data-sort="${c.key}">
-                    ${Fmt.escapeHtml(c.label)}${sortArrow(c.key)}
-                  </th>
-                `).join('')}
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="summary-top">
-                <td class="label" colspan="5">Σ Total (${sorted.length})</td>
-                ${FLAT_COLS.slice(5).map((c) => `
-                  <td class="${c.type === 'num' || c.type === 'money' ? 'num' : ''}">
-                    ${SUM_COLS.has(c.key) ? formatCell(totals[c.key], c.type) : ''}
-                  </td>
-                `).join('')}
-              </tr>
-              ${sorted.map((r) => `
-                <tr>
-                  ${FLAT_COLS.map((c) => `<td class="${c.type === 'num' || c.type === 'money' ? 'num' : ''}">${formatCell(r[c.key], c.type)}</td>`).join('')}
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      `;
-      wireSort();
-    }
-
-    function compareFlat(a, b) {
-      const dir = sortBy.direction === 'asc' ? 1 : -1;
-      const col = FLAT_COLS.find((c) => c.key === sortBy.column);
-      const av = a[sortBy.column]; const bv = b[sortBy.column];
-      const numeric = col && (col.type === 'num' || col.type === 'money');
-      let cmp;
-      if (numeric) {
-        const an = av == null ? -Infinity : Number(av);
-        const bn = bv == null ? -Infinity : Number(bv);
-        cmp = an < bn ? -1 : an > bn ? 1 : 0;
-      } else {
-        cmp = (av || '').toString().toLowerCase().localeCompare((bv || '').toString().toLowerCase(), 'nb');
-      }
-      return cmp * dir;
-    }
-
-    function renderPivot() {
-      const filtered = applyFilter(rows);
-      const g1 = groupSel.value;
-      const g2 = group2Sel.value;
-      const measures = MEASURES.filter((m) => activeMeasures.has(m.id));
-
+    // ── Month buckets over the filtered set ──────────────────────────────
+    function buildBuckets(filtered, win, withValuation) {
       const buckets = new Map();
-      function ensure(k1, k2) {
-        const key = `${k1}|||${k2}`;
-        if (!buckets.has(key)) {
-          buckets.set(key, {
-            g1: k1, g2: k2, count: 0,
-            sumAmount: 0, sumQty: 0, sumFee: 0, sumMv: 0,
-            _seenSec: new Set(),
-          });
-        }
-        return buckets.get(key);
-      }
-      for (const r of filtered) {
-        const k1 = groupKey(r, g1);
-        const k2 = g2 ? groupKey(r, g2) : '';
-        const b = ensure(k1, k2);
-        b.count += 1;
-        b.sumAmount += Number(r.amount_nok) || 0;
-        b.sumQty    += Number(r.qty) || 0;
-        b.sumFee    += Number(r.fee) || 0;
-        const sec = (r.security || '').toString();
-        if (sec && !b._seenSec.has(sec) && r.market_value_nok != null) {
-          b._seenSec.add(sec);
-          b.sumMv += Number(r.market_value_nok) || 0;
-        }
-      }
-
-      let pivotRows = Array.from(buckets.values());
-      pivotRows.sort((a, b) => {
-        const dir = sortBy.direction === 'asc' ? 1 : -1;
-        if (sortBy.column === 'g1') return a.g1.toString().localeCompare(b.g1.toString(), 'nb') * dir;
-        if (sortBy.column === 'g2') return a.g2.toString().localeCompare(b.g2.toString(), 'nb') * dir;
-        if (sortBy.column.startsWith('measure:')) {
-          const id = sortBy.column.slice('measure:'.length);
-          const m = MEASURES.find((x) => x.id === id);
-          if (m) {
-            const av = a[m.sumField] || 0;
-            const bv = b[m.sumField] || 0;
-            return (av - bv) * dir;
-          }
-        }
-        return a.g1.toString().localeCompare(b.g1.toString(), 'nb') * dir;
+      const blank = (ym) => ({
+        ym, deposits: 0, withdrawals: 0, buys: 0, sells: 0,
+        dividends: 0, fees: 0, realized: 0, txCount: 0,
+        endingCash: null, endingMv: null, total: null, delta: null,
       });
-
-      countEl.textContent = `${pivotRows.length} groups · ${filtered.length} rows`;
-
-      const totals = { count: 0, sumAmount: 0, sumQty: 0, sumFee: 0, sumMv: latestSnapTotalMv };
+      const ensure = (ym) => { if (!buckets.has(ym)) buckets.set(ym, blank(ym)); return buckets.get(ym); };
       for (const r of filtered) {
-        totals.count += 1;
-        totals.sumAmount += Number(r.amount_nok) || 0;
-        totals.sumQty    += Number(r.qty) || 0;
-        totals.sumFee    += Number(r.fee) || 0;
+        const b = ensure(r.ym);
+        b.txCount += 1;
+        if (r.cat === 'BUY' || r.cat === 'SELL') b.fees += r.feeNok;
+        if (r.cat === 'FEE') b.fees += Math.abs(r.amountNok);
+        if (r.cat === 'BUY' && r.type === 'KJØPT') b.buys += Math.abs(r.amountNok);
+        if (r.cat === 'SELL' && isRealizingSell(r.type)) b.sells += r.amountNok;
+        if (r.cat === 'DIVIDEND' || r.cat === 'TAX') b.dividends += r.amountNok;
+        if (r.cat === 'DEPOSIT') b.deposits += r.amountNok;
+        if (r.cat === 'WITHDRAWAL') b.withdrawals += Math.abs(r.amountNok);
+        if (r.realizedNok != null) b.realized += r.realizedNok;
       }
-
-      const showG2 = !!g2;
-      const headerCols = [
-        { id: 'g1',    label: groupLabel(g1),  num: false },
-        ...(showG2 ? [{ id: 'g2', label: groupLabel(g2), num: false }] : []),
-        ...measures.map((m) => ({ id: 'measure:' + m.id, label: m.label, num: true, measure: m })),
-      ];
-
-      if (!measures.length) {
-        $('#root').innerHTML = '<p class="text-muted">Pick at least one measure to see the pivot.</p>';
-        return;
+      // Fill every month of the window so quiet months still show valuation.
+      let ym = win.from.slice(0, 7);
+      const endYm = win.to.slice(0, 7);
+      let [y, m] = ym.split('-').map(Number);
+      while (ym <= endYm) {
+        ensure(ym);
+        m += 1; if (m > 12) { m = 1; y += 1; }
+        ym = `${y}-${String(m).padStart(2, '0')}`;
       }
+      const list = Array.from(buckets.keys()).sort();
+      if (withValuation) {
+        let prevTotal = null;
+        for (const k of list) {
+          const monthEnd = lastDayOf(k);
+          const b = buckets.get(k);
+          b.endingCash = window.Portfolio.cash.saldoOnOrBefore(store, monthEnd);
+          b.endingMv = monthEndMv(store, monthEnd);
+          b.total = (b.endingCash != null && b.endingMv != null) ? b.endingCash + b.endingMv : null;
+          b.delta = (b.total != null && prevTotal != null) ? b.total - prevTotal : null;
+          if (b.total != null) prevTotal = b.total;
+        }
+      }
+      return list.map((k) => buckets.get(k));
+    }
 
-      $('#root').innerHTML = `
-        <div class="data-table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                ${headerCols.map((c) => `
-                  <th class="sortable ${c.num ? 'num' : ''} ${sortBy.column === c.id ? 'sorted' : ''}" data-sort="${c.id}">
-                    ${Fmt.escapeHtml(c.label)}${sortArrow(c.id)}
-                  </th>
-                `).join('')}
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="summary-top">
-                <td class="label" ${showG2 ? 'colspan="2"' : ''}>Σ Total</td>
-                ${measures.map((m) => `<td class="num">${formatCell(totals[m.sumField], m.type)}</td>`).join('')}
-              </tr>
-              ${pivotRows.map((b) => `
-                <tr>
-                  <td>${Fmt.escapeHtml(b.g1)}</td>
-                  ${showG2 ? `<td>${Fmt.escapeHtml(b.g2)}</td>` : ''}
-                  ${measures.map((m) => `<td class="num">${formatCell(b[m.sumField], m.type)}</td>`).join('')}
-                </tr>
-              `).join('')}
-            </tbody>
+    // Month-end MV: true valuation at the month-end closes from the matrix.
+    function monthEndMv(store, monthEnd) {
+      if (!window.Portfolio.usePriceMatrix(store)) return null;
+      const held = window.Positions.holdingsAt(store, monthEnd);
+      if (!held.length) return 0;
+      let mv = 0, priced = false;
+      for (const h of held) {
+        const px = window.Portfolio.nokPriceForSecurity(store, h.security, monthEnd);
+        if (px != null) { mv += px * h.qty; priced = true; }
+      }
+      return priced ? mv : null;
+    }
+    function lastDayOf(ym) {
+      const [y, m] = ym.split('-').map(Number);
+      return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+    }
+
+    // ── Render ───────────────────────────────────────────────────────────
+    refresh();
+
+    function refresh() {
+      persist();
+      const win = windowBounds();
+      const filtered = txRows.filter((r) => matches(r, win));
+      const showValuation = !nonRangeFilterActive();
+      const months = buildBuckets(filtered, win, showValuation);
+
+      const trades = filtered.filter((r) => r.cat === 'BUY' || r.cat === 'SELL');
+      const buys = filtered.filter((r) => r.cat === 'BUY' && r.type === 'KJØPT');
+      const sells = filtered.filter((r) => r.cat === 'SELL' && isRealizingSell(r.type));
+      const bought = buys.reduce((a, r) => a + Math.abs(r.amountNok), 0);
+      const sold = sells.reduce((a, r) => a + r.amountNok, 0);
+      const realized = filtered.reduce((a, r) => a + (r.realizedNok || 0), 0);
+      const dividends = filtered.filter((r) => r.cat === 'DIVIDEND' || r.cat === 'TAX').reduce((a, r) => a + r.amountNok, 0);
+      const fees = filtered.reduce((a, r) => a + ((r.cat === 'BUY' || r.cat === 'SELL') ? r.feeNok : (r.cat === 'FEE' ? Math.abs(r.amountNok) : 0)), 0);
+
+      document.getElementById('pf-when').textContent =
+        `${filtered.length} of ${txRows.length} transactions · ${win.from} → ${win.to}`;
+
+      body.innerHTML = `
+        <style>${ACTIVITY_CSS}</style>
+
+        <div class="data-toolbar" role="group" aria-label="Activity filters">
+          <input type="search" id="act-q" placeholder="Search security / ISIN / text…" aria-label="Search transactions" value="${escapeHtml(state.q)}" />
+          <span class="type-pills" role="group" aria-label="Transaction type">
+            ${TYPE_PILLS.map((t) => `<button type="button" data-type="${t.id}" class="${state.type === t.id ? 'active' : ''}" aria-pressed="${state.type === t.id}">${t.label}</button>`).join('')}
+          </span>
+          <span class="code-chips" role="group" aria-label="Investor">
+            ${INVESTOR_CODES.map((cd) => `<button type="button" data-code="${cd}" class="${state.codes.includes(cd) ? 'active' : ''}" aria-pressed="${state.codes.includes(cd)}">${cd}</button>`).join('')}
+          </span>
+          <span class="grow"></span>
+          <span class="count">${filtered.length} rows</span>
+          ${ii('explorer')}
+        </div>
+        <div class="range-picker" id="act-range" style="margin-bottom:14px">
+          ${['1m', '6m', 'ytd', '1y', 'all', 'custom'].map((pId) =>
+            `<button type="button" class="preset ${state.preset === pId ? 'active' : ''}" data-preset="${pId}">${pId === 'custom' ? 'Custom' : pId.toUpperCase()}</button>`).join('')}
+          <span class="sep" style="display:${state.preset === 'custom' ? 'inline' : 'none'}">·</span>
+          <input type="date" id="act-from" aria-label="From date" value="${state.from || win.from || ''}" style="display:${state.preset === 'custom' ? 'inline-block' : 'none'}" />
+          <span class="sep" style="display:${state.preset === 'custom' ? 'inline' : 'none'}">→</span>
+          <input type="date" id="act-to" aria-label="To date" value="${state.to || win.to || ''}" style="display:${state.preset === 'custom' ? 'inline-block' : 'none'}" />
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="label">Bought ${ii('trading-activity')}</div><div class="value positive">${fmtNok(bought)}</div><div class="sub">${buys.length} purchase${buys.length === 1 ? '' : 's'}</div></div>
+          <div class="kpi-card"><div class="label">Sold ${ii('trading-activity')}</div><div class="value negative">${fmtNok(sold)}</div><div class="sub">${sells.length} sale${sells.length === 1 ? '' : 's'}</div></div>
+          <div class="kpi-card"><div class="label">Net deployed ${ii('trading-activity')}</div><div class="value">${fmtNok(bought - sold)}</div><div class="sub">bought − sold</div></div>
+          <div class="kpi-card"><div class="label">Realized P/L ${ii('realized')}</div><div class="value ${pctClass(realized)}">${fmtNok(realized)}</div></div>
+          <div class="kpi-card"><div class="label">Dividends ${ii('dividends')}</div><div class="value">${fmtNok(dividends)}</div></div>
+          <div class="kpi-card"><div class="label">Fees</div><div class="value text-muted">${fmtNok(fees)}</div></div>
+        </div>
+
+        <div class="section-title">Buys &amp; sells ${ii('trade-scatter')} <span class="text-muted text-small">blue = purchase (up), red = sale (down); dot size ∝ amount</span></div>
+        <div class="chart-wrap" id="act-scatter"></div>
+
+        ${showValuation ? `
+          <div class="section-title">Total value, month by month ${ii('activity-total-trend')}</div>
+          <div class="chart-wrap" id="act-trend"></div>
+        ` : ''}
+
+        <div class="section-title">By month ${ii('monthly-accounting')} <span class="text-muted text-small">click a month for its transactions</span></div>
+        ${nonRangeFilterActive() ? '<p class="text-muted text-small">Valuation columns (End cash / End MV / Total / Δ) are hidden while a security, type or investor filter is active — they are portfolio-level figures.</p>' : ''}
+        <div class="chart-wrap" style="overflow-x:auto">
+          <table class="report-table">
+            <thead><tr>
+              <th>Month</th>
+              <th class="text-right">Tx</th>
+              <th class="text-right">Deposits</th>
+              <th class="text-right">Withdrawals</th>
+              <th class="text-right">Buys</th>
+              <th class="text-right">Sells</th>
+              <th class="text-right">Dividends</th>
+              <th class="text-right">Fees</th>
+              <th class="text-right">Realized P/L</th>
+              ${showValuation ? `
+                <th class="text-right">End cash</th>
+                <th class="text-right">End MV</th>
+                <th class="text-right">Total</th>
+                <th class="text-right">Δ</th>` : ''}
+            </tr></thead>
+            <tbody>${renderLedgerRows(months, showValuation)}</tbody>
           </table>
         </div>
+
+        <details class="all-tx-details">
+          <summary>All ${filtered.length} transactions in one table</summary>
+          <div id="act-flat"></div>
+        </details>
       `;
-      wireSort();
-    }
 
-    function groupKey(r, groupBy) {
-      switch (groupBy) {
-        case 'security': return r.security || '(blank)';
-        case 'type': return r.type || '(blank)';
-        case 'currency': return r.currency || '(blank)';
-        case 'member': return r.member || '(unmapped)';
-        case 'year': return (r.trade_date || '').slice(0, 4) || '(no date)';
-        case 'month': return (r.trade_date || '').slice(0, 7) || '(no date)';
-        default: return '(blank)';
+      // Charts
+      const scatterMount = body.querySelector('#act-scatter');
+      scatterMount.appendChild(window.Charts.tradeScatter({
+        trades: trades.map((r) => ({
+          date: r.date, type: r.cat === 'SELL' ? 'sell' : 'buy',
+          label: r.security || r.type, amount: Math.abs(r.amountNok), qty: r.qty, codes: r.codes,
+        })),
+        from: win.from, to: win.to,
+      }));
+      const trendMount = body.querySelector('#act-trend');
+      if (trendMount) {
+        const pts = months.filter((mo) => mo.total != null).map((mo) => ({ date: lastDayOf(mo.ym), y: mo.total }));
+        if (pts.length >= 2) {
+          trendMount.appendChild(window.Charts.multiLine({
+            series: [{ name: 'Total value', color: '#1FE0CE', points: pts }],
+            title: 'Total value by month', interactive: true,
+          }));
+        } else {
+          trendMount.innerHTML = '<p class="text-muted text-small" style="padding:8px 12px">Not enough priced months to draw the trend yet.</p>';
+        }
       }
+
+      wireToolbar(win);
+      wireMonthRows(filtered);
+      wireFlatTable(filtered);
     }
 
-    function groupLabel(groupBy) {
-      return { security: 'Stock', type: 'Type', currency: 'Currency', member: 'Investors', year: 'Year', month: 'Year-month' }[groupBy] || groupBy;
+    // ── Year/month rows ──────────────────────────────────────────────────
+    function renderLedgerRows(months, withValuation) {
+      const byYear = new Map();
+      for (const m of months) {
+        const y = m.ym.slice(0, 4);
+        if (!byYear.has(y)) byYear.set(y, []);
+        byYear.get(y).push(m);
+      }
+      const years = Array.from(byYear.keys()).sort().reverse();
+      const dash = '—';
+      const money = (v, cls) => `<td class="text-right ${cls || ''}">${v != null ? fmtNok(v) : dash}</td>`;
+
+      const sum = (ms) => ms.reduce((a, m) => ({
+        txCount: a.txCount + m.txCount,
+        deposits: a.deposits + m.deposits, withdrawals: a.withdrawals + m.withdrawals,
+        buys: a.buys + m.buys, sells: a.sells + m.sells,
+        dividends: a.dividends + m.dividends, fees: a.fees + m.fees, realized: a.realized + m.realized,
+      }), { txCount: 0, deposits: 0, withdrawals: 0, buys: 0, sells: 0, dividends: 0, fees: 0, realized: 0 });
+
+      return years.map((year) => {
+        const yr = byYear.get(year);
+        const s = sum(yr);
+        const end = yr[yr.length - 1] || {};
+        let dY = null;
+        for (const m of yr) if (m.delta != null) dY = (dY || 0) + m.delta;
+        const header = `
+          <tr class="year-header">
+            <td><strong>${year}</strong></td>
+            <td class="text-right">${s.txCount || dash}</td>
+            ${money(s.deposits)}${money(s.withdrawals)}${money(s.buys)}${money(s.sells)}
+            ${money(s.dividends)}${money(s.fees)}${money(s.realized, pctClass(s.realized))}
+            ${withValuation ? `${money(end.endingCash)}${money(end.endingMv)}${money(end.total)}${money(dY, dY != null ? pctClass(dY) : '')}` : ''}
+          </tr>`;
+        const cols = withValuation ? 13 : 9;
+        const rows = yr.map((m) => `
+          <tr class="month-row" tabindex="0" role="button" aria-expanded="false" data-ym="${m.ym}">
+            <td>${m.ym}</td>
+            <td class="text-right ${m.txCount ? '' : 'text-muted'}">${m.txCount || dash}</td>
+            ${money(m.deposits)}${money(m.withdrawals, 'text-muted')}${money(m.buys)}${money(m.sells)}
+            ${money(m.dividends)}${money(m.fees, 'text-muted')}${money(m.realized, pctClass(m.realized))}
+            ${withValuation ? `
+              ${money(m.endingCash)}${money(m.endingMv)}
+              <td class="text-right"><strong>${m.total != null ? fmtNok(m.total) : dash}</strong></td>
+              ${money(m.delta, m.delta != null ? pctClass(m.delta) : '')}` : ''}
+          </tr>
+          <tr class="month-detail" hidden><td colspan="${cols}" data-detail="${m.ym}"></td></tr>
+        `).join('');
+        return header + rows;
+      }).join('');
     }
 
-    function applyFilter(arr) {
-      const f = filterEl.value.trim().toLowerCase();
-      return arr.filter((r) => {
-        if (!inRange(r.trade_date)) return false;
-        if (!f) return true;
-        return (
-          (r.security || '').toLowerCase().includes(f)
-          || (r.type || '').toLowerCase().includes(f)
-          || (r.currency || '').toLowerCase().includes(f)
-          || (r.member || '').toLowerCase().includes(f)
-          || (r.transaction_text || '').toLowerCase().includes(f)
-          || (r.trade_date || '').includes(f)
-        );
-      });
-    }
-
-    function wireSort() {
-      el.querySelectorAll('th.sortable').forEach((th) => {
-        th.addEventListener('click', () => {
-          const col = th.dataset.sort;
-          if (sortBy.column === col) sortBy.direction = sortBy.direction === 'asc' ? 'desc' : 'asc';
-          else {
-            const numericDefaults = ['qty', 'price', 'amount_nok', 'fee', 'running_balance', 'count', 'measure', 'trade_date', 'current_price', 'current_qty', 'market_value_nok', 'factor'];
-            sortBy = { column: col, direction: numericDefaults.includes(col) ? 'desc' : 'asc' };
+    // ── Month drill-down ─────────────────────────────────────────────────
+    function wireMonthRows(filtered) {
+      body.querySelectorAll('tr.month-row').forEach((tr) => {
+        const toggle = () => {
+          const detail = tr.nextElementSibling;
+          const open = detail.hidden;
+          detail.hidden = !open;
+          tr.setAttribute('aria-expanded', String(open));
+          if (open) {
+            const cell = detail.querySelector('[data-detail]');
+            if (!cell.dataset.rendered) {
+              cell.dataset.rendered = '1';
+              cell.innerHTML = monthDetailHtml(tr.dataset.ym, filtered);
+            }
           }
-          render();
+        };
+        tr.addEventListener('click', toggle);
+        tr.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
         });
       });
     }
 
-    function sortArrow(column) {
-      if (sortBy.column !== column) return '<span class="sort-arrow">↕</span>';
-      return `<span class="sort-arrow">${sortBy.direction === 'asc' ? '▲' : '▼'}</span>`;
+    function monthDetailHtml(ym, filtered) {
+      const rows = filtered.filter((r) => r.ym === ym).sort((a, b) => b.date.localeCompare(a.date));
+      if (!rows.length) return '<p class="text-muted text-small" style="margin:0">No matching transactions this month.</p>';
+
+      const txTable = `
+        <h5>Transactions (${rows.length})</h5>
+        <div class="table-scroll"><table>
+          <thead><tr>
+            <th>Date</th><th>Type</th><th>Security</th>
+            <th class="text-right">Qty</th><th class="text-right">Price</th>
+            <th class="text-right">Amount NOK</th><th class="text-right">Fee</th>
+            <th class="text-right">Saldo</th><th>Investors</th>
+          </tr></thead>
+          <tbody>${rows.map((r) => `
+            <tr>
+              <td class="text-small">${r.date}</td>
+              <td><span class="type-pill type-${escapeHtml(r.type || '')}">${escapeHtml(r.type || '')}</span></td>
+              <td>${escapeHtml(r.security || '')}</td>
+              <td class="text-right">${r.qty != null ? fmtQty(r.qty) : '—'}</td>
+              <td class="text-right">${r.price != null ? fmtQty(r.price) : '—'}</td>
+              <td class="text-right ${pctClass(r.amountNok)}">${fmtNok(r.amountNok)}</td>
+              <td class="text-right text-muted">${r.feeNok ? fmtNok(r.feeNok) : '—'}</td>
+              <td class="text-right text-muted">${r.saldo != null ? fmtNok(r.saldo) : '—'}</td>
+              <td class="text-muted text-small">${r.codes.join(', ')}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>`;
+
+      // Fate of the securities traded this month: still held → current MV +
+      // unrealized; exited → total realized P/L over its lifetime.
+      const secs = [...new Set(rows.map((r) => r.security).filter(Boolean))];
+      const positions = window.Positions.bySecurity(store);
+      const fateRows = secs.map((sec) => {
+        const held = holdingsBySec.get(sec);
+        if (held) {
+          const noPx = held.priced === false;
+          return `
+            <tr>
+              <td>${escapeHtml(sec)}</td>
+              <td><span class="tag">still held</span></td>
+              <td class="text-right">${fmtQty(held.qty)}</td>
+              <td class="text-right">${noPx ? '—' : fmtNok(held.marketValueNok)}</td>
+              <td class="text-right ${held.returnNok != null ? pctClass(held.returnNok) : ''}">${noPx || held.returnNok == null ? '—' : fmtNok(held.returnNok)}</td>
+              <td class="text-right ${held.returnPct != null ? pctClass(held.returnPct) : ''}">${noPx || held.returnPct == null ? '—' : fmtPct(held.returnPct)}</td>
+            </tr>`;
+        }
+        const st = positions.get(sec);
+        const realizedAll = st ? window.Positions.stateAt(st, '9999-12-31').realized : 0;
+        return `
+          <tr>
+            <td>${escapeHtml(sec)}</td>
+            <td><span class="tag">exited</span></td>
+            <td class="text-right text-muted">0</td>
+            <td class="text-right text-muted">—</td>
+            <td class="text-right ${pctClass(realizedAll)}">${fmtNok(realizedAll)}</td>
+            <td class="text-right text-muted">realized</td>
+          </tr>`;
+      }).join('');
+
+      const fateTable = secs.length ? `
+        <h5>Where those stocks stand today ${ii('holdings-table')}</h5>
+        <div class="table-scroll"><table>
+          <thead><tr>
+            <th>Security</th><th>Status</th>
+            <th class="text-right">Qty now</th><th class="text-right">MV now</th>
+            <th class="text-right">Gain/loss</th><th class="text-right">%</th>
+          </tr></thead>
+          <tbody>${fateRows}</tbody>
+        </table></div>` : '';
+
+      return txTable + fateTable;
     }
 
-    function formatCell(v, type) {
-      if (v == null || v === '') return '<span class="text-muted">—</span>';
-      switch (type) {
-        case 'money': return (Math.round(Number(v))).toLocaleString('nb-NO');
-        case 'num':
-          return Number.isInteger(Number(v))
-            ? Number(v).toLocaleString('nb-NO')
-            : Number(v).toLocaleString('nb-NO', { maximumFractionDigits: 4 });
-        case 'int': return Math.round(Number(v)).toLocaleString('nb-NO');
-        case 'date': return Fmt.escapeHtml(v);
-        case 'pill': return `<span class="type-pill type-${Fmt.escapeHtml(v)}">${Fmt.escapeHtml(v)}</span>`;
-        default: return Fmt.escapeHtml(v);
-      }
+    // ── Flat "all transactions" table (sortable) ─────────────────────────
+    let flatSort = { column: 'date', direction: 'desc' };
+    function wireFlatTable(filtered) {
+      const mount = body.querySelector('#act-flat');
+      const details = body.querySelector('.all-tx-details');
+      let rendered = false;
+      const renderFlat = () => {
+        const numeric = ['qty', 'price', 'amountNok', 'feeNok', 'saldo', 'date'];
+        const dir = flatSort.direction === 'asc' ? 1 : -1;
+        const sorted = filtered.slice().sort((a, b) => {
+          const av = a[flatSort.column], bv = b[flatSort.column];
+          if (numeric.includes(flatSort.column) && flatSort.column !== 'date') {
+            return (((av == null ? -Infinity : Number(av))) - ((bv == null ? -Infinity : Number(bv)))) * dir;
+          }
+          return String(av || '').localeCompare(String(bv || ''), 'nb') * dir;
+        });
+        const arrow = (c) => flatSort.column !== c
+          ? '<span class="sort-arrow">↕</span>'
+          : `<span class="sort-arrow">${flatSort.direction === 'asc' ? '▲' : '▼'}</span>`;
+        const COLS = [
+          ['date', 'Date'], ['type', 'Type'], ['security', 'Security'], ['isin', 'ISIN'],
+          ['qty', 'Qty'], ['price', 'Price'], ['amountNok', 'Amount NOK'], ['feeNok', 'Fee'],
+          ['saldo', 'Saldo'], ['codes', 'Investors'],
+        ];
+        mount.innerHTML = `
+          <div class="data-table-wrap"><table class="data-table">
+            <thead><tr>${COLS.map(([k, l]) =>
+              `<th class="sortable ${flatSort.column === k ? 'sorted' : ''} ${['qty','price','amountNok','feeNok','saldo'].includes(k) ? 'num' : ''}" data-sort="${k}">${l}${arrow(k)}</th>`).join('')}
+            </tr></thead>
+            <tbody>${sorted.map((r) => `
+              <tr>
+                <td>${r.date}</td>
+                <td><span class="type-pill type-${escapeHtml(r.type || '')}">${escapeHtml(r.type || '')}</span></td>
+                <td>${escapeHtml(r.security || '')}</td>
+                <td class="text-muted text-small">${escapeHtml(r.isin || '')}</td>
+                <td class="num">${r.qty != null ? fmtQty(r.qty) : '—'}</td>
+                <td class="num">${r.price != null ? fmtQty(r.price) : '—'}</td>
+                <td class="num">${fmtNok(r.amountNok)}</td>
+                <td class="num text-muted">${r.feeNok ? fmtNok(r.feeNok) : '—'}</td>
+                <td class="num text-muted">${r.saldo != null ? fmtNok(r.saldo) : '—'}</td>
+                <td class="text-muted text-small">${r.codes.join(', ')}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table></div>`;
+        mount.querySelectorAll('th.sortable').forEach((th) => {
+          th.addEventListener('click', () => {
+            const c = th.dataset.sort;
+            if (flatSort.column === c) flatSort.direction = flatSort.direction === 'asc' ? 'desc' : 'asc';
+            else flatSort = { column: c, direction: c === 'date' || ['qty','price','amountNok','feeNok','saldo'].includes(c) ? 'desc' : 'asc' };
+            renderFlat();
+          });
+        });
+      };
+      details.addEventListener('toggle', () => {
+        if (details.open && !rendered) { rendered = true; renderFlat(); }
+      });
+    }
+
+    // ── Toolbar wiring ───────────────────────────────────────────────────
+    function wireToolbar(win) {
+      const q = body.querySelector('#act-q');
+      let debounce = null;
+      q.addEventListener('input', () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => { state.q = q.value; refresh(); }, 250);
+      });
+      body.querySelectorAll('.type-pills button').forEach((btn) => {
+        btn.addEventListener('click', () => { state.type = btn.dataset.type; refresh(); });
+      });
+      body.querySelectorAll('.code-chips button').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const cd = btn.dataset.code;
+          const i = state.codes.indexOf(cd);
+          if (i >= 0) state.codes.splice(i, 1); else state.codes.push(cd);
+          refresh();
+        });
+      });
+      body.querySelectorAll('#act-range .preset').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const p = btn.dataset.preset;
+          if (p === 'custom') {
+            state.preset = 'custom';
+            state.from = state.from || win.from;
+            state.to = state.to || win.to;
+            refresh();
+            const from = body.querySelector('#act-from');
+            if (from) from.focus();
+            return;
+          }
+          state.preset = p; state.from = null; state.to = null;
+          refresh();
+        });
+      });
+      const fromI = body.querySelector('#act-from');
+      const toI = body.querySelector('#act-to');
+      const onDate = () => {
+        if (!fromI.value || !toI.value) return;
+        state.preset = 'custom'; state.from = fromI.value; state.to = toI.value;
+        refresh();
+      };
+      if (fromI) fromI.addEventListener('change', onDate);
+      if (toI) toI.addEventListener('change', onDate);
     }
   }
 })();
