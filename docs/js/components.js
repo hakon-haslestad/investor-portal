@@ -8,19 +8,21 @@
     .replace(/"/g, '&quot;');
 
   // ── KPI tiles ─────────────────────────────────────────────────────────────
-  // items: [{label, value, sub?, tone?: 'positive'|'negative'|''}]
+  // items: [{label, value, sub?, tone?: 'positive'|'negative'|'', info?: MetricsInfo key}]
   function kpiGrid(items) {
     return `<div class="kpi-grid">${items.map((k) => `
       <div class="kpi-card">
-        <div class="label">${esc(k.label)}</div>
+        <div class="label">${esc(k.label)}${k.info ? ' ' + infoIcon(k.info) : ''}</div>
         <div class="value ${k.tone || ''}">${k.value}</div>
         ${k.sub ? `<div class="sub">${k.sub}</div>` : ''}
       </div>`).join('')}</div>`;
   }
 
   // ── Section heading ───────────────────────────────────────────────────────
-  function section(title, extraHtml) {
-    return `<div class="section-head"><h3 class="section-title">${esc(title)}</h3>${extraHtml || ''}</div>`;
+  // opts: string (extra HTML, legacy) or {extra?, info?: MetricsInfo key}
+  function section(title, opts) {
+    const o = typeof opts === 'string' ? { extra: opts } : (opts || {});
+    return `<div class="section-head"><h3 class="section-title">${esc(title)}${o.info ? ' ' + infoIcon(o.info) : ''}</h3>${o.extra || ''}</div>`;
   }
 
   // ── Table ────────────────────────────────────────────────────────────────
@@ -72,6 +74,71 @@
     });
   }
 
+  // ── Metric info popovers ─────────────────────────────────────────────────
+  // infoIcon('total-value') renders a small ⓘ button; clicking it opens a
+  // panel with the metric's data source and calculation, looked up in
+  // window.MetricsInfo. One document-level handler serves every icon —
+  // views just sprinkle icons, no wiring needed.
+  function infoIcon(key) {
+    const def = (window.MetricsInfo || {})[key];
+    if (!def) return '';
+    return `<button type="button" class="info-dot" data-info="${esc(key)}" aria-haspopup="dialog" aria-label="How is ${esc(def.title)} calculated?" title="Where is this from?">i</button>`;
+  }
+
+  let infoPanel = null;
+  function closeInfo() {
+    if (infoPanel) { infoPanel.remove(); infoPanel = null; }
+  }
+  function openInfo(key, anchor) {
+    closeInfo();
+    const def = (window.MetricsInfo || {})[key];
+    if (!def) return;
+    infoPanel = document.createElement('div');
+    infoPanel.className = 'info-popover';
+    infoPanel.setAttribute('role', 'dialog');
+    infoPanel.setAttribute('aria-label', def.title);
+    infoPanel.innerHTML = `
+      <div class="info-popover-head">
+        <strong>${esc(def.title)}</strong>
+        <button type="button" class="info-close" aria-label="Close">×</button>
+      </div>
+      <div class="info-popover-body">
+        <h5>Data source</h5>
+        <p>${def.source}</p>
+        <h5>How it's calculated</h5>
+        <p>${def.calc}</p>
+      </div>`;
+    document.body.appendChild(infoPanel);
+    // Position near the anchor, clamped to the viewport.
+    const r = anchor.getBoundingClientRect();
+    const pw = Math.min(420, window.innerWidth - 24);
+    infoPanel.style.width = pw + 'px';
+    let left = Math.min(Math.max(12, r.left + window.scrollX - 40), window.scrollX + window.innerWidth - pw - 12);
+    infoPanel.style.left = left + 'px';
+    infoPanel.style.top = (r.bottom + window.scrollY + 8) + 'px';
+    infoPanel.querySelector('.info-close').addEventListener('click', closeInfo);
+    infoPanel.querySelector('.info-close').focus();
+  }
+
+  function enableInfoPopovers() {
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-info]');
+      if (btn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (infoPanel && infoPanel.dataset.for === btn.dataset.info) { closeInfo(); return; }
+        openInfo(btn.dataset.info, btn);
+        if (infoPanel) infoPanel.dataset.for = btn.dataset.info;
+        return;
+      }
+      if (infoPanel && !e.target.closest('.info-popover')) closeInfo();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeInfo();
+    });
+    window.addEventListener('hashchange', closeInfo);
+  }
+
   // ── Misc ─────────────────────────────────────────────────────────────────
   function flash(kind, html) {
     return `<div class="flash ${kind}">${html}</div>`;
@@ -92,5 +159,6 @@
     esc, kpiGrid, section, table, subTabs,
     rangePicker, bindRangePicker, RANGE_PRESETS,
     flash, emptyState, investorChip,
+    infoIcon, enableInfoPopovers,
   };
 })();

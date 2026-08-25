@@ -442,3 +442,40 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
   .subtabs { overflow-x: auto; flex-wrap: nowrap; }
   .subtabs a { white-space: nowrap; padding: 8px 10px; font-size: 0.84rem; }
 }
+
+/* ─── Metric info popovers ───────────────────────────────────────────── */
+.info-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 999px; flex: none;
+  background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--link); font-size: 0.68rem; font-weight: 700; font-style: italic;
+  cursor: pointer; padding: 0; vertical-align: middle; line-height: 1;
+  margin-left: 4px;
+}
+.info-dot:hover { border-color: var(--link); background: var(--panel); }
+.kpi-card .label .info-dot, .section-title .info-dot { opacity: 0.75; }
+.kpi-card .label .info-dot:hover, .section-title .info-dot:hover { opacity: 1; }
+
+.info-popover {
+  position: absolute; z-index: 200;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+}
+.info-popover-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+}
+.info-popover-head strong { font-size: 0.95rem; }
+.info-popover .info-close {
+  background: transparent; border: none; color: var(--muted);
+  font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 6px;
+}
+.info-popover .info-close:hover { color: var(--text); background: var(--panel-2); }
+.info-popover-body { padding: 12px 14px 14px; max-height: 340px; overflow-y: auto; }
+.info-popover-body h5 {
+  margin: 10px 0 4px; font-size: 0.72rem; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--muted); font-weight: 600;
+}
+.info-popover-body h5:first-child { margin-top: 0; }
+.info-popover-body p { margin: 0; font-size: 0.85rem; line-height: 1.55; color: var(--text); }
+.info-popover-body em { color: var(--accent-2); font-style: normal; }

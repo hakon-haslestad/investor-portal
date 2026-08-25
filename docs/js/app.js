@@ -73,5 +73,8 @@
     }
   }
 
-  document.addEventListener('DOMContentLoaded', boot);
+  document.addEventListener('DOMContentLoaded', () => {
+    window.UI.enableInfoPopovers();
+    boot();
+  });
 })();
