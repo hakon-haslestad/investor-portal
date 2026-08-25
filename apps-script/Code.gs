@@ -11,6 +11,8 @@
  * Entry points (run from the Apps Script editor):
  *   setupTabs()    — one-time: create Securities/StockPrices/_scratch/_log
  *                    and seed Securities from the Nordnet transaction log.
+ *   resolveTickers() — fill in missing tickers by looking up each row's
+ *                    ISIN via Yahoo's search API. Run after setupTabs.
  *   backfill()     — one-time: historical closes per ticker from its first
  *                    transaction date. Idempotent; never overwrites cells.
  *   dailyFetch()   — the trigger entry point. Held stocks daily; sold stocks
@@ -69,6 +71,73 @@ function setupTabs() {
   ensureTab_(ss, TABS.scratch, null, true);
   ensureTab_(ss, TABS.log, ['timestamp', 'context', 'ticker', 'message'], true);
   seedSecurities_(ss, sec);
+}
+
+// Resolve missing tickers from ISINs via Yahoo's search endpoint. Fills
+// ticker/exchange/currency on every Securities row that has an ISIN but no
+// ticker, and stamps notes with what happened. Safe to re-run — it never
+// touches a row that already has a ticker.
+function resolveTickers() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.securities);
+  var securities = readSecurities_(ss);
+  var resolved = 0, missed = 0;
+  securities.forEach(function (s) {
+    if (s.ticker || !s.isin) return;
+    try {
+      var hit = yahooLookupByIsin_(s.isin);
+      if (hit) {
+        // ticker | name | aliases | isin | currency | exchange | source | status | soldDate | notes
+        sheet.getRange(s.row, 1).setValue(hit.symbol);
+        var cur = currencyForSymbol_(hit.symbol);
+        if (cur) sheet.getRange(s.row, 5).setValue(cur);
+        if (hit.exchange) sheet.getRange(s.row, 6).setValue(hit.exchange);
+        sheet.getRange(s.row, 7).setValue(yahooCoveredByGf_(hit) ? 'googlefinance' : 'yahoo');
+        sheet.getRange(s.row, 10).setValue('auto-resolved from ISIN (' + (hit.name || '') + ') — verify');
+        resolved++;
+      } else {
+        sheet.getRange(s.row, 10).setValue('REVIEW: ISIN ' + s.isin + ' not found on Yahoo — fill ticker manually');
+        missed++;
+      }
+      Utilities.sleep(400); // be polite to the search endpoint
+    } catch (e) {
+      log_(ss, 'resolveTickers', s.name, String(e));
+      missed++;
+    }
+  });
+  log_(ss, 'resolveTickers', '', resolved + ' resolved, ' + missed + ' need manual review');
+}
+
+function yahooLookupByIsin_(isin) {
+  var url = 'https://query1.finance.yahoo.com/v1/finance/search?q=' + encodeURIComponent(isin) +
+    '&quotesCount=6&newsCount=0';
+  var resp = UrlFetchApp.fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) throw new Error('Yahoo search HTTP ' + resp.getResponseCode());
+  var quotes = (JSON.parse(resp.getContentText()).quotes || []).filter(function (q) {
+    return q.symbol && (q.quoteType === 'EQUITY' || !q.quoteType);
+  });
+  if (!quotes.length) return null;
+  // Prefer the listing on the security's home exchange (ISIN prefix ~ country):
+  // NO→.OL, SE→.ST, DK→.CO, DE→.DE/.F, FI→.HE. Fall back to the first hit.
+  var SUFFIX = { NO: '.OL', SE: '.ST', DK: '.CO', DE: '.DE', FI: '.HE' };
+  var want = SUFFIX[isin.slice(0, 2).toUpperCase()];
+  var best = want ? quotes.filter(function (q) { return q.symbol.slice(-want.length) === want; })[0] : null;
+  var q = best || quotes[0];
+  return { symbol: q.symbol, exchange: q.exchange || '', name: q.shortname || q.longname || '' };
+}
+
+// GOOGLEFINANCE covers Stockholm/Xetra/Copenhagen/Helsinki but not Oslo Børs.
+function yahooCoveredByGf_(hit) {
+  var sym = hit.symbol || '';
+  return /\.(ST|DE|F|CO|HE)$/.test(sym);
+}
+
+// Quote currency implied by the Yahoo symbol's exchange suffix. A bare
+// symbol (no suffix) is a US listing → USD.
+function currencyForSymbol_(symbol) {
+  var m = /\.([A-Z]+)$/.exec(symbol || '');
+  if (!m) return 'USD';
+  return { OL: 'NOK', ST: 'SEK', CO: 'DKK', DE: 'EUR', F: 'EUR', HE: 'EUR', L: 'GBP' }[m[1]] || '';
 }
 
 function dailyFetch() {

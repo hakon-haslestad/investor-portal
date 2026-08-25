@@ -24,7 +24,14 @@ and would not preserve history.
    authorization (spreadsheet + external requests) — accept.
    - This creates `Securities`, `StockPrices`, `_scratch`, `_log` and seeds
      `Securities` from every distinct security in `Rådata fra nordnet`.
-4. **Review the `Securities` tab.** Rows noted `REVIEW` need a ticker,
+4. Run **`resolveTickers`** — fills in missing tickers by looking up each
+   row's ISIN (taken from the Nordnet log) via Yahoo's search API, picking
+   the home-exchange listing (NO→`.OL`, SE→`.ST`, DK→`.CO`, DE→`.DE`,
+   FI→`.HE`) and setting `source` accordingly. Resolved rows get an
+   "auto-resolved from ISIN (…) — verify" note; skim that the matched
+   company names look right. Safe to re-run.
+5. **Review the remaining `Securities` rows.** Anything still noted
+   `REVIEW` (no ISIN in the log, or not found on Yahoo) needs a ticker,
    currency and source filled in by hand:
    - `ticker` — Yahoo-style symbol (`EQNR.OL`, `STOR-B.ST`, `HFG.DE`). This
      becomes the column header in `StockPrices` and the key the portal uses.
@@ -33,14 +40,14 @@ and would not preserve history.
      exports used short codes like `SALM`; newer ones use full names).
    - For a `googlefinance` row whose GF symbol differs from
      `exchange:ticker`, put `gf=EXCH:SYM` in `notes`.
-5. Run **`backfill`** — fetches historical closes per ticker from its first
+6. Run **`backfill`** — fetches historical closes per ticker from its first
    transaction date, plus FX history. Idempotent; safe to re-run (it never
    overwrites an existing cell). May take a few minutes.
-6. Run **`dailyFetch`** manually once and check:
+7. Run **`dailyFetch`** manually once and check:
    - `StockPrices` has today's row with a value per held ticker + FX columns.
    - `_log` (unhide via right-click a tab → Show) has no errors.
    - Run `dailyFetch` again — the same row is updated, not duplicated.
-7. Run **`setupTrigger`** — installs the daily 18:00 Europe/Oslo trigger.
+8. Run **`setupTrigger`** — installs the daily 18:00 Europe/Oslo trigger.
 
 ## Operations
 
