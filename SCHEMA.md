@@ -56,35 +56,46 @@ The `BYTTE` / `SPLITT` rule is deliberate: replaying these as cost
 events would zero out the original basis on spinoffs (e.g. Kongsberg
 Maritime out of Kongsberg Gruppen). Cost basis is preserved by intent.
 
----
+----
 
-## 2. `Beholdningsverdi` — current holdings
+## 2. `Securities` — security master (NEW)
 
-A snapshot of currently-held positions. One row per security per
-snapshot date. The portal uses the **latest snapshot date** as the
-source of truth for current qty and price. Columns are read by
-**position**, not header — keep this order.
+Created and seeded by the Apps Script (`setupTabs`). Header-keyed,
+order-tolerant. One row per security ever traded.
 
-| Pos | Field          | Type   | Example       |
-| --- | -------------- | ------ | ------------- |
-| A   | `snapshotDate` | date   | `2026-05-15`  |
-| B   | `security`     | string | `Equinor`     |
-| C   | `currency`     | string | `NOK`         |
-| D   | `qty`          | number | `100`         |
-| E   | `gav`          | number | `298.4`       |
-| F   | (unused)       | —      | —             |
-| G   | `currentPrice` | number | `345.5`       |
-| H   | `marginValue`  | number | `0`           |
-| I   | `marketValue`  | number | `34550`       |
-| J   | `returnPct`    | number | `15.81`       |
-| K   | `returnNok`    | number | `4710`        |
+| Header     | Type   | Example        | Notes                                                        |
+| ---------- | ------ | -------------- | ------------------------------------------------------------ |
+| `ticker`   | string | `EQNR.OL`      | Yahoo-style symbol. StockPrices column key. Required to price.|
+| `name`     | string | `Equinor`      | Canonical display name.                                       |
+| `aliases`  | string | `equinor;EQNR` | `;`-separated Nordnet display-name variants.                  |
+| `isin`     | string | `NO0010096985` | Optional.                                                     |
+| `currency` | string | `NOK`          | The ticker's native quote currency.                           |
+| `exchange` | string | `OSL`          | Informational; GF symbol derives from it when needed.         |
+| `source`   | enum   | `yahoo`        | `yahoo` (Oslo Børs) or `googlefinance` (STO/ETR/FX).          |
+| `status`   | enum   | `held`         | `held` / `sold` / `expired`. Maintained by the script.        |
+| `soldDate` | date   | `2026-05-02`   | Set when the replay hits qty 0; drives the 6-month tail.      |
+| `notes`    | string |                | Free text. `REVIEW` marks unmapped seeds; `gf=EXCH:SYM` overrides the GF symbol. |
 
-Header row is required (it's skipped), but the labels themselves are
-not parsed.
+## 3. `StockPrices` — daily close matrix (NEW)
 
----
+Written exclusively by the Apps Script. Row 1 is the header:
+`date | <ticker…> | CUR:USDNOK | CUR:SEKNOK | …`. One row per fetched
+date (`yyyy-mm-dd`), values are closes in the ticker's **native
+currency**; FX pairs are ordinary columns. Held stocks get a value per
+trading day; sold stocks weekly until 6 months after the sale. Holes are
+fine — the portal forward-fills every lookup. Never put formulas here.
 
-## 3. `Offisielle nøkkeltall` — per-stock KPIs
+## 4. `Beholdningsverdi` — RETIRED
+
+The manual holdings snapshot is no longer maintained. The portal reads
+it only as a fallback while `StockPrices` is empty (set `TABS.holdings`
+to `null` in config.js to stop fetching it). Quantity and cost basis are
+derived by replaying `Rådata fra nordnet`: quantity moves on every
+BUY/SELL-classified type including corporate actions (`BYTTE`,
+`SPLITT`), cost moves only on `KJØPT` and realizing sells — so a split
+halves average cost implicitly and a spinoff parent keeps its basis.
+
+## 5. `Offisielle nøkkeltall` — per-stock KPIs
 
 Per-company × per-period fundamentals, one row per (company, period). The
 sheet is **header-driven**: the parser finds the column-name row (the one
@@ -117,7 +128,7 @@ company, compares periods where more than one exists, and renders the
 
 ---
 
-## 4. `Dim-values` — default attribution + ownership overrides
+## 6. `Dim-values` — default attribution + ownership overrides
 
 Maps each security to the investor(s) who own it, and at what weight.
 Five investors share one Nordnet account, so every transaction needs to
@@ -143,7 +154,7 @@ Admin page updates row D + E on the matching row of this tab.
 
 ---
 
-## 5. `Members` — user accounts
+## 7. `Members` — user accounts
 
 Maps Google accounts to investor codes and roles. This is the **auth
 allowlist**: a Google account that signs in but isn't in this tab gets
@@ -164,7 +175,7 @@ with their Google account as Editor.
 
 ---
 
-## 6. `Competitions` — competition metadata
+## 8. `Competitions` — competition metadata
 
 One row per competition. Created via the Competitions page in the
 portal; the row is appended at the bottom of this tab.
@@ -190,7 +201,7 @@ data and standings — there is no per-competition narrative override field.
 
 ---
 
-## 7. `Competition_Participants` — who's in each competition
+## 9. `Competition_Participants` — who's in each competition
 
 Read by **position** (no header parsing).
 

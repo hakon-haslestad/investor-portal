@@ -348,11 +348,14 @@
       return state.perSec.get(security);
     };
 
-    // Pre-window replay
+    // Pre-window replay. Corporate actions (BYTTE/SPLITT/…) move qty but
+    // not cost, same rules as Positions — otherwise the endpoint market
+    // values are wrong for any security that split or was spun off.
     for (const tx of txs) {
       if (!tx.security) continue;
       if ((tx.tradeDate || '') >= from) break;
-      if (tx.type !== 'KJØPT' && !isRealizingSell(tx.type)) continue;
+      const preCat = classify(tx.type);
+      if (preCat !== 'BUY' && preCat !== 'SELL') continue;
       const split = splitForSecurity(attrMap, tx.security);
       if (!split.length) continue;
       const security = canonicalName(tx.security);
@@ -360,15 +363,16 @@
         const state = states.get(code);
         const slot = ensureSec(state, security);
         const amt = amountNok(tx) * weight;
-        const q = (tx.qty || 0) * weight;
-        if (tx.type === 'KJØPT') {
+        const q = Math.abs(tx.qty || 0) * weight;
+        if (preCat === 'BUY') {
           slot.qty += q;
-          slot.costSum += Math.abs(amt);
+          if (tx.type === 'KJØPT') slot.costSum += Math.abs(amt);
         } else {
-          const sold = Math.abs(q);
-          const fracSold = slot.qty > 0 ? sold / slot.qty : 0;
-          slot.costSum = Math.max(0, slot.costSum - slot.costSum * fracSold);
-          slot.qty = Math.max(0, slot.qty - sold);
+          if (isRealizingSell(tx.type)) {
+            const fracSold = slot.qty > 0 ? Math.min(q / slot.qty, 1) : 0;
+            slot.costSum = Math.max(0, slot.costSum - slot.costSum * fracSold);
+          }
+          slot.qty = Math.max(0, slot.qty - q);
         }
       }
     }
@@ -426,6 +430,17 @@
             state.sellsInWindow += amt;
             state.sellCount += 1;
           }
+        }
+      } else if (cat === 'BUY' || cat === 'SELL') {
+        // In-window corporate action: qty moves, no cost/realized/counters.
+        const split = splitForSecurity(attrMap, tx.security);
+        if (!split.length) continue;
+        const security = canonicalName(tx.security);
+        for (const { code, weight } of split) {
+          const slot = ensureSec(states.get(code), security);
+          const q = Math.abs(tx.qty || 0) * weight;
+          if (cat === 'BUY') slot.qty += q;
+          else slot.qty = Math.max(0, slot.qty - q);
         }
       }
     }
@@ -770,7 +785,22 @@
   window.Portfolio = {
     buildDashboard, investorDetail, canonicalName,
     currentHoldings, previousHoldings, snapshotDate,
-    pricesAtDate, snapshotForDate: (store, date) => (usePriceMatrix(store) ? date : null),
+    pricesAtDate,
+    // "Which date are these prices actually from?" In matrix mode: the last
+    // price row on or before `date`; legacy: the snapshot used.
+    snapshotForDate: (store, date) => {
+      if (usePriceMatrix(store)) {
+        let best = null;
+        for (const d of store.prices.dates) { if (d <= date) best = d; else break; }
+        return best;
+      }
+      let snap = null;
+      for (const h of store.holdings) {
+        if (!h.snapshotDate || h.snapshotDate > date) continue;
+        if (!snap || h.snapshotDate > snap) snap = h.snapshotDate;
+      }
+      return snap;
+    },
     nokPriceForSecurity, computeWindow, windowMetrics, usePriceMatrix,
     cash: { latestSaldo, saldoOnOrBefore },
     _setRegistry,
