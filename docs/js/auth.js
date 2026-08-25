@@ -41,6 +41,11 @@
     cachedEmail = null;
   }
 
+  // Reject handler for the in-flight token request — GIS reports popup
+  // failures (blocked, closed by user) via error_callback, not callback.
+  // Without this the sign-in promise would hang forever on a blocked popup.
+  let pendingReject = null;
+
   async function ensureTokenClient(scope) {
     if (tokenClient && tokenClient._scope === scope) return tokenClient;
     // Wait for GIS script to load
@@ -56,6 +61,12 @@
       client_id: window.PORTAL_CONFIG.OAUTH_CLIENT_ID,
       scope: scope || window.PORTAL_CONFIG.OAUTH_SCOPE,
       callback: () => {}, // assigned per-request
+      error_callback: (err) => {
+        if (pendingReject) {
+          const r = pendingReject; pendingReject = null;
+          r(new Error(err && (err.message || err.type) || 'popup failed'));
+        }
+      },
     });
     tokenClient._scope = scope || window.PORTAL_CONFIG.OAUTH_SCOPE;
     return tokenClient;
@@ -65,7 +76,9 @@
     const requestScope = scope || window.PORTAL_CONFIG.OAUTH_SCOPE;
     return new Promise((resolve, reject) => {
       ensureTokenClient(requestScope).then((client) => {
+        pendingReject = reject;
         client.callback = (resp) => {
+          pendingReject = null;
           if (resp.error) return reject(new Error(resp.error_description || resp.error));
           const tok = {
             access_token: resp.access_token,
@@ -126,6 +139,18 @@
     getEmail() {
       if (cachedEmail) return cachedEmail;
       return sessionStorage.getItem('portal.email');
+    },
+
+    // Resolve the signed-in email from an existing token WITHOUT opening a
+    // popup — for the silent auto-login path, where a fresh browser session
+    // has a valid token but no cached email. An interactive signIn() here
+    // would be popup-blocked (no user gesture) and dead-end the login.
+    async ensureEmail() {
+      if (this.getEmail()) return this.getEmail();
+      const t = cachedToken || loadCachedToken();
+      if (!t) throw new Error('no token');
+      const info = await fetchUserInfo(t.access_token);
+      return info.email || null;
     },
 
     async accessToken() {

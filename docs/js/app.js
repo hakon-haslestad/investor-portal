@@ -59,17 +59,32 @@
         showGate('Loading portfolio…');
         await enter();
       } catch (e) {
-        showGate(`<div class="flash error">Sign-in failed: <code>${window.UI.esc(e.message)}</code></div>`);
+        console.error('sign-in failed', e);
+        showGate(`<div class="flash error">Sign-in failed: <code>${window.UI.esc(e.message)}</code><br>
+          <span class="text-small">If a popup was blocked, allow popups for this site and try again.</span></div>`);
       }
     });
+    // Silent auto-login: token via GIS silent flow, email via the userinfo
+    // endpoint (NEVER an interactive popup here — without a user gesture the
+    // browser blocks it and the login dead-ends at the gate).
     try {
       await window.Auth.ensureToken();
-      if (!window.Auth.getEmail()) await window.Auth.signIn();
+      await window.Auth.ensureEmail();
+    } catch (e) {
+      // Genuinely not signed in — wait for the button click.
+      showGate('');
+      return;
+    }
+    try {
       showGate('Loading portfolio…');
       await enter();
-    } catch (_e) {
-      // Not signed in — the gate with its button is already visible.
-      showGate('');
+    } catch (e) {
+      // Signed in but loading failed — surface the real error instead of
+      // silently bouncing back to the sign-in button.
+      console.error('load failed', e);
+      showGate(`<div class="flash error" style="text-align:left"><strong>Signed in, but loading the sheet failed.</strong><br>
+        <code>${window.UI.esc((e && e.message) || String(e))}</code><br>
+        <span class="text-small">Try the button above to re-authorize, or check the browser console.</span></div>`);
     }
   }
 
