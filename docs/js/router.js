@@ -13,7 +13,7 @@
     { match: 'investors',    label: 'Investors',    view: 'investors' },
     { match: 'competitions', label: 'Competitions', view: 'competitions' },
     { match: 'game',         label: 'The Game',     view: 'game' },
-    { match: 'accounting',   label: 'Accounting',   view: 'accounting' },
+    { match: 'accounting',   label: 'Accounting',   view: 'accounting', badge: 'beta' },
     { match: 'admin',        label: 'Admin',        view: 'admin', adminOnly: true },
   ];
   const DEFAULT = '#/dashboard';

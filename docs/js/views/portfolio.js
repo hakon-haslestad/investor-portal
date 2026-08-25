@@ -58,11 +58,22 @@
 
     document.getElementById('pf-when').innerHTML = priceFreshnessNote(store);
 
+    // Period comparison: value every KPI against the selected window's start.
+    let preset = 'ytd';
+    try { preset = JSON.parse(localStorage.getItem('portal.holdings.range') || '{}').preset || 'ytd'; } catch (_e) {}
+    const win = window.Portfolio.computeWindow(store, preset);
+    const then = window.Portfolio.usePriceMatrix(store) ? window.Portfolio.groupValueAt(store, win.from) : null;
+    const delta = (now, was) => {
+      if (!then || was == null || !(Math.abs(was) > 0.5)) return null;
+      const pct = ((now - was) / Math.abs(was)) * 100;
+      return `<span class="${pctClass(pct)}">${fmtPct(pct)}</span> vs ${win.from}`;
+    };
+
     const kpis = window.UI.kpiGrid([
-      { label: 'Market value', value: fmtNok(totalMv), info: 'market-value' },
-      { label: 'Cash', value: fmtNok(cash), sub: 'latest Nordnet saldo', info: 'cash' },
-      { label: 'Total value', value: fmtNok(totalMv + cash), info: 'total-value' },
-      { label: 'Unrealized', value: fmtNok(unrealized), tone: unrealized >= 0 ? 'positive' : 'negative', info: 'unrealized' },
+      { label: 'Market value', value: fmtNok(totalMv), sub: delta(totalMv, then && then.mv) || '', info: 'market-value' },
+      { label: 'Cash', value: fmtNok(cash), sub: delta(cash, then && then.cash) || 'latest Nordnet saldo', info: 'cash' },
+      { label: 'Total value', value: fmtNok(totalMv + cash), sub: delta(totalMv + cash, then && then.total) || '', info: 'total-value' },
+      { label: 'Unrealized', value: fmtNok(unrealized), sub: then ? `was ${fmtNok(then.unrealized)} on ${win.from}` : '', tone: unrealized >= 0 ? 'positive' : 'negative', info: 'unrealized' },
     ]);
 
     const COLS = 9;
@@ -87,6 +98,7 @@
     }).join('');
 
     body.innerHTML = `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">${window.UI.rangePicker(preset)}</div>
       ${kpis}
       ${window.UI.section('Current holdings', { info: 'holdings-table', extra: '<span class="text-muted text-small">click a row for the price history</span>' })}
       ${holdings.length === 0
@@ -102,6 +114,11 @@
             <tbody>${rows}</tbody>
           </table></div>`}
     `;
+
+    window.UI.bindRangePicker(body, (p) => {
+      localStorage.setItem('portal.holdings.range', JSON.stringify({ preset: p }));
+      renderHoldings(body, ctx);
+    });
 
     // Row → toggle per-security price chart (rendered lazily, once).
     body.querySelectorAll('tr.row-link').forEach((tr) => {

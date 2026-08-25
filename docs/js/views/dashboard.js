@@ -87,14 +87,6 @@
     }
     window.__toggleCompetitionMode = toggleCompetitionMode;
 
-    function toggleFilter(code) {
-      const idx = selectedCodes.indexOf(code);
-      if (idx >= 0) selectedCodes.splice(idx, 1);
-      else selectedCodes.push(code);
-      if (selectedCodes.length) localStorage.setItem('portal.filter', selectedCodes.join(','));
-      else localStorage.removeItem('portal.filter');
-      refresh();
-    }
     window.__clearFilter = () => { selectedCodes = []; localStorage.removeItem('portal.filter'); refresh(); };
 
     // Aggregate per-investor values across the current selection.
@@ -159,7 +151,6 @@
       }
 
       paint(d);
-      paintCharts(d.window);
     }
 
     function applyCompetitionOverrides(d, comp) {
@@ -228,104 +219,6 @@
     }
 
     // Slice an all-time per-investor series down to the selected window.
-    function windowSlice(samples, from, to, { rebase = true } = {}) {
-      if (!from || !to) return samples;
-      let baseline = null;
-      for (const s of samples) {
-        if (s.date <= from) baseline = s;
-        else break;
-      }
-      const base = rebase && baseline ? baseline.perInvestor : null;
-      const out = [];
-      if (rebase && (!samples.length || samples[0].date > from)) {
-        out.push({ date: from, perInvestor: emptyPerInvestor() });
-      } else if (!rebase && baseline) {
-        out.push({ date: from, perInvestor: { ...baseline.perInvestor } });
-      }
-      for (const s of samples) {
-        if (s.date < from) continue;
-        if (s.date > to) break;
-        const next = { date: s.date, perInvestor: {} };
-        for (const code of INVESTOR_CODES) {
-          const v = s.perInvestor[code] || 0;
-          next.perInvestor[code] = base ? v - (base[code] || 0) : v;
-        }
-        out.push(next);
-      }
-      if (out.length && out[out.length - 1].date < to) {
-        out.push({ date: to, perInvestor: { ...out[out.length - 1].perInvestor } });
-      }
-      return out;
-    }
-
-    function emptyPerInvestor() {
-      const m = {};
-      for (const code of INVESTOR_CODES) m[code] = 0;
-      return m;
-    }
-
-    function paintCharts(win) {
-      const from = win && win.from, to = win && win.to;
-      const pnlAll = window.TimeSeries.buildCumulativePnlSeries(store);
-      const mvAll = window.TimeSeries.buildPortfolioValueSeries(store);
-      const tsPnl = windowSlice(pnlAll, from, to, { rebase: true });
-      const tsMv = windowSlice(mvAll, from, to, { rebase: false });
-
-      const toSeries = (samples) => INVESTOR_CODES.map((code) => ({
-        code,
-        name: `${code} ${names[code] || ''}`.trim(),
-        color: INVESTOR_COLORS[code],
-        points: samples.map((s) => ({ date: s.date, y: s.perInvestor[code] || 0 })),
-      }));
-      const pnlSeriesAll = toSeries(tsPnl);
-      const mvSeriesAll = toSeries(tsMv);
-      const filt = (all) => selectedCodes.length ? all.filter((s) => selectedCodes.includes(s.code)) : all;
-
-      const pnlEl = el.querySelector('#chart-pnl');
-      const mvEl = el.querySelector('#chart-mv');
-      const legendEl = el.querySelector('#chart-legend');
-      if (!pnlEl || !mvEl || !legendEl) return;
-      pnlEl.innerHTML = '';
-      mvEl.innerHTML = '';
-      legendEl.innerHTML = '';
-
-      const isMobile = window.matchMedia('(max-width: 720px)').matches;
-      const W = isMobile ? 540 : 900;
-      const H = isMobile ? 260 : 300;
-
-      const filterTag = selectedCodes.length ? ` · ${selectedCodes.join(', ')}` : '';
-      pnlEl.appendChild(window.Charts.multiLine({
-        series: filt(pnlSeriesAll), width: W, height: H,
-        title: selectedCodes.length
-          ? `Cumulative P/L${filterTag}`
-          : 'Cumulative realized P/L + dividends − fees',
-        interactive: true,
-      }));
-      mvEl.appendChild(window.Charts.multiLine({
-        series: filt(mvSeriesAll), width: W, height: H,
-        title: selectedCodes.length
-          ? `Portfolio value${filterTag}`
-          : 'Portfolio value per investor',
-        interactive: true,
-      }));
-
-      const investorLegend = pnlSeriesAll.map((s) => {
-        const lastPnl = s.points.slice(-1)[0];
-        return {
-          code: s.code,
-          name: `${s.code} · ${names[s.code] || ''}`,
-          color: s.color,
-          valueText: lastPnl ? fmtNok(lastPnl.y) : '',
-        };
-      });
-      legendEl.appendChild(window.Charts.legend({
-        series: investorLegend,
-        selectedCodes,
-        onSelect: toggleFilter,
-      }));
-    }
-
-    // Per-investor fundamentals from Offisielle nøkkeltall.
     function periodKey(p) {
       const y = /(\d{4})/.exec(p || ''); const yr = y ? +y[1] : 0;
       const q = /Q\s*([1-4])/i.exec(p || ''); return yr * 10 + (q ? +q[1] : 4);
@@ -500,48 +393,6 @@
         ${filterLabel ? `<div class="filter-row">${filterLabel}</div>` : ''}
 
         ${compBanner}
-
-        <div class="section-title">Leaderboards</div>
-        <div class="leaderboard">
-          <div class="lb-card">
-            <h3>This period ${ii('lb-period')}</h3>
-            ${d.leaderboards.period.map((r, i) => `
-              <div class="row"><span class="who">${PODIUM[i]} ${r.code} <span class="text-muted text-small">${names[r.code] || ''}</span></span><span class="v ${pctClass(r.value)}">${fmtPct(r.value)}</span></div>
-            `).join('')}
-          </div>
-          <div class="lb-card">
-            <h3>All-time, no contest ${ii('lb-alltime')}</h3>
-            ${d.leaderboards.allTime.map((r, i) => `
-              <div class="row"><span class="who">${PODIUM[i]} ${r.code}</span><span class="v ${pctClass(r.value)}">${fmtPct(r.value)}</span></div>
-            `).join('')}
-          </div>
-          <div class="lb-card">
-            <h3>Year to date <span class="text-muted text-small">(realized + dividends)</span> ${ii('lb-ytd')}</h3>
-            ${d.leaderboards.ytd.map((r, i) => `
-              <div class="row"><span class="who">${PODIUM[i]} ${r.code} <span class="text-muted text-small">${names[r.code] || ''}</span></span><span class="v ${pctClass(r.value)}">${fmtPct(r.value)}</span></div>
-            `).join('')}
-          </div>
-          <div class="lb-card">
-            <h3>Best single position (all-time) ${ii('lb-bestpicks')}</h3>
-            ${d.leaderboards.bestPicks.map((r) => {
-              if (!r.pick) return `<div class="row"><span class="who">${r.code}</span><span class="v text-muted">no picks</span></div>`;
-              return `<div class="row"><span class="who">${r.code} <span class="text-muted text-small">${escapeHtml(r.pick.security)}</span></span><span class="v positive">${fmtNok(r.pick.return)} (${fmtPct(r.pick.pct)})</span></div>`;
-            }).join('')}
-          </div>
-          <div class="lb-card">
-            <h3>Last 6 months — top of the table ${ii('lb-monthly')}</h3>
-            ${d.leaderboards.monthly.map((m) => `
-              <div class="row"><span class="who">${m.month}</span><span class="v">${m.ranks.slice(0,3).map((r,i)=>`${PODIUM[i]} ${r.code}`).join(' · ')}</span></div>
-            `).join('')}
-          </div>
-        </div>
-
-        <div class="section-title">Timelines per investor <span class="text-muted text-small">click investors to filter (multi-select)</span></div>
-        <div id="chart-legend"></div>
-        <div class="section-title text-small">Cumulative realized P/L ${ii('chart-pnl')}</div>
-        <div class="chart-wrap" id="chart-pnl"></div>
-        <div class="section-title text-small">Portfolio value ${ii('chart-value')}</div>
-        <div class="chart-wrap" id="chart-mv"></div>
 
         <div class="section-title">${rnTitle}</div>
         <div class="kpi-grid">

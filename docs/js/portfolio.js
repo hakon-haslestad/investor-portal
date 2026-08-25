@@ -123,6 +123,46 @@
     return out.sort((a, b) => (b.marketValueNok || 0) - (a.marketValueNok || 0));
   }
 
+  // ─── Point-in-time valuations (for period-comparison KPIs) ───────────────
+
+  // Group-level book at end of `date`: market value (trade-price fallback
+  // for delisted names), cash (last Saldo ≤ date), cost basis, unrealized.
+  function groupValueAt(store, date) {
+    let mv = 0, cost = 0;
+    if (usePriceMatrix(store)) {
+      for (const h of window.Positions.holdingsAt(store, date)) {
+        const sec = registry.forName(h.security);
+        if (sec && sec.status === 'ignore') continue;
+        const px = window.Prices.nokPriceAround(store.prices, sec, date);
+        if (px == null) continue;
+        mv += px * h.qty;
+        cost += h.costSum;
+      }
+    }
+    const cash = saldoOnOrBefore(store, date) || 0;
+    return { mv, cash, total: mv + cash, cost, unrealized: mv - cost };
+  }
+
+  // One investor's attributed slice of the same, plus their 1/5 cash share.
+  function investorValueAt(store, code, date) {
+    let mv = 0, cost = 0;
+    if (usePriceMatrix(store)) {
+      for (const h of window.Positions.holdingsAt(store, date)) {
+        const sec = registry.forName(h.security);
+        if (sec && sec.status === 'ignore') continue;
+        const split = splitForSecurity(store.attributionMap, h.security);
+        const slot = split.find((x) => x.code === code);
+        if (!slot) continue;
+        const px = window.Prices.nokPriceAround(store.prices, sec, date);
+        if (px == null) continue;
+        mv += px * h.qty * slot.weight;
+        cost += h.costSum * slot.weight;
+      }
+    }
+    const cash = (saldoOnOrBefore(store, date) || 0) / INVESTOR_CODES.length;
+    return { mv, cash, total: mv + cash, cost, unrealized: mv - cost };
+  }
+
   // ─── Cost basis / cashflow / dividends ───────────────────────────────────
 
   function deriveCostBasis(store) {
@@ -819,6 +859,7 @@
       return best;
     },
     nokPriceForSecurity, computeWindow, windowMetrics, usePriceMatrix,
+    groupValueAt, investorValueAt,
     cash: { latestSaldo, saldoOnOrBefore },
     _setRegistry,
     _debug: { deriveCashFlow, deriveCostBasis, deriveDividends, deriveInvested },

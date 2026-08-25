@@ -484,3 +484,10 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
    any other explicit display) would otherwise override it and keep the
    auth gate painted on top of the running app. */
 [hidden] { display: none !important; }
+
+/* Tiny status badge on a nav tab (e.g. Accounting "beta") */
+.nav-badge {
+  font-size: 0.58rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--accent-2);
+  margin-left: 4px; vertical-align: super;
+}

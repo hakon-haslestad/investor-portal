@@ -99,21 +99,34 @@
     const s = detail.summary;
     const verdict = window.Copy.verdictFromReturn(displayName, s.portfolioReturnPct);
 
+    // Period comparison against the selected window's start.
+    let preset = 'ytd';
+    try { preset = JSON.parse(localStorage.getItem('portal.investor.range') || '{}').preset || 'ytd'; } catch (_e) {}
+    const win = window.Portfolio.computeWindow(store, preset);
+    const usesMatrix = window.Portfolio.usePriceMatrix(store);
+    const then = usesMatrix ? window.Portfolio.investorValueAt(store, code, win.from) : null;
+    const wm = usesMatrix ? window.Portfolio.windowMetrics(store, win.from, win.to).perInvestor[code] : null;
+    const delta = (now, was) => {
+      if (!then || was == null || !(Math.abs(was) > 0.5)) return null;
+      const pct = ((now - was) / Math.abs(was)) * 100;
+      return `<span class="${pctClass(pct)}">${fmtPct(pct)}</span> vs ${win.from}`;
+    };
+
     el.innerHTML = `
       ${SUBTABS('overview')}
       <div class="hero">
         <h2>${UI.investorChip(code)} ${UI.esc(displayName)}</h2>
-        <div class="when"><a href="#/investors">← all investors</a></div>
+        <div class="when">${UI.rangePicker(preset)}</div>
       </div>
-      <div class="flash success">${verdict}</div>
+      <div class="flash success">${verdict} <span class="text-small text-muted">· <a href="#/investors">← all investors</a></span></div>
 
       ${UI.kpiGrid([
-        { label: 'Total value', value: fmtNok(s.totalValue), info: 'investor-kpis' },
-        { label: 'Stocks MV', value: fmtNok(s.marketValue), info: 'market-value' },
-        { label: 'Dry powder (share)', value: fmtNok(s.cash), info: 'cash' },
+        { label: 'Total value', value: fmtNok(s.totalValue), sub: delta(s.totalValue, then && then.total) || '', info: 'investor-kpis' },
+        { label: 'Stocks MV', value: fmtNok(s.marketValue), sub: delta(s.marketValue, then && then.mv) || '', info: 'market-value' },
+        { label: 'This period', value: wm ? `<strong>${fmtPct(wm.periodReturnPct)}</strong>` : '—', sub: wm ? `${fmtNok(wm.netPnlInWindow)} net P/L · ${win.from} → ${win.to}` : '', tone: wm ? pctClass(wm.periodReturnPct) : '', info: 'window-metrics' },
         { label: 'Total invested', value: fmtNok(s.invested), info: 'invested' },
         { label: 'Realized', value: fmtNok(s.realized), tone: pctClass(s.realized), info: 'realized' },
-        { label: 'Unrealized', value: fmtNok(s.unrealized), tone: pctClass(s.unrealized), info: 'unrealized' },
+        { label: 'Unrealized', value: fmtNok(s.unrealized), sub: then ? `was ${fmtNok(then.unrealized)} on ${win.from}` : '', tone: pctClass(s.unrealized), info: 'unrealized' },
         { label: 'Dividends', value: fmtNok(s.dividends), info: 'dividends' },
         { label: 'Return %', value: `<strong>${fmtPct(s.portfolioReturnPct)}</strong>`, tone: pctClass(s.portfolioReturnPct), info: 'return-pct' },
       ])}
@@ -188,6 +201,11 @@
         `<span class="${pctClass(t.amount)}">${fmtNok(t.amount)}</span>`,
       ]), { empty: 'No transactions attributed yet.' })}
     `;
+
+    UI.bindRangePicker(el, (pNew) => {
+      localStorage.setItem('portal.investor.range', JSON.stringify({ preset: pNew }));
+      renderDetail(el, ctx, code);
+    });
 
     // Daily equity curve for this investor (needs the price matrix).
     if (window.Portfolio.usePriceMatrix(store)) {
