@@ -149,6 +149,7 @@ stylistic header rows) and maps columns by name, so column order can change.
 | `EPS TTM`           | `eps`           | string (raw) | Trailing-twelve-month EPS.                         |
 | `P/E`               | `pe`            | number       | Indicative P/E.                                    |
 | `Merknad`           | `note`          | string       | Free-text per-company comment (shown in the report).|
+| `BVPS` *(optional)* | `bvps`          | string (raw) | Book value (bokført egenkapital) per share, e.g. `1,10 EUR` or `45,20 NOK`. Drives P/B and look-through book value on the dashboard; rows without it show —. Header matched on `BVPS`/`bokført`. |
 
 The portal does **no** FX/unit math — `yourRevNok` / `yourProfitNok` /
 `valueNok` are taken as the final NOK numbers entered in the sheet. The

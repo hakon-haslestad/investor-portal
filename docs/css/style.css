@@ -499,3 +499,47 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
   white-space: nowrap;
 }
 .competition-card h3 .tag { margin-left: 6px; vertical-align: middle; }
+
+/* ─── Mobile sweep for SPA-era additions (≤720px) ────────────────────── */
+@media (max-width: 720px) {
+  /* Heroes that carry range pickers: stack, let the picker scroll */
+  .hero { flex-direction: column; align-items: stretch; gap: 8px; }
+  .hero .when { order: 2; }
+  .hero .range-picker, .when .range-picker {
+    flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+  .range-picker .preset { flex: none; }
+
+  /* Activity toolbar: full-width search, chips wrap, count on its own line */
+  .data-toolbar { padding: 10px; gap: 8px; }
+  .data-toolbar input[type="search"] { width: 100%; order: -1; }
+  .data-toolbar .count { width: 100%; text-align: right; font-size: 0.78rem; }
+  .type-pills, .code-chips { width: 100%; }
+  .type-pills button, .code-chips button { padding: 6px 10px; min-height: 32px; }
+
+  /* Every drill-down / detail table scrolls instead of crushing */
+  .month-detail table, .fx-detail table, .table-scroll table { white-space: nowrap; }
+  .fx-detail > td, .month-detail > td { padding: 10px 6px 14px; }
+
+  /* KPI subs with period-comparison text can wrap */
+  .kpi-card .sub { white-space: normal; line-height: 1.35; }
+
+  /* Info popover: keep on-screen and scrollable */
+  .info-popover { max-width: calc(100vw - 24px); }
+  .info-popover-body { max-height: 55vh; }
+
+  /* Look-through multiple input: comfortable touch target */
+  #lt-multiple { min-height: 36px; width: 72px !important; }
+
+  /* Subtabs + nav already scroll; make the beta badge not add height */
+  .nav-badge { vertical-align: baseline; font-size: 0.55rem; }
+
+  /* Details expander tables */
+  .all-tx-details .data-table-wrap { max-width: 100%; }
+}
+
+@media (max-width: 400px) {
+  .kpi-card .value { font-size: 1.05rem; }
+  .subtabs a { padding: 8px 8px; font-size: 0.8rem; }
+}

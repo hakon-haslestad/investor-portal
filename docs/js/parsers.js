@@ -69,6 +69,27 @@
     return null;
   }
 
+  // Parse loose money-ish sheet strings: '812 mill EUR', '92,1 mrd NOK',
+  // '20,55 NOK¹' (footnote marks stripped), '285,50 NOK', plain numbers.
+  // Returns { value, unit: 'mill'|'mrd'|null, cur: 'NOK'|'EUR'|…|null } or null.
+  function parseMoneyish(v) {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? { value: v, unit: null, cur: null } : null;
+    const s = String(v).replace(/[¹²³*†]/g, '').trim();
+    const m = s.match(/^(-?[\d\s.,\u00a0]+)\s*(mill|mrd|mill\.|mrd\.)?\s*([A-Za-z]{3})?/);
+    if (!m || !m[1]) return null;
+    // Number normalization: '21,900.0' (comma thousands + dot decimal) vs
+    // '92,1' (decimal comma) vs '732.1' (decimal dot).
+    let raw = m[1].replace(/[\s\u00a0]/g, '');
+    if (raw.includes(',') && raw.includes('.')) raw = raw.replace(/,/g, '');
+    else raw = raw.replace(/,/g, '.');
+    const num = Number(raw);
+    if (!Number.isFinite(num)) return null;
+    const unit = m[2] ? m[2].replace('.', '') : null;
+    const cur = m[3] ? m[3].toUpperCase() : null;
+    return { value: num, unit, cur };
+  }
+
   function numOrNull(v) {
     if (v == null || v === '') return null;
     if (typeof v === 'number') return Number.isFinite(v) ? v : null;
@@ -219,6 +240,7 @@
       eps: find((c) => c.includes('eps')),
       pe: find((c) => c === 'p/e' || c.includes('p/e')),
       note: find((c) => c.includes('merknad')),
+      bvps: find((c) => c.includes('bvps') || c.includes('bokført')),
     };
     const at = (row, i) => (i >= 0 ? row[i] : null);
     const str = (v) => (v != null && String(v).trim() !== '' ? String(v).trim() : null);
@@ -243,6 +265,7 @@
         eps: str(at(row, idx.eps)),
         pe: numOrNull(at(row, idx.pe)),
         note: str(at(row, idx.note)),
+        bvps: str(at(row, idx.bvps)),
       });
     }
     return out;
@@ -282,5 +305,6 @@
     normalizeSecurityName,
     excelDateToISO,
     numOrNull,
+    parseMoneyish,
   };
 })();

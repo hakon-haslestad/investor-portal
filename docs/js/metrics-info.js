@@ -162,6 +162,11 @@
       calc: 'One view over the raw transaction log: the search box matches security/ISIN/type/notes, the type pills and investor chips filter by classification and Dim-values attribution, and the range picker bounds the dates. Every KPI, chart and month bucket below recomputes from the filtered set. Realized P/L per sell is stamped by a full-history average-cost replay, so filtered sums stay consistent.',
     },
 
+    'look-through': {
+      title: 'Look-through fundamental value',
+      source: 'Offisielle nøkkeltall (EPS, revenue, shares out, P/E, optional BVPS) × your LIVE share counts from the transaction replay.',
+      calc: 'Per company, the latest ANNUAL period is used; a company with only quarterly rows is annualized ×4 and marked ≈.<br><br>· <strong>Your earnings/yr</strong> = EPS (NOK; parsed with its currency, or price ÷ P/E as fallback) × shares held.<br>· <strong>Your revenue/yr</strong> = revenue ÷ shares outstanding × fx × shares held.<br>· <strong>Your book value</strong> = BVPS × shares held (needs the BVPS column).<br>· <strong>Fundamental value</strong> = Σ earnings × the P/E multiple you set — compare it to market value to see what the market pays for those earnings.<br>· <strong>Portfolio P/E</strong> = market value ÷ Σ earnings (only positions with earnings data count on both sides).',
+    },
     'fundamentals': {
       title: 'Fundamentals',
       source: 'The Offisielle nøkkeltall tab — maintained by hand per company per period.',

@@ -107,6 +107,59 @@
     }
 
     // Current portfolio table — replay-derived holdings priced by the matrix.
+    function renderLookThrough() {
+      if (!window.Portfolio.usePriceMatrix(store) || !(store.kpis || []).length) return '';
+      let multiple = 15;
+      try { multiple = Number(JSON.parse(localStorage.getItem('portal.fundamental.multiple') || '15')) || 15; } catch (_e) {}
+      const lt = window.Fundamentals.buildLookThrough(store, { multiple });
+      if (!lt.rows.length) return '';
+      const t = lt.totals;
+      const dash = '<span class="text-muted">—</span>';
+      const money = (v, cls) => (v == null ? dash : `<span class="${cls || ''}">${fmtNok(v)}</span>`);
+      const gapSub = t.gapPct == null ? '' :
+        `<span class="${pctClass(-t.gapPct)}">market trades ${t.gapPct >= 0 ? '+' : ''}${t.gapPct.toFixed(0)}% ${t.gapPct >= 0 ? 'above' : 'below'}</span> the ×${multiple} value`;
+      return `
+        <div class="section-title">What the businesses earn you <span class="text-muted text-small">(look-through, latest annual figures × your live share counts)</span> ${ii('look-through')}</div>
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="label">Fundamental value <span class="text-muted">@ ×</span><input id="lt-multiple" type="number" min="1" max="60" step="1" value="${multiple}" aria-label="P/E multiple" style="width:64px;padding:4px 6px;font-size:0.9rem;display:inline-block" /></div>
+            <div class="value">${fmtNok(t.fundamentalValue)}</div><div class="sub">${gapSub}</div></div>
+          <div class="kpi-card"><div class="label">Your earnings /yr ${ii('look-through')}</div><div class="value ${pctClass(t.earnings)}">${fmtNok(t.earnings)}</div><div class="sub">Σ EPS × shares held</div></div>
+          <div class="kpi-card"><div class="label">Your revenue /yr</div><div class="value">${fmtNok(t.revenue)}</div><div class="sub">Σ revenue/share × shares held</div></div>
+          <div class="kpi-card"><div class="label">Portfolio P/E</div><div class="value">${t.portfolioPe != null ? t.portfolioPe.toFixed(1) : '—'}</div><div class="sub">${t.earningsYieldPct != null ? `earnings yield ${t.earningsYieldPct.toFixed(1)}%` : ''}</div></div>
+          ${t.book > 0 ? `<div class="kpi-card"><div class="label">Your book value</div><div class="value">${fmtNok(t.book)}</div><div class="sub">${t.pb != null ? `P/B ${t.pb.toFixed(2)}` : ''}</div></div>` : ''}
+        </div>
+        <div class="table-scroll">
+          <table class="investor-table">
+            <thead><tr>
+              <th>Company</th><th class="text-right">Qty</th>
+              <th class="text-right">Earnings /yr</th><th class="text-right">Revenue /yr</th>
+              <th class="text-right">Book value</th><th class="text-right">P/E</th><th class="text-right">P/B</th>
+              <th class="text-right">Fundamental @×${multiple}</th><th class="text-right">Market value</th><th class="text-right">Gap</th>
+            </tr></thead>
+            <tbody>
+              ${lt.rows.map((r) => `
+                <tr>
+                  <td data-label="Company"><strong>${escapeHtml(r.security)}</strong> <span class="text-muted text-small">${escapeHtml(String(r.period).replace('.0',''))}${r.annualized ? ' ≈×4' : ''}</span></td>
+                  <td class="text-right" data-label="Qty">${fmtQty(r.qty)}</td>
+                  <td class="text-right ${r.earningsNok != null ? pctClass(r.earningsNok) : ''}" data-label="Earnings /yr">${money(r.earningsNok)}</td>
+                  <td class="text-right" data-label="Revenue /yr">${money(r.revenueNok)}</td>
+                  <td class="text-right" data-label="Book value">${money(r.bookNok)}</td>
+                  <td class="text-right text-muted" data-label="P/E">${r.pe != null ? Number(r.pe).toFixed(1) : '—'}</td>
+                  <td class="text-right text-muted" data-label="P/B">${r.pb != null ? r.pb.toFixed(2) : '—'}</td>
+                  <td class="text-right" data-label="Fundamental">${money(r.fundamentalValue)}</td>
+                  <td class="text-right" data-label="Market value">${r.approx ? '≈ ' : ''}${money(r.marketValueNok)}</td>
+                  <td class="text-right ${r.gapPct != null ? pctClass(-r.gapPct) : ''}" data-label="Gap">${r.gapPct != null ? `${r.gapPct >= 0 ? '+' : ''}${r.gapPct.toFixed(0)}%` : '—'}</td>
+                </tr>`).join('')}
+              ${lt.missing.length ? `
+                <tr class="dimmed-row"><td colspan="10" class="text-small text-muted">
+                  No fundamentals row yet: ${lt.missing.map((m) => escapeHtml(m.security)).join(', ')} — add them to Offisielle nøkkeltall to include.
+                </td></tr>` : ''}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
     function renderCurrentPortfolio() {
       const holds = (window.Portfolio.currentHoldings(store) || [])
         .slice().sort((a, b) => (b.marketValueNok || 0) - (a.marketValueNok || 0));
@@ -228,10 +281,20 @@
           <div class="kpi-card"><div class="label">Net P/L</div><div class="value ${pctClass(win.netPnlInWindow)}">${fmtNok(win.netPnlInWindow)}</div><div class="sub">realized + divs + unrealized Δ</div></div>
         </div>
 
+        ${renderLookThrough()}
+
         ${renderCurrentPortfolio()}
 
       `;
       wirePicker();
+      const ltm = el.querySelector('#lt-multiple');
+      if (ltm) {
+        ltm.addEventListener('change', () => {
+          const v = Math.max(1, Math.min(60, Number(ltm.value) || 15));
+          localStorage.setItem('portal.fundamental.multiple', JSON.stringify(v));
+          refresh();
+        });
+      }
       // Current-portfolio rows with fundamentals expand on click.
       el.querySelectorAll('tr[data-fx-sec]').forEach((tr) => {
         const toggle = () => {
