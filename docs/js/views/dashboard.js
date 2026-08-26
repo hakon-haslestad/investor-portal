@@ -133,7 +133,7 @@
             <thead><tr>
               <th>Company</th><th class="text-right">Qty</th>
               <th class="text-right">Earnings /yr</th><th class="text-right">Revenue /yr</th>
-              <th class="text-right">Book value</th><th class="text-right">P/E</th><th class="text-right">P/B</th>
+              <th class="text-right">Book value</th><th class="text-right">P/E</th><th class="text-right">P/B</th><th class="text-right">P/S</th>
               <th class="text-right">Fundamental @×${multiple}</th><th class="text-right">Market value</th><th class="text-right">Gap</th>
             </tr></thead>
             <tbody>
@@ -146,12 +146,13 @@
                   <td class="text-right" data-label="Book value">${money(r.bookNok)}</td>
                   <td class="text-right text-muted" data-label="P/E">${r.pe != null ? Number(r.pe).toFixed(1) : '—'}</td>
                   <td class="text-right text-muted" data-label="P/B">${r.pb != null ? r.pb.toFixed(2) : '—'}</td>
+                  <td class="text-right text-muted" data-label="P/S">${r.ps != null ? r.ps.toFixed(2) : '—'}</td>
                   <td class="text-right" data-label="Fundamental">${money(r.fundamentalValue)}</td>
                   <td class="text-right" data-label="Market value">${r.approx ? '≈ ' : ''}${money(r.marketValueNok)}</td>
                   <td class="text-right ${r.gapPct != null ? pctClass(-r.gapPct) : ''}" data-label="Gap">${r.gapPct != null ? `${r.gapPct >= 0 ? '+' : ''}${r.gapPct.toFixed(0)}%` : '—'}</td>
                 </tr>`).join('')}
               ${lt.missing.length ? `
-                <tr class="dimmed-row"><td colspan="10" class="text-small text-muted">
+                <tr class="dimmed-row"><td colspan="11" class="text-small text-muted">
                   No fundamentals row yet: ${lt.missing.map((m) => escapeHtml(m.security)).join(', ')} — add them to Offisielle nøkkeltall to include.
                 </td></tr>` : ''}
             </tbody>

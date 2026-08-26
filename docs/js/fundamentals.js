@@ -63,14 +63,31 @@
   //     price ÷ P/E as a last resort.
   function epsNok(row, nokClose) {
     const parsed = parseMoneyish(row.eps);
+    // 'Kurs NOK/kursval' converts the price-quote currency (EPS TTM shares
+    // it) straight to NOK — authoritative when filled AND credible: the
+    // row's own price × kursval must land near our live NOK close,
+    // otherwise the cell is a data slip (e.g. rapp.val copied into it).
+    if (parsed && row.fxPrice != null && row.fxPrice > 0) {
+      const px = parseMoneyish(row.priceToday);
+      const credible = !(px && px.value > 0 && nokClose != null && nokClose > 0)
+        || (() => { const r = nokClose / (px.value * row.fxPrice); return r >= 0.4 && r <= 2.5; })();
+      if (credible) return parsed.value * row.fxPrice;
+      // fxPrice not credible → if the live close is clearly NOT foreign-
+      // scaled vs the row price, the eps is NOK already.
+      if (px && px.value > 0 && nokClose != null && nokClose / px.value < row.fxPrice / 2) return parsed.value;
+    }
     if (parsed && parsed.cur === 'NOK') return parsed.value;
     const px = parseMoneyish(row.priceToday);
     if (parsed && px && px.value > 0 && nokClose != null && nokClose > 0) {
+      // EPS TTM shares the price column's currency. Decide that currency
+      // from evidence: if liveClose/rowPrice sits in the fx-rate's band the
+      // quote is genuinely foreign (× fxRate); anything else — including a
+      // big factor from plain price appreciation — means the quote is NOK.
       const factor = nokClose / px.value;
-      if (factor >= 0.8 && factor <= 1.25) return parsed.value;
-      if (row.fxRate > 0 && factor >= 0.8 * row.fxRate && factor <= 1.25 * row.fxRate) {
+      if (row.fxRate > 0 && factor >= 0.7 * row.fxRate && factor <= 1.4 * row.fxRate) {
         return parsed.value * row.fxRate;
       }
+      return parsed.value; // NOK-quoted (reporting currency ≠ quote currency)
     }
     const direct = toNok(parsed, row);
     if (direct != null) return direct;
@@ -139,17 +156,23 @@
       const eps = epsNok(row, nokClose);
       const rps = revPerShareNok(row);
       const bps = bvpsNok(row);
-      const earningsNok = eps != null ? eps * f * h.qty : null;
+      // EPS TTM is already trailing-twelve-months — NEVER annualized ×4.
+      // Only period figures (revenue) annualize on quarterly rows.
+      const earningsNok = eps != null ? eps * h.qty : null;
       const revenueNok = rps != null ? rps * f * h.qty : null;
-      const bookNok = bps != null ? bps * h.qty : null; // stock, never annualized
       const mv = h.marketValueNok;
-      const pb = bookNok != null && bookNok > 0 && mv != null ? mv / bookNok : null;
+      // Book value: legacy BVPS column if present, else derived from the
+      // sheet's P/B against today's market value.
+      let bookNok = bps != null ? bps * h.qty : null; // stock, never annualized
+      if (bookNok == null && row.pb != null && row.pb > 0 && mv != null) bookNok = mv / row.pb;
+      const pb = row.pb != null && row.pb > 0 ? row.pb
+        : (bookNok != null && bookNok > 0 && mv != null ? mv / bookNok : null);
       const fundamentalValue = earningsNok != null ? earningsNok * multiple : null;
       const gapPct = fundamentalValue != null && mv != null && fundamentalValue !== 0
         ? ((mv - fundamentalValue) / Math.abs(fundamentalValue)) * 100 : null;
       rows.push({
         security: h.security, qty: h.qty, period: row.period, annualized,
-        earningsNok, revenueNok, bookNok, pe: row.pe != null ? row.pe : null, pb,
+        earningsNok, revenueNok, bookNok, pe: row.pe != null ? row.pe : null, pb, ps: row.ps != null ? row.ps : null,
         fundamentalValue, marketValueNok: mv, approx: h.approx === true, gapPct,
       });
       if (earningsNok != null) { totals.earnings += earningsNok; totals.fundamentalValue += earningsNok * multiple; if (mv != null) totals.mvWithEarnings += mv; }

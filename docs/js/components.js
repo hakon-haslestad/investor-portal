@@ -176,6 +176,7 @@
         <thead><tr>
           <th>Period</th><th class="text-right">Revenue</th><th class="text-right">EAT</th>
           <th class="text-right">EPS</th><th class="text-right">P/E</th>
+          <th class="text-right">P/B</th><th class="text-right">P/S</th>
           <th class="text-right">Your rev (NOK)</th><th class="text-right">Your EAT (NOK)</th><th>Note</th>
         </tr></thead>
         <tbody>${rows.map((k) => `
@@ -185,6 +186,8 @@
             <td class="text-right">${cell(k.eat)}</td>
             <td class="text-right">${cell(k.eps)}</td>
             <td class="text-right">${k.pe != null ? Number(k.pe).toFixed(1) : '<span class="text-muted">—</span>'}</td>
+            <td class="text-right">${k.pb != null ? Number(k.pb).toFixed(2) : '<span class="text-muted">—</span>'}</td>
+            <td class="text-right">${k.ps != null ? Number(k.ps).toFixed(2) : '<span class="text-muted">—</span>'}</td>
             <td class="text-right">${nok(k.yourRevNok)}</td>
             <td class="text-right ${k.yourProfitNok != null ? F.pctClass(k.yourProfitNok) : ''}">${nok(k.yourProfitNok)}</td>
             <td class="text-small text-muted">${esc(k.note || '')}</td>

@@ -232,13 +232,24 @@
       sharesOut: find((c) => c.includes('aksjer ute')),
       revenue: find((c) => c.includes('revenue')),
       eat: find((c) => c.includes('eat') && (c.includes('oper') || c.includes('offisiell'))),
-      fxRate: find((c) => c.includes('kurs') && c.includes('/val')),
+      // 'Kurs NOK/rapp.val' = NOK per reporting-currency unit (revenue/EAT);
+      // legacy 'Kurs NOK/val' matched as fallback, never the kursval column.
+      fxRate: (() => {
+        const i = header.findIndex((c) => c.includes('rapp'));
+        if (i >= 0) return i;
+        return header.findIndex((c) => c.includes('kurs') && c.includes('/val') && !c.includes('kursval'));
+      })(),
+      // 'Kurs NOK/kursval' = NOK per unit of the currency the SHARE PRICE
+      // (and EPS TTM) are quoted in.
+      fxPrice: find((c) => c.includes('kursval')),
       yourRevNok: find((c) => c.includes('din rev')),
       yourProfitNok: find((c) => c.includes('din eat')),
       priceToday: find((c) => c.includes('kurs i dag')),
       valueNok: find((c) => c.includes('verdi')),
       eps: find((c) => c.includes('eps')),
       pe: find((c) => c === 'p/e' || c.includes('p/e')),
+      pb: find((c) => c === 'p/b' || c.includes('p/b')),
+      ps: find((c) => c === 'p/s' || c.includes('p/s')),
       note: find((c) => c.includes('merknad')),
       bvps: find((c) => c.includes('bvps') || c.includes('bokført')),
     };
@@ -264,6 +275,9 @@
         valueNok: numOrNull(at(row, idx.valueNok)),
         eps: str(at(row, idx.eps)),
         pe: numOrNull(at(row, idx.pe)),
+        pb: numOrNull(at(row, idx.pb)),
+        ps: numOrNull(at(row, idx.ps)),
+        fxPrice: numOrNull(at(row, idx.fxPrice)),
         note: str(at(row, idx.note)),
         bvps: str(at(row, idx.bvps)),
       });

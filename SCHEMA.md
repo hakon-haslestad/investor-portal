@@ -141,13 +141,16 @@ stylistic header rows) and maps columns by name, so column order can change.
 | `Aksjer ute (mill)` | `sharesOut`     | number       | Shares outstanding, millions.                      |
 | `Offisiell Revenue` | `revenue`       | string (raw) | Official revenue (carries units).                  |
 | `Offisiell EAT (Oper.)` | `eat`       | string (raw) | Official earnings after tax / operating.           |
-| `Kurs NOK/val`      | `fxRate`        | number       | FX rate, NOK per reporting currency.               |
+| `Kurs NOK/rapp.val` | `fxRate`        | number       | FX: NOK per reporting-currency unit (revenue/EAT). |
+| `Kurs NOK/kursval`  | `fxPrice`       | number       | FX: NOK per unit of the currency the share price + EPS TTM are quoted in. |
 | `Din Rev (NOK)`     | `yourRevNok`    | number       | **Your share of revenue, final NOK.**              |
 | `Din EAT Q1 (NOK)`  | `yourProfitNok` | number       | **Your share of profit, final NOK.**               |
 | `Kurs i dag`        | `priceToday`    | number       | Current price.                                     |
 | `Verdi NOK`         | `valueNok`      | number       | Your holding value, NOK.                           |
 | `EPS TTM`           | `eps`           | string (raw) | Trailing-twelve-month EPS.                         |
 | `P/E`               | `pe`            | number       | Indicative P/E.                                    |
+| `P/B`               | `pb`            | number       | Price/book — drives look-through book value (MV ÷ P/B). |
+| `P/S`               | `ps`            | number       | Price/sales (shown in drill-downs + look-through). |
 | `Merknad`           | `note`          | string       | Free-text per-company comment (shown in the report).|
 | `BVPS` *(optional)* | `bvps`          | string (raw) | Book value (bokført egenkapital) per share, e.g. `1,10 EUR` or `45,20 NOK`. Drives P/B and look-through book value on the dashboard; rows without it show —. Header matched on `BVPS`/`bokført`. |
 
