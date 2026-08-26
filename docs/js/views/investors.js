@@ -213,14 +213,34 @@
         .map((p) => ({ date: p.date, y: p.perInvestor[code] || 0 }))
         .filter((p) => p.y > 0);
       if (series.length >= 2) {
+        // The investor's own trades as buy/sell markers on the curve —
+        // hovering a trade date lists them with the attributed amount.
+        const from = series[0].date, to = series[series.length - 1].date;
+        const { classify, isRealizingSell, amountNok, splitForSecurity } = window.Ledger;
+        const markers = [];
+        for (const tx of store.transactions) {
+          if (!tx.security || !tx.tradeDate) continue;
+          if (tx.tradeDate < from || tx.tradeDate > to) continue;
+          const cat = classify(tx.type);
+          const isBuy = cat === 'BUY' && tx.type === 'KJØPT';
+          const isSell = cat === 'SELL' && isRealizingSell(tx.type);
+          if (!isBuy && !isSell) continue;
+          const slot = splitForSecurity(store.attributionMap, tx.security).find((x) => x.code === code);
+          if (!slot) continue;
+          const amt = Math.abs(amountNok(tx)) * slot.weight;
+          markers.push({
+            date: tx.tradeDate, type: isSell ? 'sell' : 'buy',
+            label: `${isSell ? 'sold' : 'bought'} ${window.Portfolio.canonicalName(tx.security)} · ${fmtNok(amt)}`,
+          });
+        }
         const mount = el.querySelector('#equity-chart');
         mount.className = 'chart-wrap';
         const head = document.createElement('div');
         head.className = 'section-head';
-        head.innerHTML = `<h3 class="section-title">Equity curve ${UI.infoIcon('equity-curve')}</h3>`;
+        head.innerHTML = `<h3 class="section-title">Equity curve ${UI.infoIcon('equity-curve')} <span class="text-muted text-small"><span style="color:#2D5BFF">●</span> buy · <span style="color:#FF3B3B">●</span> sell — hover for amounts</span></h3>`;
         mount.appendChild(head);
         mount.appendChild(window.Charts.multiLine({
-          series: [{ name: displayName, color: window.Ledger.INVESTOR_COLORS[code] || '#1FE0CE', points: series }],
+          series: [{ name: displayName, color: window.Ledger.INVESTOR_COLORS[code] || '#1FE0CE', points: series, markers }],
           width: 1180, height: 300, interactive: true,
           title: 'Portfolio value (NOK, daily)',
         }));
