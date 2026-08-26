@@ -34,6 +34,7 @@
   // ─── Overview ─────────────────────────────────────────────────────────────
 
   function renderOverview(el, ctx) {
+    el.classList.add('wide'); // wide table — use the full viewport
     const { store } = ctx;
     const { fmtNok, fmtPct, pctClass, escapeHtml } = window.Fmt;
     const UI = window.UI;
@@ -88,7 +89,7 @@
       ${SUBTABS('overview')}
       <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${win.from} → ${win.to}; Δ columns are attributed market-value change ${UI.infoIcon('mv-change')})</span></div>
       <div style="overflow-x:auto">
-      <table class="investor-table">
+      <table class="investor-table compact-table">
         <thead><tr>
           <th>Investor</th>
           <th class="text-right">Total value</th>
@@ -97,7 +98,7 @@
           <th class="text-right">Realized</th>
           <th class="text-right">Dividends</th>
           <th class="text-right">All-time return</th>
-          ${HORIZONS.map((h) => `<th class="text-right">Δ ${h.label}</th>`).join('')}
+          ${HORIZONS.map((h) => `<th class="text-right">Δ${h.label}</th>`).join('')}
         </tr></thead>
         <tbody>
           ${codes.map((code) => {

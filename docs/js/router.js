@@ -54,6 +54,7 @@
 
     const view = window.Views[route.view];
     const el = document.getElementById('view');
+    el.classList.remove('wide'); // views opt in per render
     if (typeof current.cleanup === 'function') { try { current.cleanup(); } catch (_e) {} }
     current.cleanup = null;
     highlightNav(route.match);
