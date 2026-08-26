@@ -172,8 +172,8 @@
         const unpriced = h.priced === false;
         const wgt = totalVal > 0 && !unpriced ? ((h.marketValueNok || 0) / totalVal) * 100 : null;
         return `
-          <tr>
-            <td data-label="Security"><strong>${escapeHtml(h.security)}</strong></td>
+          <tr class="row-link" tabindex="0" role="button" aria-expanded="false" data-fx-sec="${escapeHtml(h.security)}">
+            <td data-label="Security"><strong>${escapeHtml(h.security)}</strong> <span class="text-muted text-small">▸</span></td>
             <td class="text-right" data-label="Qty">${fmtQty(h.qty)}</td>
             <td class="text-right text-muted" data-label="Avg cost">${fmtNok(h.gav)}</td>
             <td class="text-right" data-label="Price">${unpriced ? NO_PRICE : fmtNok(h.currentPrice)}</td>
@@ -184,7 +184,8 @@
             ${pctCell(periodReturnFor(h.security, ytdStart), 'YTD')}
             ${pctCell(periodReturnFor(h.security, y12Start), '12m')}
             <td class="text-right text-muted" data-label="Weight">${wgt == null ? '—' : wgt.toFixed(1) + '%'}</td>
-          </tr>`;
+          </tr>
+          <tr class="fx-detail" hidden><td colspan="11" data-fx-for="${escapeHtml(h.security)}"></td></tr>`;
       }).join('');
       return `
         <div class="section-title">Current portfolio <span class="text-muted text-small">(${holds.length} positions${asOf}; YTD/12m are price return)</span> ${ii('holdings-table')}</div>
@@ -310,6 +311,25 @@
         </div>
       `;
       wirePicker();
+      // Current-portfolio rows with fundamentals expand on click.
+      el.querySelectorAll('tr[data-fx-sec]').forEach((tr) => {
+        const toggle = () => {
+          const detail = tr.nextElementSibling;
+          if (!detail || !detail.classList.contains('fx-detail')) return;
+          const open = detail.hidden;
+          detail.hidden = !open;
+          tr.setAttribute('aria-expanded', String(open));
+          const cell = detail.querySelector('[data-fx-for]');
+          if (open && cell && !cell.dataset.rendered) {
+            cell.dataset.rendered = '1';
+            window.UI.renderSecurityDrilldown(cell, store, tr.dataset.fxSec);
+          }
+        };
+        tr.addEventListener('click', toggle);
+        tr.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+        });
+      });
     }
 
     function renderPicker(win) {

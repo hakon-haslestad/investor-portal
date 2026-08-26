@@ -162,6 +162,12 @@
       calc: 'One view over the raw transaction log: the search box matches security/ISIN/type/notes, the type pills and investor chips filter by classification and Dim-values attribution, and the range picker bounds the dates. Every KPI, chart and month bucket below recomputes from the filtered set. Realized P/L per sell is stamped by a full-history average-cost replay, so filtered sums stay consistent.',
     },
 
+    'fundamentals': {
+      title: 'Fundamentals',
+      source: 'The Offisielle nøkkeltall tab — maintained by hand per company per period.',
+      calc: 'Official revenue and earnings-after-tax as reported (with units as typed), EPS TTM and indicative P/E, plus your share of revenue/profit in final NOK — taken verbatim from the sheet, the portal does no FX or unit math on them. All available periods are listed, oldest first.',
+    },
+
     // ── Investors ──────────────────────────────────────────────────────────
     'investor-kpis': {
       title: 'Investor KPIs',

@@ -155,10 +155,82 @@
     return `<span class="inv-chip"><span class="dot" style="background:${color}" aria-hidden="true"></span>${esc(code)}</span>`;
   }
 
+  // All quarterly/annual fundamentals rows for one security from the
+  // Offisielle nøkkeltall tab — every available period, oldest first.
+  function fundamentalsTable(store, security) {
+    const canon = window.Portfolio.canonicalName;
+    const key = canon(security);
+    const rows = (store.kpis || []).filter((k) => canon(k.company) === key);
+    if (!rows.length) return '';
+    const pKey = (p) => {
+      const y = /(\d{4})/.exec(p || ''); const yr = y ? +y[1] : 0;
+      const q = /Q\s*([1-4])/i.exec(p || ''); return yr * 10 + (q ? +q[1] : 5);
+    };
+    rows.sort((a, b) => pKey(a.period) - pKey(b.period));
+    const F = window.Fmt;
+    const cell = (v) => (v == null || v === '' ? '<span class="text-muted">—</span>' : esc(v));
+    const nok = (v) => (v == null ? '<span class="text-muted">—</span>' : F.fmtNok(v));
+    return `
+      <h5 class="section-title text-small" style="margin-top:14px">Fundamentals — Offisielle nøkkeltall ${infoIcon('fundamentals')}</h5>
+      <div class="table-scroll"><table>
+        <thead><tr>
+          <th>Period</th><th class="text-right">Revenue</th><th class="text-right">EAT</th>
+          <th class="text-right">EPS</th><th class="text-right">P/E</th>
+          <th class="text-right">Your rev (NOK)</th><th class="text-right">Your EAT (NOK)</th><th>Note</th>
+        </tr></thead>
+        <tbody>${rows.map((k) => `
+          <tr>
+            <td><strong>${esc(k.period)}</strong> <span class="text-muted text-small">${esc(k.currency || '')}</span></td>
+            <td class="text-right">${cell(k.revenue)}</td>
+            <td class="text-right">${cell(k.eat)}</td>
+            <td class="text-right">${cell(k.eps)}</td>
+            <td class="text-right">${k.pe != null ? Number(k.pe).toFixed(1) : '<span class="text-muted">—</span>'}</td>
+            <td class="text-right">${nok(k.yourRevNok)}</td>
+            <td class="text-right ${k.yourProfitNok != null ? F.pctClass(k.yourProfitNok) : ''}">${nok(k.yourProfitNok)}</td>
+            <td class="text-small text-muted">${esc(k.note || '')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`;
+  }
+
+  // The one security drill-down used everywhere (dashboard + portfolio):
+  // teal price chart with the club's buy/sell markers, then all available
+  // fundamentals periods. Renders into `mount`.
+  function renderSecurityDrilldown(mount, store, security) {
+    const canon = window.Portfolio.canonicalName;
+    const points = window.TimeSeries.buildSecurityPriceSeries(store, security)
+      .map((p) => ({ date: p.date, price: p.price }));
+    let any = false;
+    if (points.length >= 2) {
+      const from = points[0].date, to = points[points.length - 1].date;
+      const markers = [];
+      for (const tx of store.transactions) {
+        if (!tx.security || !tx.tradeDate) continue;
+        if (canon(tx.security) !== canon(security)) continue;
+        if (tx.tradeDate < from || tx.tradeDate > to) continue;
+        const cat = window.Ledger.classify(tx.type);
+        if (cat === 'BUY' && tx.type === 'KJØPT') markers.push({ date: tx.tradeDate, type: 'buy' });
+        else if (cat === 'SELL' && window.Ledger.isRealizingSell(tx.type)) markers.push({ date: tx.tradeDate, type: 'sell' });
+      }
+      mount.appendChild(window.Charts.priceChart({ points, markers, yUnit: 'NOK' }));
+      any = true;
+    }
+    const fx = fundamentalsTable(store, security);
+    if (fx) {
+      const div = document.createElement('div');
+      div.innerHTML = fx;
+      mount.appendChild(div);
+      any = true;
+    }
+    if (!any) {
+      mount.innerHTML = '<p class="text-muted text-small" style="margin:8px 0">No price history or fundamentals for this security yet.</p>';
+    }
+  }
+
   window.UI = {
     esc, kpiGrid, section, table, subTabs,
     rangePicker, bindRangePicker, RANGE_PRESETS,
     flash, emptyState, investorChip,
-    infoIcon, enableInfoPopovers,
+    infoIcon, enableInfoPopovers, fundamentalsTable, renderSecurityDrilldown,
   };
 })();

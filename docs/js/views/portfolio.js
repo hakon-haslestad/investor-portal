@@ -148,21 +148,7 @@
   }
 
   function renderSecurityChart(mount, store, security) {
-    const points = window.TimeSeries.buildSecurityPriceSeries(store, security)
-      .map((p) => ({ date: p.date, price: p.price }));
-    const markers = [];
-    if (points.length >= 2) {
-      const from = points[0].date, to = points[points.length - 1].date;
-      for (const tx of store.transactions) {
-        if (!tx.security || !tx.tradeDate) continue;
-        if (window.Portfolio.canonicalName(tx.security) !== security) continue;
-        if (tx.tradeDate < from || tx.tradeDate > to) continue;
-        const cat = window.Ledger.classify(tx.type);
-        if (cat === 'BUY' && tx.type === 'KJØPT') markers.push({ date: tx.tradeDate, type: 'buy' });
-        else if (cat === 'SELL' && window.Ledger.isRealizingSell(tx.type)) markers.push({ date: tx.tradeDate, type: 'sell' });
-      }
-    }
-    mount.appendChild(window.Charts.priceChart({ points, markers, yUnit: 'NOK' }));
+    window.UI.renderSecurityDrilldown(mount, store, security);
   }
 
   // ─── Activity — one view over the transaction log × StockPrices ───────────
