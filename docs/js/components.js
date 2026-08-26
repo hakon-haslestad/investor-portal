@@ -209,10 +209,19 @@
         if (canon(tx.security) !== canon(security)) continue;
         if (tx.tradeDate < from || tx.tradeDate > to) continue;
         const cat = window.Ledger.classify(tx.type);
-        if (cat === 'BUY' && tx.type === 'KJØPT') markers.push({ date: tx.tradeDate, type: 'buy' });
-        else if (cat === 'SELL' && window.Ledger.isRealizingSell(tx.type)) markers.push({ date: tx.tradeDate, type: 'sell' });
+        const isBuy = cat === 'BUY' && tx.type === 'KJØPT';
+        const isSell = cat === 'SELL' && window.Ledger.isRealizingSell(tx.type);
+        if (!isBuy && !isSell) continue;
+        const amt = Math.abs(window.Ledger.amountNok(tx));
+        markers.push({
+          date: tx.tradeDate, type: isSell ? 'sell' : 'buy',
+          label: `${isSell ? 'sold' : 'bought'} ${tx.qty != null ? Math.abs(tx.qty) + ' stk · ' : ''}${window.Fmt.fmtNok(amt)}`,
+        });
       }
-      mount.appendChild(window.Charts.priceChart({ points, markers, yUnit: 'NOK' }));
+      const wrap = document.createElement('div');
+      wrap.className = 'chart-wrap';
+      wrap.appendChild(window.Charts.priceChart({ points, markers, yUnit: 'NOK' }));
+      mount.appendChild(wrap);
       any = true;
     }
     const fx = fundamentalsTable(store, security);

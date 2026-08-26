@@ -663,7 +663,17 @@
     const dot = svgEl('circle', { r: '6', fill: line, stroke: '#fff', 'stroke-width': '1.5' });
     hover.appendChild(dot);
     const hasInvested = invested != null && Number.isFinite(invested);
-    const TIPW = 240, TIPH = hasInvested ? 128 : 96;
+    const TIPW = 300, TIPH = hasInvested ? 128 : 96;
+    // Trades snapped to the nearest charted date so hovering a marker day
+    // lists them (label carries security/amount when the caller provides it).
+    const tradesByIdx = new Map();
+    for (const m of markers) {
+      let idx = points.findIndex((p) => p.date >= m.date);
+      if (idx === -1) idx = points.length - 1;
+      if (!tradesByIdx.has(idx)) tradesByIdx.set(idx, []);
+      tradesByIdx.get(idx).push(m);
+    }
+    const MAX_TRADE_LINES = 3;
     const bg = svgEl('rect', { width: TIPW, height: TIPH, rx: '8', ry: '8', fill: '#181a22', stroke: '#262a36', 'stroke-width': '1', opacity: '0.97' });
     hover.appendChild(bg);
     const tDate = svgEl('text', { fill: '#8a8a8a', 'font-size': '20' }); hover.appendChild(tDate);
@@ -671,10 +681,17 @@
     const tPct = svgEl('text', { 'font-size': '22', 'font-weight': '600' }); hover.appendChild(tPct);
     const tInv = hasInvested ? svgEl('text', { fill: '#8a8a8a', 'font-size': '19', 'font-weight': '500' }) : null;
     if (tInv) hover.appendChild(tInv);
+    const tradeEls = [];
+    for (let i = 0; i < MAX_TRADE_LINES; i++) {
+      const t = svgEl('text', { 'font-size': '19', 'font-weight': '600' });
+      hover.appendChild(t);
+      tradeEls.push(t);
+    }
     const overlay = svgEl('rect', { x: PADP.left, y: PADP.top, width: plotW, height: plotH, fill: 'transparent', 'pointer-events': 'all' });
     svg.appendChild(overlay);
 
     const toSvgX = (evt) => {
+      if (!svg.createSVGPoint || !svg.getScreenCTM) return 0;
       const pt = svg.createSVGPoint();
       pt.x = evt.clientX; pt.y = evt.clientY;
       const m = svg.getScreenCTM();
@@ -704,6 +721,22 @@
       tPct.setAttribute('fill', pct > 0.05 ? '#3ee07f' : pct < -0.05 ? '#ff7a7a' : '#8a8a8a');
       tPct.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% since start`;
       if (tInv) { tInv.setAttribute('x', tx + 14); tInv.setAttribute('y', ty + 110); tInv.textContent = `Invested ${fmtNok(invested)}`; }
+      // Trades on this date: grow the tooltip and list them.
+      const evs = (tradesByIdx.get(i) || []).slice(0, MAX_TRADE_LINES);
+      const baseH = hasInvested ? 128 : 96;
+      bg.setAttribute('height', evs.length ? baseH + 8 + 26 * evs.length : baseH);
+      for (let k = 0; k < MAX_TRADE_LINES; k++) {
+        const t = tradeEls[k];
+        if (k < evs.length) {
+          const ev = evs[k];
+          t.setAttribute('x', tx + 14);
+          t.setAttribute('y', ty + baseH + 26 * (k + 1) - 6);
+          t.setAttribute('fill', ev.type === 'sell' ? '#FF3B3B' : '#5B8CFF');
+          t.textContent = `${ev.type === 'sell' ? '▼' : '▲'} ${ev.label || (ev.type === 'sell' ? 'sold' : 'bought')}`;
+        } else {
+          t.textContent = '';
+        }
+      }
     };
     const hide = () => hover.setAttribute('visibility', 'hidden');
     overlay.addEventListener('mousemove', (e) => show(nearest(toSvgX(e))));
