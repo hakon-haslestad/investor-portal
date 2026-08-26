@@ -33,48 +33,109 @@
 
   // ─── Overview ─────────────────────────────────────────────────────────────
 
+  // Fundamentals per investor (moved from the dashboard's "By investor").
+    function periodKey(p) {
+      const y = /(\d{4})/.exec(p || ''); const yr = y ? +y[1] : 0;
+      const q = /Q\s*([1-4])/i.exec(p || ''); return yr * 10 + (q ? +q[1] : 4);
+    }
+    function buildInvestorKpis(store, d) {
+    const INVESTOR_CODES = window.Ledger.INVESTOR_CODES;
+      const kpis = store.kpis || [];
+      if (!kpis.length) return null;
+      const canon = window.Portfolio.canonicalName;
+      const periods = [...new Set(kpis.map((k) => k.period).filter(Boolean))].sort((a, b) => periodKey(a) - periodKey(b));
+      const show = periods.slice(-2);
+      if (!show.length) return null;
+      const latest = show[show.length - 1];
+      const peByCo = new Map();
+      for (const k of kpis) if (k.period === latest && Number.isFinite(k.pe)) peByCo.set(canon(k.company), k.pe);
+
+      const byCode = {};
+      for (const code of INVESTOR_CODES) {
+        byCode[code] = { rev: {}, profit: {}, pe: null };
+        for (const p of show) { byCode[code].rev[p] = 0; byCode[code].profit[p] = 0; }
+      }
+      for (const k of kpis) {
+        if (!show.includes(k.period)) continue;
+        const split = window.Ledger.splitForSecurity(store.attributionMap, k.company);
+        for (const { code, weight } of split) {
+          if (!byCode[code]) continue;
+          byCode[code].rev[k.period] += (k.yourRevNok || 0) * weight;
+          byCode[code].profit[k.period] += (k.yourProfitNok || 0) * weight;
+        }
+      }
+      for (const code of INVESTOR_CODES) {
+        const hs = (d.perInvestor[code] && d.perInvestor[code].holdings) || [];
+        let num = 0, den = 0;
+        for (const h of hs) {
+          const pe = peByCo.get(canon(h.security)); const mv = h.marketValue || 0;
+          if (pe != null && mv > 0) { num += pe * mv; den += mv; }
+        }
+        byCode[code].pe = den > 0 ? num / den : null;
+      }
+      return { periods: show, byCode };
+    }
+
   function renderOverview(el, ctx) {
     const { store } = ctx;
-    const { fmtNok, fmtPct, pctClass } = window.Fmt;
+    const { fmtNok, fmtPct, pctClass, escapeHtml } = window.Fmt;
     const UI = window.UI;
     const names = window.Copy.namesFromMembers(store.members);
-    const dash = window.Portfolio.buildDashboard(store);
-    const codes = window.Ledger.INVESTOR_CODES.slice()
-      .sort((a, b) => (dash.perInvestor[b].totalReturnPct || 0) - (dash.perInvestor[a].totalReturnPct || 0));
 
-    const rows = codes.map((code) => {
-      const s = dash.perInvestor[code];
-      return {
-        attrs: `class="row-link" data-code="${UI.esc(code)}" tabindex="0" role="link" aria-label="Open ${UI.esc(names[code] || code)}"`,
-        cells: [
-          `${UI.investorChip(code)} <span class="text-muted">${UI.esc(names[code] || '')}</span>`,
-          `<span class="text-right">${fmtNok(s.totalValue)}</span>`,
-          fmtNok(s.marketValue),
-          `<span class="${pctClass(s.realized)}">${fmtNok(s.realized)}</span>`,
-          `<span class="${pctClass(s.unrealized)}">${fmtNok(s.unrealized)}</span>`,
-          fmtNok(s.dividends),
-          `<strong class="${pctClass(s.portfolioReturnPct)}">${fmtPct(s.portfolioReturnPct)}</strong>`,
-          `${s.holdings.length}`,
-        ],
-      };
-    });
+    let preset = 'ytd';
+    try { preset = JSON.parse(localStorage.getItem('portal.investors.range') || '{}').preset || 'ytd'; } catch (_e) {}
+    const win = window.Portfolio.computeWindow(store, preset);
+    const dash = window.Portfolio.buildDashboard(store, { from: win.from, to: win.to });
+    const wm = dash.windowMetrics;
+    const ik = buildInvestorKpis(store, dash);
+    const codes = window.Ledger.INVESTOR_CODES.slice()
+      .sort((a, b) => ((wm.perInvestor[b] || {}).periodReturnPct || 0) - ((wm.perInvestor[a] || {}).periodReturnPct || 0));
 
     el.innerHTML = `
-      <div class="hero"><h2>Investors ${UI.infoIcon('investor-kpis')}</h2>
-        <div class="when">Every krone attributed via Dim-values — argue with the sheet, not the portal.</div>
+      <div class="hero">
+        <h2>Investors ${UI.infoIcon('investor-kpis')}</h2>
+        <div class="when">${UI.rangePicker(preset)}</div>
       </div>
       ${SUBTABS('overview')}
-      ${UI.table([
-        { label: 'Investor' },
-        { label: 'Total value', className: 'text-right' },
-        { label: 'Stocks MV', className: 'text-right' },
-        { label: 'Realized', className: 'text-right' },
-        { label: 'Unrealized', className: 'text-right' },
-        { label: 'Dividends', className: 'text-right' },
-        { label: 'Return %', className: 'text-right' },
-        { label: 'Positions', className: 'text-right' },
-      ], rows, { caption: 'Per-investor summary' })}
+      <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${win.from} → ${win.to}${ik ? '; revenue/profit/P/E from Offisielle nøkkeltall, your share' : ''})</span></div>
+      <div style="overflow-x:auto">
+      <table class="investor-table">
+        <thead><tr>
+          <th>Investor</th>
+          <th class="text-right">Total value <span class="text-muted text-small">(now)</span></th>
+          <th class="text-right">Period return</th>
+          <th class="text-right">Realized</th>
+          <th class="text-right">Dividends</th>
+          <th class="text-right">Bought</th>
+          <th class="text-right">Sold</th>
+          <th class="text-right">All-time return</th>
+          ${ik ? ik.periods.map((p) => `<th class="text-right">Rev ${escapeHtml(p)}</th><th class="text-right">Profit ${escapeHtml(p)}</th>`).join('') + '<th class="text-right">P/E</th>' : ''}
+        </tr></thead>
+        <tbody>
+          ${codes.map((code) => {
+            const s2 = dash.perInvestor[code];
+            const w = wm.perInvestor[code] || {};
+            return `
+              <tr class="row-link" tabindex="0" role="link" data-code="${escapeHtml(code)}" aria-label="Open ${escapeHtml(names[code] || code)}">
+                <td data-label="Investor">${UI.investorChip(code)} <span class="text-muted text-small">${escapeHtml(names[code] || '')}</span></td>
+                <td class="text-right" data-label="Total value">${fmtNok(s2.totalValue)}</td>
+                <td class="text-right ${pctClass(w.periodReturnPct)}" data-label="Period return"><strong>${fmtPct(w.periodReturnPct)}</strong></td>
+                <td class="text-right ${pctClass(w.realizedInWindow)}" data-label="Realized">${fmtNok(w.realizedInWindow)}</td>
+                <td class="text-right" data-label="Dividends">${fmtNok(w.dividendsInWindow)}</td>
+                <td class="text-right text-muted" data-label="Bought">${fmtNok(w.buysInWindow)}</td>
+                <td class="text-right text-muted" data-label="Sold">${fmtNok(w.sellsInWindow)}</td>
+                <td class="text-right ${pctClass(s2.portfolioReturnPct)}" data-label="All-time return">${fmtPct(s2.portfolioReturnPct)}</td>
+                ${ik ? (() => { const k = ik.byCode[code] || { rev: {}, profit: {}, pe: null }; return ik.periods.map((p) => `<td class="text-right text-muted" data-label="Rev ${escapeHtml(p)}">${fmtNok(k.rev[p])}</td><td class="text-right ${pctClass(k.profit[p])}" data-label="Profit ${escapeHtml(p)}">${fmtNok(k.profit[p])}</td>`).join('') + `<td class="text-right text-muted" data-label="P/E">${k.pe != null ? k.pe.toFixed(1) : '—'}</td>`; })() : ''}
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
     `;
+    UI.bindRangePicker(el, (pNew) => {
+      localStorage.setItem('portal.investors.range', JSON.stringify({ preset: pNew }));
+      renderOverview(el, ctx);
+    });
     el.querySelectorAll('tr.row-link').forEach((tr) => {
       const go = () => ctx.navigate(`#/investors/${tr.dataset.code}`);
       tr.addEventListener('click', go);

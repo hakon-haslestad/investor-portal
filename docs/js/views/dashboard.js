@@ -91,47 +91,6 @@
       paint(d);
     }
 
-    function periodKey(p) {
-      const y = /(\d{4})/.exec(p || ''); const yr = y ? +y[1] : 0;
-      const q = /Q\s*([1-4])/i.exec(p || ''); return yr * 10 + (q ? +q[1] : 4);
-    }
-    function buildInvestorKpis(d) {
-      const kpis = store.kpis || [];
-      if (!kpis.length) return null;
-      const canon = window.Portfolio.canonicalName;
-      const periods = [...new Set(kpis.map((k) => k.period).filter(Boolean))].sort((a, b) => periodKey(a) - periodKey(b));
-      const show = periods.slice(-2);
-      if (!show.length) return null;
-      const latest = show[show.length - 1];
-      const peByCo = new Map();
-      for (const k of kpis) if (k.period === latest && Number.isFinite(k.pe)) peByCo.set(canon(k.company), k.pe);
-
-      const byCode = {};
-      for (const code of INVESTOR_CODES) {
-        byCode[code] = { rev: {}, profit: {}, pe: null };
-        for (const p of show) { byCode[code].rev[p] = 0; byCode[code].profit[p] = 0; }
-      }
-      for (const k of kpis) {
-        if (!show.includes(k.period)) continue;
-        const split = window.Ledger.splitForSecurity(store.attributionMap, k.company);
-        for (const { code, weight } of split) {
-          if (!byCode[code]) continue;
-          byCode[code].rev[k.period] += (k.yourRevNok || 0) * weight;
-          byCode[code].profit[k.period] += (k.yourProfitNok || 0) * weight;
-        }
-      }
-      for (const code of INVESTOR_CODES) {
-        const hs = (d.perInvestor[code] && d.perInvestor[code].holdings) || [];
-        let num = 0, den = 0;
-        for (const h of hs) {
-          const pe = peByCo.get(canon(h.security)); const mv = h.marketValue || 0;
-          if (pe != null && mv > 0) { num += pe * mv; den += mv; }
-        }
-        byCode[code].pe = den > 0 ? num / den : null;
-      }
-      return { periods: show, byCode };
-    }
-
     // Native-currency price return over a period, from the StockPrices
     // matrix (currency cancels in the ratio). Null → the cell shows "—".
     function periodReturnFor(security, fromDate) {
@@ -224,7 +183,6 @@
 
     function paint(d) {
       const wm = d.windowMetrics;
-      const ik = buildInvestorKpis(d);
       const rn = aggregateRn(d);
       const win = aggregateWin(wm);
       const filterLabel = selectedCodes.length
@@ -272,43 +230,6 @@
 
         ${renderCurrentPortfolio()}
 
-        <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${prettyRange(d.window)}${ik ? '; revenue/profit/P/E from Offisielle nøkkeltall, your share' : ''})</span> ${ii('investor-kpis')}</div>
-        <div style="overflow-x:auto">
-        <table class="investor-table">
-          <thead><tr>
-            <th>Investor</th>
-            <th class="text-right">Total value <span class="text-muted text-small">(now)</span></th>
-            <th class="text-right">Period return</th>
-            <th class="text-right">Realized</th>
-            <th class="text-right">Dividends</th>
-            <th class="text-right">Bought</th>
-            <th class="text-right">Sold</th>
-            <th class="text-right">All-time return</th>
-            ${ik ? ik.periods.map((p) => `<th class="text-right">Rev ${escapeHtml(p)}</th><th class="text-right">Profit ${escapeHtml(p)}</th>`).join('') + '<th class="text-right">P/E</th>' : ''}
-          </tr></thead>
-          <tbody>
-            ${Object.entries(d.perInvestor).map(([code, s]) => {
-              const w = wm.perInvestor[code] || {};
-              const rowClass = selectedCodes.length
-                ? (selectedCodes.includes(code) ? 'row-link selected-row' : 'row-link dimmed-row')
-                : 'row-link';
-              return `
-                <tr class="${rowClass}" onclick="location.hash='#/investors/${encodeURIComponent(code)}'">
-                  <td data-label="Investor"><strong>${code}</strong> <span class="text-muted text-small">${names[code] || ''}</span></td>
-                  <td class="text-right" data-label="Total value">${fmtNok(s.totalValue)}</td>
-                  <td class="text-right ${pctClass(w.periodReturnPct)}" data-label="Period return"><strong>${fmtPct(w.periodReturnPct)}</strong></td>
-                  <td class="text-right ${pctClass(w.realizedInWindow)}" data-label="Realized">${fmtNok(w.realizedInWindow)}</td>
-                  <td class="text-right" data-label="Dividends">${fmtNok(w.dividendsInWindow)}</td>
-                  <td class="text-right text-muted" data-label="Bought">${fmtNok(w.buysInWindow)}</td>
-                  <td class="text-right text-muted" data-label="Sold">${fmtNok(w.sellsInWindow)}</td>
-                  <td class="text-right ${pctClass(s.portfolioReturnPct)}" data-label="All-time return">${fmtPct(s.portfolioReturnPct)}</td>
-                  ${ik ? (() => { const k = ik.byCode[code] || { rev: {}, profit: {}, pe: null }; return ik.periods.map((p) => `<td class="text-right text-muted" data-label="Rev ${escapeHtml(p)}">${fmtNok(k.rev[p])}</td><td class="text-right ${pctClass(k.profit[p])}" data-label="Profit ${escapeHtml(p)}">${fmtNok(k.profit[p])}</td>`).join('') + `<td class="text-right text-muted" data-label="P/E">${k.pe != null ? k.pe.toFixed(1) : '—'}</td>`; })() : ''}
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-        </div>
       `;
       wirePicker();
       // Current-portfolio rows with fundamentals expand on click.
