@@ -52,12 +52,28 @@
   // currency (the quarterly-row convention); explicit mill/mrd wins.
   function scale(unit) { return unit === 'mrd' ? 1e9 : 1e6; }
 
-  function epsNok(row) {
+  // EPS → NOK. Hand-kept rows sometimes mislabel the currency (a row says
+  // USD while its price/EPS are plainly NOK), so before applying FX we
+  // sanity-check the row's own price against OUR live NOK close:
+  //   factor = liveNokClose / rowPrice
+  //   · explicit 'NOK' suffix on eps → trust it as NOK.
+  //   · factor ≈ 1        → the row is NOK-scaled; use eps as NOK.
+  //   · factor ≈ fxRate   → genuinely foreign at today's price; eps × fxRate.
+  //   · otherwise (stale price etc.) → the declared-currency path, then
+  //     price ÷ P/E as a last resort.
+  function epsNok(row, nokClose) {
     const parsed = parseMoneyish(row.eps);
+    if (parsed && parsed.cur === 'NOK') return parsed.value;
+    const px = parseMoneyish(row.priceToday);
+    if (parsed && px && px.value > 0 && nokClose != null && nokClose > 0) {
+      const factor = nokClose / px.value;
+      if (factor >= 0.8 && factor <= 1.25) return parsed.value;
+      if (row.fxRate > 0 && factor >= 0.8 * row.fxRate && factor <= 1.25 * row.fxRate) {
+        return parsed.value * row.fxRate;
+      }
+    }
     const direct = toNok(parsed, row);
     if (direct != null) return direct;
-    // Fallback: EPS = price/P/E, both in NOK terms.
-    const px = parseMoneyish(row.priceToday);
     const pxNok = toNok(px, row);
     if (pxNok != null && row.pe != null && Number.isFinite(row.pe) && row.pe !== 0) {
       return pxNok / row.pe;
@@ -119,7 +135,8 @@
         if (alt) row.fxRate = alt.fxRate;
       }
       const f = annualized ? 4 : 1;
-      const eps = epsNok(row);
+      const nokClose = window.Portfolio.nokPriceForSecurity(store, h.security, new Date().toISOString().slice(0, 10));
+      const eps = epsNok(row, nokClose);
       const rps = revPerShareNok(row);
       const bps = bvpsNok(row);
       const earningsNok = eps != null ? eps * f * h.qty : null;
