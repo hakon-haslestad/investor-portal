@@ -771,8 +771,9 @@
       svg.appendChild(t);
     }
 
-    // Dots — larger amounts drawn first so small ones stay clickable on top.
+    // Dots — larger amounts drawn first so small ones stay hoverable on top.
     const sorted = trades.slice().sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+    const dotMeta = [];
     for (const tr of sorted) {
       const amt = Math.abs(tr.amount) || 0;
       const cx = xAt(dateToTs(tr.date));
@@ -780,11 +781,94 @@
       const r = Math.max(6, Math.min(22, Math.sqrt(amt / maxAbs) * 22));
       const color = tr.type === 'sell' ? sell : buy;
       const c = svgEl('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: r.toFixed(1), fill: color, 'fill-opacity': '0.8', stroke: '#fff', 'stroke-width': '1.2' });
-      const title = svgEl('title');
-      title.textContent = `${tr.label || ''} · ${tr.date} · ${tr.type === 'sell' ? 'Sold' : 'Bought'} ${fmtNok(amt)}`;
-      c.appendChild(title);
       svg.appendChild(c);
+      dotMeta.push({ x: cx, y: cy, r, tr, amt, color });
     }
+
+    // ─── Hover: same UX as the line charts — crosshair, highlight ring,
+    // styled tooltip on the nearest dot ─────────────────────────────────────
+    const hover = svgEl('g', { 'pointer-events': 'none', visibility: 'hidden' });
+    svg.appendChild(hover);
+    const cross = svgEl('line', {
+      y1: PADT.top, y2: PADT.top + plotH,
+      stroke: '#8a92a6', 'stroke-width': 1, 'stroke-dasharray': '3,3',
+    });
+    hover.appendChild(cross);
+    const ring = svgEl('circle', { fill: 'none', stroke: '#fff', 'stroke-width': 2.5 });
+    hover.appendChild(ring);
+    const TIP_W = 300, TIP_H = 78, TIP_PAD = 10;
+    const tipBg = svgEl('rect', {
+      width: TIP_W, height: TIP_H, rx: 6, ry: 6,
+      fill: '#181a22', stroke: '#262a36', 'stroke-width': 1, opacity: 0.97,
+    });
+    hover.appendChild(tipBg);
+    const tipHead = svgEl('text', { fill: '#e7e9ee', 'font-size': 15, 'font-weight': 700 });
+    hover.appendChild(tipHead);
+    const tipLabel = svgEl('text', { fill: '#e7e9ee', 'font-size': 14 });
+    hover.appendChild(tipLabel);
+    const tipSub = svgEl('text', { fill: '#8a92a6', 'font-size': 13 });
+    hover.appendChild(tipSub);
+
+    const overlay = svgEl('rect', {
+      x: PADT.left, y: PADT.top, width: plotW, height: plotH,
+      fill: 'transparent', 'pointer-events': 'all',
+    });
+    svg.appendChild(overlay);
+
+    function clientToSvg(evt) {
+      if (!svg.createSVGPoint || !svg.getScreenCTM) return { x: 0, y: 0 };
+      const pt = svg.createSVGPoint();
+      pt.x = evt.clientX; pt.y = evt.clientY;
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return { x: 0, y: 0 };
+      const out = pt.matrixTransform(ctm.inverse());
+      return { x: out.x, y: out.y };
+    }
+    function nearestDot(x, y) {
+      let best = null, bestD = Infinity;
+      for (const m of dotMeta) {
+        const d = Math.hypot(m.x - x, m.y - y) - m.r;
+        if (d < bestD) { bestD = d; best = m; }
+      }
+      return bestD <= 60 ? best : null;
+    }
+    function show(m) {
+      hover.setAttribute('visibility', 'visible');
+      cross.setAttribute('x1', m.x); cross.setAttribute('x2', m.x);
+      ring.setAttribute('cx', m.x); ring.setAttribute('cy', m.y); ring.setAttribute('r', m.r + 3);
+      ring.setAttribute('stroke', m.color);
+      let tx = m.x + 16;
+      if (tx + TIP_W > width - PADT.right) tx = m.x - 16 - TIP_W;
+      if (tx < PADT.left) tx = PADT.left;
+      let ty = m.y - TIP_H / 2;
+      ty = Math.max(PADT.top, Math.min(ty, PADT.top + plotH - TIP_H));
+      tipBg.setAttribute('x', tx); tipBg.setAttribute('y', ty);
+      tipHead.setAttribute('x', tx + TIP_PAD); tipHead.setAttribute('y', ty + TIP_PAD + 14);
+      tipHead.setAttribute('fill', m.color);
+      tipHead.textContent = `${m.tr.type === 'sell' ? '▼ Sold' : '▲ Bought'} · ${m.tr.date}`;
+      tipLabel.setAttribute('x', tx + TIP_PAD); tipLabel.setAttribute('y', ty + TIP_PAD + 36);
+      tipLabel.textContent = `${m.tr.label || ''} — ${fmtNok(m.amt)}`;
+      tipSub.setAttribute('x', tx + TIP_PAD); tipSub.setAttribute('y', ty + TIP_PAD + 56);
+      const qty = m.tr.qty != null ? `${Math.abs(m.tr.qty)} stk` : '';
+      const who = (m.tr.codes || []).join(', ');
+      tipSub.textContent = [qty, who].filter(Boolean).join(' · ');
+    }
+    function hide() { hover.setAttribute('visibility', 'hidden'); }
+    const onMove = (cx2, cy2) => {
+      const m = nearestDot(cx2, cy2);
+      if (m) show(m); else hide();
+    };
+    overlay.addEventListener('mousemove', (evt) => { const p = clientToSvg(evt); onMove(p.x, p.y); });
+    overlay.addEventListener('mouseleave', hide);
+    overlay.addEventListener('touchstart', (evt) => {
+      if (!evt.touches[0]) return;
+      const p = clientToSvg(evt.touches[0]); onMove(p.x, p.y);
+    }, { passive: true });
+    overlay.addEventListener('touchmove', (evt) => {
+      if (!evt.touches[0]) return;
+      const p = clientToSvg(evt.touches[0]); onMove(p.x, p.y);
+    }, { passive: true });
+    overlay.addEventListener('touchend', hide);
     return svg;
   }
 
