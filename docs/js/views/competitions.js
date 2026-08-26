@@ -54,7 +54,17 @@
         : `Leader: ${escapeHtml(s.teams[0].label)} → ${fmtPct(s.teams[0].pct)}`;
       return `
         <div class="competition-card">
-          <h3>${escapeHtml(c.name)}</h3>
+          <h3>${escapeHtml(c.name)} ${(() => {
+            // Competition summary: did the club as a whole make or lose money?
+            const totPnl = (s.ranks || []).reduce((a, r) => a + (r.netPnl || 0), 0);
+            const totBase = (s.ranks || []).reduce((a, r) => a + (r.base || Math.max(r.grossBought || 0, 0)), 0);
+            const totPct = totBase > 0 ? (totPnl / totBase) * 100 : 0;
+            const winner = (s.teams && s.teams[0]) || (s.ranks && s.ranks[0]) || null;
+            const live = c.end_date >= new Date().toISOString().slice(0, 10);
+            return `<span class="comp-sum ${totPnl >= 0 ? 'positive' : 'negative'}" title="Everyone's competition P/L combined (realized + unrealized + dividends)">
+              ${totPnl >= 0 ? '▲' : '▼'} ${fmtNok(totPnl)} (${fmtPct(totPct)})</span>
+              ${live ? '<span class="tag">live</span>' : (winner ? `<span class="tag">🏆 ${escapeHtml(winner.label || winner.code)}</span>` : '')}`;
+          })()}</h3>
           <div class="meta">${escapeHtml(c.start_date)} → ${escapeHtml(c.end_date)}${hasMultiMember ? ' · <span class="tag">mixed team/solo</span>' : ''}</div>
           <div>${verdict}</div>
           <div class="ranks">
