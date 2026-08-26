@@ -144,3 +144,11 @@
   margin-top: 8px; text-align: center;
   color: var(--muted, #8a92a6); font-size: 0.85rem; letter-spacing: 0.3px;
 }
+
+/* Fit the return-over-window chart to the slide: the SVG scales with its
+   viewBox, capped so the deck never scrolls. */
+#chart-mount { width: 100%; }
+#chart-mount svg {
+  width: 100%; height: auto; display: block;
+  max-height: min(62vh, 560px);
+}

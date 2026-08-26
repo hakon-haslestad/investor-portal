@@ -368,8 +368,10 @@
       const isSell = cat === 'SELL' && isRealizingSell(tx.type);
       if (!isBuy && !isSell) continue;
       for (const sp of splitForSecurity(store.attributionMap, tx.security)) {
+        const amt = Math.abs(window.Ledger.amountNok(tx)) * sp.weight;
         (markersByCode[sp.code] = markersByCode[sp.code] || []).push({
           date: tx.tradeDate, type: isSell ? 'sell' : 'buy',
+          label: `${sp.code} ${isSell ? 'sold' : 'bought'} ${canonicalName(tx.security)} · ${fmtNok(amt)}`,
         });
       }
     }
@@ -378,10 +380,14 @@
     for (const d of dates) {
       const r = scoreWithDates(store, c, participants, c.start_date, d);
       for (const row of r) {
-        (acc[row.code] = acc[row.code] || []).push({ date: d, y: row.pct });
+        (acc[row.code] = acc[row.code] || []).push({
+          date: d, y: row.pct,
+          // Hover shows the actual money: realized + unrealized + dividends.
+          tipValue: `${fmtNok(row.netPnl)} (${fmtPct(row.pct)})`,
+        });
       }
     }
-    for (const code of Object.keys(acc)) acc[code].unshift({ date: c.start_date, y: 0 });
+    for (const code of Object.keys(acc)) acc[code].unshift({ date: c.start_date, y: 0, tipValue: '0 kr (0.0%)' });
     let i = 0;
     const palette = ['#4ade80', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#34d399', '#f87171'];
     const series = Object.keys(acc).map((code) => ({

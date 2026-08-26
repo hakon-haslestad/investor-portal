@@ -309,6 +309,19 @@
 
     if (!interactive) return svg;
 
+    // Markers snapped to the nearest sampled index ≥ their date, so hovering
+    // a trade day lists the trades in the tooltip footer.
+    const markersByIdx = new Map();
+    for (const s2 of series) {
+      for (const m of s2.markers || []) {
+        let idx = dates.findIndex((d) => d >= m.date);
+        if (idx === -1) idx = dates.length - 1;
+        if (!markersByIdx.has(idx)) markersByIdx.set(idx, []);
+        markersByIdx.get(idx).push({ type: m.type, label: m.label || '', name: s2.name });
+      }
+    }
+    const MAX_TIP_EVENTS = 4;
+
     // ─── Hover layer ─────────────────────────────────────────────────────
     const hover = svgEl('g', { 'pointer-events': 'none', visibility: 'hidden' });
     svg.appendChild(hover);
@@ -327,10 +340,10 @@
       return c;
     });
 
-    // Tooltip box: date header + one row per investor
+    // Tooltip box: date header + one row per investor (+ trade lines)
     const TIP_PAD = 8;
     const TIP_ROW_H = 14;
-    const TIP_W = 250;
+    const TIP_W = 280;
     const TIP_H = TIP_PAD * 2 + TIP_ROW_H * (series.length + 1) + 4;
 
     const tipBg = svgEl('rect', {
@@ -353,6 +366,14 @@
       return { sw, nm, vl };
     });
 
+    // Footer lines for trades on the hovered date (▲ buy / ▼ sell).
+    const eventEls = [];
+    for (let i = 0; i < MAX_TIP_EVENTS; i++) {
+      const t = svgEl('text', { x: 0, y: 0, 'font-size': 10, 'font-weight': 600 });
+      hover.appendChild(t);
+      eventEls.push(t);
+    }
+
     // Transparent overlay that captures pointer events across the plot area.
     const overlay = svgEl('rect', {
       x: PAD.left, y: PAD.top, width: w, height: h,
@@ -361,6 +382,7 @@
     svg.appendChild(overlay);
 
     function clientToSvg(evt) {
+      if (!svg.createSVGPoint || !svg.getScreenCTM) return { x: 0, y: 0 };
       const pt = svg.createSVGPoint();
       pt.x = evt.clientX; pt.y = evt.clientY;
       const ctm = svg.getScreenCTM();
@@ -411,12 +433,36 @@
         // itself the change, so the % is meaningless — show value only.
         const yv = series[i].points[idx].y;
         const base = series[i].points[0].y;
-        let txt = fmtNokFull(yv);
-        if (Math.abs(base) >= 1) {
-          const pc = ((yv - base) / Math.abs(base)) * 100;
-          txt += `  ${pc >= 0 ? '+' : ''}${pc.toFixed(1)}%`;
+        // A point may carry its own preformatted tooltip value (e.g. the
+        // competition curve shows net P/L in NOK + return %).
+        const p = series[i].points[idx];
+        if (p.tipValue != null) {
+          r.vl.textContent = p.tipValue;
+        } else {
+          let txt = fmtNokFull(yv);
+          if (Math.abs(base) >= 1) {
+            const pc = ((yv - base) / Math.abs(base)) * 100;
+            txt += `  ${pc >= 0 ? '+' : ''}${pc.toFixed(1)}%`;
+          }
+          r.vl.textContent = txt;
         }
-        r.vl.textContent = txt;
+      }
+      // Trades on this date → footer lines, tooltip grows to fit.
+      const events = (markersByIdx.get(idx) || []).slice(0, MAX_TIP_EVENTS);
+      const baseH = TIP_PAD * 2 + TIP_ROW_H * (series.length + 1) + 4;
+      tipBg.setAttribute('height', events.length ? baseH + 4 + TIP_ROW_H * events.length : baseH);
+      for (let i = 0; i < MAX_TIP_EVENTS; i++) {
+        const t = eventEls[i];
+        if (i < events.length) {
+          const ev = events[i];
+          const rowY = tipY + TIP_PAD + 10 + TIP_ROW_H * (series.length + 1) + 6 + TIP_ROW_H * i + 2;
+          t.setAttribute('x', tipX + TIP_PAD);
+          t.setAttribute('y', rowY);
+          t.setAttribute('fill', ev.type === 'sell' ? '#FF3B3B' : '#5B8CFF');
+          t.textContent = `${ev.type === 'sell' ? '▼' : '▲'} ${ev.label || (ev.type === 'sell' ? 'sale' : 'purchase')}`;
+        } else {
+          t.textContent = '';
+        }
       }
     }
     function hide() { hover.setAttribute('visibility', 'hidden'); }
