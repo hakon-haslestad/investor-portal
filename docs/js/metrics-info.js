@@ -179,6 +179,11 @@
       source: 'Same engine as the dashboard, filtered to this investor\'s Dim-values weights.',
       calc: `All amounts are the investor\'s attributed share: qty × weight, amounts × weight. ${ATTRIB} Cash and deposits are the group figures ÷ 5.`,
     },
+    'mv-change': {
+      title: 'Market-value change (Δ columns)',
+      source: 'Rådata (attributed share counts per date), StockPrices (closes + FX per date).',
+      calc: 'Per horizon: the investor\'s attributed market value today vs on the horizon start date (positions × that date\'s NOK closes, forward-filled; own-trade prices for delisted names). NOTE: this is raw MV change — buys ADD to it and sells subtract, so it is not a pure return figure; use Period return for flow-adjusted performance.',
+    },
     'previous-holdings': {
       title: 'Previous holdings',
       source: 'Rådata — full history of securities the investor no longer holds.',

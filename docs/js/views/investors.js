@@ -33,49 +33,6 @@
 
   // ─── Overview ─────────────────────────────────────────────────────────────
 
-  // Fundamentals per investor (moved from the dashboard's "By investor").
-    function periodKey(p) {
-      const y = /(\d{4})/.exec(p || ''); const yr = y ? +y[1] : 0;
-      const q = /Q\s*([1-4])/i.exec(p || ''); return yr * 10 + (q ? +q[1] : 4);
-    }
-    function buildInvestorKpis(store, d) {
-    const INVESTOR_CODES = window.Ledger.INVESTOR_CODES;
-      const kpis = store.kpis || [];
-      if (!kpis.length) return null;
-      const canon = window.Portfolio.canonicalName;
-      const periods = [...new Set(kpis.map((k) => k.period).filter(Boolean))].sort((a, b) => periodKey(a) - periodKey(b));
-      const show = periods.slice(-2);
-      if (!show.length) return null;
-      const latest = show[show.length - 1];
-      const peByCo = new Map();
-      for (const k of kpis) if (k.period === latest && Number.isFinite(k.pe)) peByCo.set(canon(k.company), k.pe);
-
-      const byCode = {};
-      for (const code of INVESTOR_CODES) {
-        byCode[code] = { rev: {}, profit: {}, pe: null };
-        for (const p of show) { byCode[code].rev[p] = 0; byCode[code].profit[p] = 0; }
-      }
-      for (const k of kpis) {
-        if (!show.includes(k.period)) continue;
-        const split = window.Ledger.splitForSecurity(store.attributionMap, k.company);
-        for (const { code, weight } of split) {
-          if (!byCode[code]) continue;
-          byCode[code].rev[k.period] += (k.yourRevNok || 0) * weight;
-          byCode[code].profit[k.period] += (k.yourProfitNok || 0) * weight;
-        }
-      }
-      for (const code of INVESTOR_CODES) {
-        const hs = (d.perInvestor[code] && d.perInvestor[code].holdings) || [];
-        let num = 0, den = 0;
-        for (const h of hs) {
-          const pe = peByCo.get(canon(h.security)); const mv = h.marketValue || 0;
-          if (pe != null && mv > 0) { num += pe * mv; den += mv; }
-        }
-        byCode[code].pe = den > 0 ? num / den : null;
-      }
-      return { periods: show, byCode };
-    }
-
   function renderOverview(el, ctx) {
     const { store } = ctx;
     const { fmtNok, fmtPct, pctClass, escapeHtml } = window.Fmt;
@@ -87,9 +44,41 @@
     const win = window.Portfolio.computeWindow(store, preset);
     const dash = window.Portfolio.buildDashboard(store, { from: win.from, to: win.to });
     const wm = dash.windowMetrics;
-    const ik = buildInvestorKpis(store, dash);
     const codes = window.Ledger.INVESTOR_CODES.slice()
       .sort((a, b) => ((wm.perInvestor[b] || {}).periodReturnPct || 0) - ((wm.perInvestor[a] || {}).periodReturnPct || 0));
+
+    // Market-value change over fixed horizons (per investor, attributed MV).
+    const today = new Date();
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const back = (days) => { const d = new Date(today); d.setUTCDate(d.getUTCDate() - days); return iso(d); };
+    const backM = (months) => { const d = new Date(today); d.setUTCMonth(d.getUTCMonth() - months); return iso(d); };
+    let earliest = null;
+    for (const t of store.transactions) if (t.tradeDate && (!earliest || t.tradeDate < earliest)) earliest = t.tradeDate;
+    const HORIZONS = [
+      { key: '1w', label: '1w', from: back(7) },
+      { key: '1m', label: '1m', from: backM(1) },
+      { key: '3m', label: '3m', from: backM(3) },
+      { key: '6m', label: '6m', from: backM(6) },
+      { key: 'ytd', label: 'YTD', from: `${today.getUTCFullYear()}-01-01` },
+      { key: '1y', label: '1y', from: backM(12) },
+      { key: '3y', label: '3y', from: backM(36) },
+      { key: 'all', label: 'All', from: earliest || backM(12) },
+    ];
+    const usesMatrix = window.Portfolio.usePriceMatrix(store);
+    const mvNow = {}; const mvThen = {};
+    for (const code of codes) {
+      mvNow[code] = (dash.perInvestor[code] || {}).marketValue || 0;
+      mvThen[code] = {};
+      if (usesMatrix) {
+        for (const h of HORIZONS) mvThen[code][h.key] = window.Portfolio.investorValueAt(store, code, h.from).mv;
+      }
+    }
+    const deltaCell = (code, h) => {
+      const was = mvThen[code] ? mvThen[code][h.key] : null;
+      if (was == null || !(Math.abs(was) > 0.5)) return `<td class="text-right text-muted" data-label="${h.label}">—</td>`;
+      const pct = ((mvNow[code] - was) / Math.abs(was)) * 100;
+      return `<td class="text-right ${pctClass(pct)}" data-label="${h.label}">${fmtPct(pct)}</td>`;
+    };
 
     el.innerHTML = `
       <div class="hero">
@@ -97,19 +86,18 @@
         <div class="when">${UI.rangePicker(preset)}</div>
       </div>
       ${SUBTABS('overview')}
-      <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${win.from} → ${win.to}${ik ? '; revenue/profit/P/E from Offisielle nøkkeltall, your share' : ''})</span></div>
+      <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${win.from} → ${win.to}; Δ columns are attributed market-value change ${UI.infoIcon('mv-change')})</span></div>
       <div style="overflow-x:auto">
       <table class="investor-table">
         <thead><tr>
           <th>Investor</th>
-          <th class="text-right">Total value <span class="text-muted text-small">(now)</span></th>
+          <th class="text-right">Total value</th>
+          <th class="text-right">Market value</th>
           <th class="text-right">Period return</th>
           <th class="text-right">Realized</th>
           <th class="text-right">Dividends</th>
-          <th class="text-right">Bought</th>
-          <th class="text-right">Sold</th>
           <th class="text-right">All-time return</th>
-          ${ik ? ik.periods.map((p) => `<th class="text-right">Rev ${escapeHtml(p)}</th><th class="text-right">Profit ${escapeHtml(p)}</th>`).join('') + '<th class="text-right">P/E</th>' : ''}
+          ${HORIZONS.map((h) => `<th class="text-right">Δ ${h.label}</th>`).join('')}
         </tr></thead>
         <tbody>
           ${codes.map((code) => {
@@ -119,13 +107,12 @@
               <tr class="row-link" tabindex="0" role="link" data-code="${escapeHtml(code)}" aria-label="Open ${escapeHtml(names[code] || code)}">
                 <td data-label="Investor">${UI.investorChip(code)} <span class="text-muted text-small">${escapeHtml(names[code] || '')}</span></td>
                 <td class="text-right" data-label="Total value">${fmtNok(s2.totalValue)}</td>
-                <td class="text-right ${pctClass(w.periodReturnPct)}" data-label="Period return"><strong>${fmtPct(w.periodReturnPct)}</strong></td>
+                <td class="text-right" data-label="Market value"><strong>${fmtNok(s2.marketValue)}</strong></td>
+                <td class="text-right ${pctClass(w.periodReturnPct)}" data-label="Period return">${fmtPct(w.periodReturnPct)}</td>
                 <td class="text-right ${pctClass(w.realizedInWindow)}" data-label="Realized">${fmtNok(w.realizedInWindow)}</td>
                 <td class="text-right" data-label="Dividends">${fmtNok(w.dividendsInWindow)}</td>
-                <td class="text-right text-muted" data-label="Bought">${fmtNok(w.buysInWindow)}</td>
-                <td class="text-right text-muted" data-label="Sold">${fmtNok(w.sellsInWindow)}</td>
                 <td class="text-right ${pctClass(s2.portfolioReturnPct)}" data-label="All-time return">${fmtPct(s2.portfolioReturnPct)}</td>
-                ${ik ? (() => { const k = ik.byCode[code] || { rev: {}, profit: {}, pe: null }; return ik.periods.map((p) => `<td class="text-right text-muted" data-label="Rev ${escapeHtml(p)}">${fmtNok(k.rev[p])}</td><td class="text-right ${pctClass(k.profit[p])}" data-label="Profit ${escapeHtml(p)}">${fmtNok(k.profit[p])}</td>`).join('') + `<td class="text-right text-muted" data-label="P/E">${k.pe != null ? k.pe.toFixed(1) : '—'}</td>`; })() : ''}
+                ${HORIZONS.map((h) => deltaCell(code, h)).join('')}
               </tr>`;
           }).join('')}
         </tbody>
