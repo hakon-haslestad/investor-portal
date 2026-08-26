@@ -39,16 +39,12 @@
     const { fmtNok, fmtPct, pctClass, escapeHtml } = window.Fmt;
     const UI = window.UI;
     const names = window.Copy.namesFromMembers(store.members);
-
-    let preset = 'ytd';
-    try { preset = JSON.parse(localStorage.getItem('portal.investors.range') || '{}').preset || 'ytd'; } catch (_e) {}
-    const win = window.Portfolio.computeWindow(store, preset);
-    const dash = window.Portfolio.buildDashboard(store, { from: win.from, to: win.to });
-    const wm = dash.windowMetrics;
+    const dash = window.Portfolio.buildDashboard(store);
     const codes = window.Ledger.INVESTOR_CODES.slice()
-      .sort((a, b) => ((wm.perInvestor[b] || {}).periodReturnPct || 0) - ((wm.perInvestor[a] || {}).periodReturnPct || 0));
+      .sort((a, b) => ((dash.perInvestor[b] || {}).portfolioReturnPct || 0) - ((dash.perInvestor[a] || {}).portfolioReturnPct || 0));
 
-    // Market-value change over fixed horizons (per investor, attributed MV).
+    // Market-value change over fixed horizons (per investor, attributed MV) —
+    // always from today's perspective.
     const today = new Date();
     const iso = (d) => d.toISOString().slice(0, 10);
     const back = (days) => { const d = new Date(today); d.setUTCDate(d.getUTCDate() - days); return iso(d); };
@@ -84,17 +80,15 @@
     el.innerHTML = `
       <div class="hero">
         <h2>Investors ${UI.infoIcon('investor-kpis')}</h2>
-        <div class="when">${UI.rangePicker(preset)}</div>
+        <div class="when">as of today · Δ columns are attributed market-value change ${UI.infoIcon('mv-change')}</div>
       </div>
       ${SUBTABS('overview')}
-      <div class="section-title">By investor <span class="text-muted text-small">(period stats reflect ${win.from} → ${win.to}; Δ columns are attributed market-value change ${UI.infoIcon('mv-change')})</span></div>
       <div style="overflow-x:auto">
       <table class="investor-table compact-table">
         <thead><tr>
           <th>Investor</th>
           <th class="text-right">Total value</th>
           <th class="text-right">Market value</th>
-          <th class="text-right">Period return</th>
           <th class="text-right">Realized</th>
           <th class="text-right">Dividends</th>
           <th class="text-right">All-time return</th>
@@ -103,15 +97,13 @@
         <tbody>
           ${codes.map((code) => {
             const s2 = dash.perInvestor[code];
-            const w = wm.perInvestor[code] || {};
             return `
               <tr class="row-link" tabindex="0" role="link" data-code="${escapeHtml(code)}" aria-label="Open ${escapeHtml(names[code] || code)}">
                 <td data-label="Investor">${UI.investorChip(code)} <span class="text-muted text-small">${escapeHtml(names[code] || '')}</span></td>
                 <td class="text-right" data-label="Total value">${fmtNok(s2.totalValue)}</td>
                 <td class="text-right" data-label="Market value"><strong>${fmtNok(s2.marketValue)}</strong></td>
-                <td class="text-right ${pctClass(w.periodReturnPct)}" data-label="Period return">${fmtPct(w.periodReturnPct)}</td>
-                <td class="text-right ${pctClass(w.realizedInWindow)}" data-label="Realized">${fmtNok(w.realizedInWindow)}</td>
-                <td class="text-right" data-label="Dividends">${fmtNok(w.dividendsInWindow)}</td>
+                <td class="text-right ${pctClass(s2.realized)}" data-label="Realized">${fmtNok(s2.realized)}</td>
+                <td class="text-right" data-label="Dividends">${fmtNok(s2.dividends)}</td>
                 <td class="text-right ${pctClass(s2.portfolioReturnPct)}" data-label="All-time return">${fmtPct(s2.portfolioReturnPct)}</td>
                 ${HORIZONS.map((h) => deltaCell(code, h)).join('')}
               </tr>`;
@@ -120,10 +112,6 @@
       </table>
       </div>
     `;
-    UI.bindRangePicker(el, (pNew) => {
-      localStorage.setItem('portal.investors.range', JSON.stringify({ preset: pNew }));
-      renderOverview(el, ctx);
-    });
     el.querySelectorAll('tr.row-link').forEach((tr) => {
       const go = () => ctx.navigate(`#/investors/${tr.dataset.code}`);
       tr.addEventListener('click', go);
