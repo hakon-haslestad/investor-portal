@@ -78,6 +78,12 @@
         }
         st._q = Math.max(0, st._q - q);
       }
+      // Snap to Nordnet's own running total when the row carries one — the
+      // broker's number beats our replay (double-booked conversions, odd
+      // same-day ordering). Cost basis is never snapped, only share count.
+      if (tx.totalAfter != null && Number.isFinite(tx.totalAfter) && tx.totalAfter >= 0) {
+        st._q = tx.totalAfter;
+      }
       const d = tx.tradeDate || tx.bookDate || '';
       if (st.dates.length && st.dates[st.dates.length - 1] === d) {
         // Same-day events collapse into one state entry.

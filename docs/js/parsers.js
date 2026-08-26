@@ -92,6 +92,7 @@
       qty: header.indexOf('Antall'),
       price: header.indexOf('Kurs'),
       fee: header.indexOf('Totale Avgifter'),
+      totalAfter: (() => { const a = header.indexOf('Totalt antall'); return a >= 0 ? a : header.indexOf('Totaltantall'); })(),
       amount: header.indexOf('Beløp'),
       saldo: header.indexOf('Saldo'),
       fx: header.indexOf('Vekslingskurs'),
@@ -117,6 +118,10 @@
         qty: numOrNull(row[idx.qty]),
         price: numOrNull(row[idx.price]),
         fee: numOrNull(row[idx.fee]),
+        // Nordnet's own running position in this security AFTER the row —
+        // authoritative, used to snap the replay (heals duplicate corporate
+        // bookings and same-day ordering issues).
+        totalAfter: idx.totalAfter >= 0 ? numOrNull(row[idx.totalAfter]) : null,
         amount: numOrNull(row[idx.amount]),
         currency: currencyCol >= 0 ? (row[currencyCol] || null) : null,
         saldo: numOrNull(row[idx.saldo]),

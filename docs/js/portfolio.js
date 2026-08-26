@@ -227,6 +227,9 @@
           }
           slot.qty = Math.max(0, slot.qty - wq);
         }
+        if (tx.totalAfter != null && Number.isFinite(tx.totalAfter) && tx.totalAfter >= 0) {
+          slot.qty = tx.totalAfter * weight;
+        }
       }
     }
     return perInvestor;
