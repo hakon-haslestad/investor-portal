@@ -90,6 +90,7 @@
           <th class="text-right">Total value</th>
           <th class="text-right">Market value</th>
           <th class="text-right">Realized</th>
+          <th class="text-right">Unrealized</th>
           <th class="text-right">Dividends</th>
           <th class="text-right">All-time return</th>
           ${HORIZONS.map((h) => `<th class="text-right">Δ${h.label}</th>`).join('')}
@@ -103,6 +104,7 @@
                 <td class="text-right" data-label="Total value">${fmtNok(s2.totalValue)}</td>
                 <td class="text-right" data-label="Market value"><strong>${fmtNok(s2.marketValue)}</strong></td>
                 <td class="text-right ${pctClass(s2.realized)}" data-label="Realized">${fmtNok(s2.realized)}</td>
+                <td class="text-right ${pctClass(s2.unrealized)}" data-label="Unrealized">${fmtNok(s2.unrealized)}</td>
                 <td class="text-right" data-label="Dividends">${fmtNok(s2.dividends)}</td>
                 <td class="text-right ${pctClass(s2.portfolioReturnPct)}" data-label="All-time return">${fmtPct(s2.portfolioReturnPct)}</td>
                 ${HORIZONS.map((h) => deltaCell(code, h)).join('')}
