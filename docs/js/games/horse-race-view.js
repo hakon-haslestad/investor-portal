@@ -22,8 +22,13 @@
 
   const LANE_H = 54;
   const VIEW_W = 1000;
-  const START_X = 90;
-  const RIGHT_X = 930;
+  // The name gutter is off the track entirely: the runners live to the right
+  // of NAME_W, so a negative return has somewhere to go without covering the
+  // label that says whose it is.
+  const NAME_W = 150;
+  const LEFT_X = NAME_W + 24;   // hard left stop for a runner
+  const START_X = 300;          // the start line, with room to fall back to
+  const RIGHT_X = 960;
   const FILLER_EVERY_MS = 6500;
 
   function svgEl(name, attrs) {
@@ -98,12 +103,25 @@
     race.lanes.forEach((l, i) => {
       const y = 30 + i * LANE_H;
       svg.appendChild(svgEl('rect', {
-        x: 0, y: y - 24, width: VIEW_W, height: LANE_H - 6,
+        x: NAME_W, y: y - 24, width: VIEW_W - NAME_W, height: LANE_H - 6,
         fill: i % 2 ? 'rgba(255,255,255,0.02)' : 'transparent',
       }));
-      const label = svgEl('text', { x: 6, y: y + 4, fill: l.colour || '#8a92a6', 'font-size': '13' });
-      label.textContent = [l.sublabel, l.label].filter(Boolean).join(' · ');
+      // Silk swatch + name, in the gutter, never overlapped by a runner.
+      if (l.colour) {
+        svg.appendChild(svgEl('rect', {
+          x: 6, y: y - 8, width: 10, height: 16, rx: 3, fill: l.colour,
+        }));
+      }
+      const label = svgEl('text', {
+        x: l.colour ? 22 : 6, y: y + 5, fill: '#e7e9ee', 'font-size': '15', 'font-weight': '600',
+      });
+      label.textContent = l.label || '';
       svg.appendChild(label);
+      if (l.sublabel) {
+        const sub = svgEl('text', { x: l.colour ? 22 : 6, y: y + 20, fill: '#8a92a6', 'font-size': '11' });
+        sub.textContent = l.sublabel;
+        svg.appendChild(sub);
+      }
     });
     svg.appendChild(svgEl('line', {
       x1: START_X, x2: START_X, y1: 10, y2: h - 10,
@@ -117,16 +135,20 @@
       const halo = svgEl('circle', {
         cx: START_X, cy: y, r: 17, fill: 'none', stroke: 'transparent', 'stroke-width': '2',
       });
-      // 🏇 faces right, which is the way the race runs.
-      const horse = svgEl('text', { x: START_X, y: y + 9, 'font-size': '26', 'text-anchor': 'middle' });
+      // The 🏇 glyph faces left in several fonts, so it is mirrored here with
+      // a transform instead of being trusted to point the right way. The text
+      // sits at the origin and the wrapper carries both position and flip.
+      const horseG = svgEl('g', { transform: `translate(${START_X},${y + 9}) scale(-1,1)` });
+      const horse = svgEl('text', { x: 0, y: 0, 'font-size': '26', 'text-anchor': 'middle' });
       horse.textContent = '🏇';
+      horseG.appendChild(horse);
       const txt = svgEl('text', {
         x: START_X, y: y - 14, fill: '#e7e9ee', 'font-size': '12',
         'font-weight': '600', 'text-anchor': 'middle',
       });
-      g.appendChild(halo); g.appendChild(horse); g.appendChild(txt);
+      g.appendChild(halo); g.appendChild(horseG); g.appendChild(txt);
       svg.appendChild(g);
-      return { lane: l, halo, horse, txt, seed: 0.13 + i * 0.19 };
+      return { lane: l, halo, horseG, txt, y, seed: 0.13 + i * 0.19 };
     });
 
     function setTime(t) {
@@ -145,12 +167,24 @@
     function place(t) {
       const positions = horses.map((hh) => E().interpolate(hh.lane.positions, t, hh.seed));
       const maxPos = Math.max(1e-4, ...positions);
-      const scale = (RIGHT_X - START_X) / maxPos;
+      const minPos = Math.min(0, ...positions);
+      // Each side of the start line gets its own scale: the leader always runs
+      // to the right edge, and the worst always falls back to the left one.
+      // A single shared scale would squash the whole field whenever one person
+      // was deeply under water, and a horse pinned to an edge says nothing
+      // about how far ahead or behind it actually is.
+      //
+      // The track is therefore not linear across zero — but it is monotonic on
+      // each side, so the ORDER is always honest, and every runner carries its
+      // own percentage anyway.
+      const posScale = (RIGHT_X - START_X) / maxPos;
+      const negScale = minPos < 0 ? (START_X - LEFT_X) / Math.abs(minPos) : 0;
       positions.forEach((pos, i) => {
-        const x = Math.max(14, Math.min(VIEW_W - 14, START_X + pos * scale));
+        const raw = START_X + pos * (pos >= 0 ? posScale : negScale);
+        const x = Math.max(LEFT_X, Math.min(VIEW_W - 14, raw));
         const hh = horses[i];
         hh.halo.setAttribute('cx', x.toFixed(1));
-        hh.horse.setAttribute('x', x.toFixed(1));
+        hh.horseG.setAttribute('transform', `translate(${x.toFixed(1)},${hh.y + 9}) scale(-1,1)`);
         hh.txt.setAttribute('x', x.toFixed(1));
         hh.txt.textContent = fmtPct(pos * 100, true);
         // The emoji cannot be recoloured, so the running total carries the
