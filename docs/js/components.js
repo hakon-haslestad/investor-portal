@@ -48,19 +48,26 @@
 
     const expandTh = expandable
       ? '<th class="col-expand" scope="col"><span class="sr-only">Show hidden columns</span></th>' : '';
+    // c.thAttrs / c.thExtra let sortable tables put their own attributes and
+    // sort arrows in the header without abandoning the primitive.
     const head = expandTh + cols.map((c) =>
-      `<th class="${c.className || ''}" data-p="${pri(c)}" scope="col">${esc(c.label)}</th>`).join('');
+      `<th class="${c.className || ''}${c.thClass ? ' ' + c.thClass : ''}" data-p="${pri(c)}" scope="col" ${c.thAttrs || ''}>${esc(c.label)}${c.thExtra || ''}</th>`).join('');
 
     const body = rows.length
       ? rows.map((r) => {
           const attrs = r.attrs || '';
+          // Grouping rows (year headers and the like) pass expand:false —
+          // they keep the chevron column's width but get no button or panel.
+          const rowExpand = expandable && r.expand !== false;
           const expandTd = expandable
-            ? '<td class="col-expand"><button type="button" class="row-expand" aria-expanded="false" aria-label="Show hidden columns"></button></td>' : '';
+            ? (rowExpand
+              ? '<td class="col-expand"><button type="button" class="row-expand" aria-expanded="false" aria-label="Show hidden columns"></button></td>'
+              : '<td class="col-expand"></td>') : '';
           const cells = (r.cells || r).map((cell, i) => {
             const c = cols[i] || {};
             return `<td class="${c.className || ''}" data-p="${pri(c)}" data-label="${esc(c.label || '')}">${cell}</td>`;
           }).join('');
-          const detail = expandable
+          const detail = rowExpand
             ? `<tr class="row-detail" hidden><td colspan="${span}"></td></tr>` : '';
           const after = typeof r.after === 'function' ? r.after(span) : (r.after || '');
           return `<tr ${attrs}>${expandTd}${cells}</tr>${detail}${after}`;
@@ -279,28 +286,29 @@
     const nok = (v) => (v == null ? '<span class="text-muted">—</span>' : F.fmtNok(v));
     return `
       <h5 class="section-title text-small" style="margin-top:14px">Fundamentals — Offisielle nøkkeltall ${infoIcon('fundamentals')}</h5>
-      <div class="table-scroll"><table>
-        <thead><tr>
-          <th>Period</th><th class="text-right">Revenue</th><th class="text-right">EAT</th>
-          <th class="text-right">EPS</th><th class="text-right">P/E</th>
-          <th class="text-right">P/B</th><th class="text-right">P/S</th>
-          <th class="text-right">Your rev (NOK)</th><th class="text-right">Your EAT (NOK)</th><th>Note</th>
-        </tr></thead>
-        <tbody>${rows.map((k) => `
-          <tr>
-            <td><strong>${esc(k.period)}</strong> <span class="text-muted text-small">${esc(k.currency || '')}</span></td>
-            <td class="text-right">${cell(k.revenue)}</td>
-            <td class="text-right">${cell(k.eat)}</td>
-            <td class="text-right">${cell(k.eps)}</td>
-            <td class="text-right">${k.pe != null ? Number(k.pe).toFixed(1) : '<span class="text-muted">—</span>'}</td>
-            <td class="text-right">${k.pb != null ? Number(k.pb).toFixed(2) : '<span class="text-muted">—</span>'}</td>
-            <td class="text-right">${k.ps != null ? Number(k.ps).toFixed(2) : '<span class="text-muted">—</span>'}</td>
-            <td class="text-right">${nok(k.yourRevNok)}</td>
-            <td class="text-right ${k.yourProfitNok != null ? F.pctClass(k.yourProfitNok) : ''}">${nok(k.yourProfitNok)}</td>
-            <td class="text-small text-muted">${esc(k.note || '')}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table></div>`;
+      ${table([
+        { label: 'Period', p: 1 },
+        { label: 'Revenue', className: 'text-right', p: 1 },
+        { label: 'EAT', className: 'text-right', p: 2 },
+        { label: 'EPS', className: 'text-right', p: 1 },
+        { label: 'P/E', className: 'text-right', p: 2 },
+        { label: 'P/B', className: 'text-right', p: 3 },
+        { label: 'P/S', className: 'text-right', p: 3 },
+        { label: 'Your rev (NOK)', className: 'text-right', p: 3 },
+        { label: 'Your EAT (NOK)', className: 'text-right', p: 2 },
+        { label: 'Note', className: 'text-small text-muted wrap', p: 3 },
+      ], rows.map((k) => [
+        `<strong>${esc(k.period)}</strong> <span class="text-muted text-small">${esc(k.currency || '')}</span>`,
+        cell(k.revenue),
+        cell(k.eat),
+        cell(k.eps),
+        k.pe != null ? Number(k.pe).toFixed(1) : '<span class="text-muted">—</span>',
+        k.pb != null ? Number(k.pb).toFixed(2) : '<span class="text-muted">—</span>',
+        k.ps != null ? Number(k.ps).toFixed(2) : '<span class="text-muted">—</span>',
+        nok(k.yourRevNok),
+        k.yourProfitNok != null ? `<span class="${F.pctClass(k.yourProfitNok)}">${nok(k.yourProfitNok)}</span>` : nok(k.yourProfitNok),
+        esc(k.note || ''),
+      ]), { caption: 'Fundamentals' })}`;
   }
 
   // The one security drill-down used everywhere (dashboard + portfolio):

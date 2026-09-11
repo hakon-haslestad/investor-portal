@@ -80,27 +80,27 @@
       { label: 'Unrealized', value: fmtNok(unrealized), sub: then ? `was ${fmtNok(then.unrealized)} on ${win.from}` : '', tone: unrealized >= 0 ? 'positive' : 'negative', info: 'unrealized' },
     ]);
 
-    const COLS = 9;
     const rows = holdings.map((h, i) => {
       const t = store.registry ? store.registry.forName(h.security) : null;
       const noPx = h.priced === false;
       const ap = h.approx ? '<abbr title="Approximate: valued at the club\'s last trade price — market/FX data missing. Run the price-feed backfill for real marks.">≈</abbr> ' : '';
       const dash = '<span class="text-muted" title="No price data yet">—</span>';
-      return `
-        <tr class="row-link" tabindex="0" role="button" aria-expanded="false" data-idx="${i}" data-security="${escapeHtml(h.security)}">
-          <td>${escapeHtml(h.security)}</td>
-          <td class="text-muted text-small">${t && t.ticker ? escapeHtml(t.ticker) : '—'}</td>
-          <td class="text-right">${fmtQty(h.qty)}</td>
-          <td class="text-right">${h.gav != null ? fmtQty(h.gav) : '—'}</td>
-          <td class="text-right">${noPx ? dash : `${h.currentPrice != null ? fmtQty(h.currentPrice) : '≈'} <span class="text-muted text-small">${escapeHtml(h.currency || '')}</span>`}</td>
-          <td class="text-right">${noPx ? dash : ap + fmtNok(h.marketValueNok)}</td>
-          <td class="text-right ${h.returnNok != null ? pctClass(h.returnNok) : ''}">${noPx || h.returnNok == null ? dash : fmtNok(h.returnNok)}</td>
-          <td class="text-right ${h.returnPct != null ? pctClass(h.returnPct) : ''}">${noPx || h.returnPct == null ? dash : fmtPct(h.returnPct)}</td>
-          <td>${ownersOf(store, h.security)}</td>
-        </tr>
-        <tr class="chart-row" hidden><td colspan="${COLS}"><div class="chart-wrap" data-chart="${i}"></div></td></tr>
-      `;
-    }).join('');
+      return {
+        attrs: `class="row-link" tabindex="0" role="button" aria-expanded="false" data-idx="${i}" data-security="${escapeHtml(h.security)}"`,
+        after: (span) => `<tr class="chart-row" hidden><td colspan="${span}"><div class="chart-wrap" data-chart="${i}"></div></td></tr>`,
+        cells: [
+          escapeHtml(h.security),
+          t && t.ticker ? escapeHtml(t.ticker) : '—',
+          fmtQty(h.qty),
+          h.gav != null ? fmtQty(h.gav) : '—',
+          noPx ? dash : `${h.currentPrice != null ? fmtQty(h.currentPrice) : '≈'} <span class="text-muted text-small">${escapeHtml(h.currency || '')}</span>`,
+          noPx ? dash : ap + fmtNok(h.marketValueNok),
+          noPx || h.returnNok == null ? dash : `<span class="${pctClass(h.returnNok)}">${fmtNok(h.returnNok)}</span>`,
+          noPx || h.returnPct == null ? dash : `<span class="${pctClass(h.returnPct)}">${fmtPct(h.returnPct)}</span>`,
+          ownersOf(store, h.security),
+        ],
+      };
+    });
 
     body.innerHTML = `
       <div style="display:flex;justify-content:flex-end;margin-bottom:10px">${window.UI.rangePicker(preset)}</div>
@@ -108,16 +108,17 @@
       ${window.UI.section('Current holdings', { info: 'holdings-table', extra: '<span class="text-muted text-small">click a row for the price history</span>' })}
       ${holdings.length === 0
         ? window.UI.emptyState('No open positions', 'Buys will appear here once transactions are synced.')
-        : `<div class="table-scroll"><table>
-            <thead><tr>
-              <th scope="col">Security</th><th scope="col">Ticker</th>
-              <th scope="col" class="text-right">Qty</th><th scope="col" class="text-right">GAV</th>
-              <th scope="col" class="text-right">Price</th><th scope="col" class="text-right">MV NOK</th>
-              <th scope="col" class="text-right">Return NOK</th><th scope="col" class="text-right">Return %</th>
-              <th scope="col">Owners</th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-          </table></div>`}
+        : window.UI.table([
+            { label: 'Security', p: 1 },
+            { label: 'Ticker', className: 'text-muted text-small', p: 3 },
+            { label: 'Qty', className: 'text-right', p: 2 },
+            { label: 'GAV', className: 'text-right', p: 3 },
+            { label: 'Price', className: 'text-right', p: 3 },
+            { label: 'MV NOK', className: 'text-right', p: 1 },
+            { label: 'Return NOK', className: 'text-right', p: 2 },
+            { label: 'Return %', className: 'text-right', p: 1 },
+            { label: 'Owners', p: 2 },
+          ], rows, { wrapClass: 'sticky-first', caption: 'Current holdings' })}
     `;
 
     window.UI.bindRangePicker(body, (p) => {
@@ -158,75 +159,6 @@
   // section; each month row expands into its actual transactions plus the
   // current fate (still held → MV + unrealized; exited → realized) of the
   // securities traded that month.
-
-  const ACTIVITY_CSS = `
-    .data-toolbar {
-      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
-      margin-bottom: 14px; background: var(--panel);
-      border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 12px 14px;
-    }
-    .data-toolbar input[type="search"] {
-      background: var(--bg); color: var(--text);
-      border: 1px solid var(--border); border-radius: 8px;
-      padding: 7px 10px; font-size: 0.9rem; width: 200px;
-    }
-    .data-toolbar .grow { flex: 1; }
-    .data-toolbar .count { color: var(--muted); font-size: 0.85rem; }
-    .type-pills, .code-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-    .type-pills button, .code-chips button {
-      padding: 4px 10px; border-radius: 999px; cursor: pointer;
-      background: var(--bg); border: 1px solid var(--border);
-      color: var(--muted); font-size: 0.8rem; font-weight: 500;
-      transition: all 0.12s;
-    }
-    .type-pills button:hover, .code-chips button:hover { border-color: var(--accent); color: var(--text); }
-    .type-pills button.active, .code-chips button.active { background: var(--accent); color: #051a0a; border-color: var(--accent); }
-    .type-pill {
-      display: inline-block; padding: 2px 8px; border-radius: 999px;
-      font-size: 0.74rem; font-weight: 600; background: var(--panel-2);
-      color: var(--muted); border: 1px solid var(--border);
-    }
-    .type-KJØPT { color: #ff9da4; border-color: rgba(255, 91, 91, 0.35); }
-    .type-SALG, .type-SOLGT { color: var(--positive); border-color: rgba(62, 224, 127, 0.35); }
-    .type-UTBYTTE { color: var(--accent-2); border-color: rgba(255, 201, 79, 0.35); }
-    .report-table tr.month-row { cursor: pointer; }
-    .report-table tr.month-row:hover td { background: rgba(106, 209, 255, 0.05); }
-    .report-table tr.month-row td:first-child::before { content: '▸ '; color: var(--muted); font-size: 0.72rem; }
-    .report-table tr.month-row[aria-expanded="true"] td:first-child::before { content: '▾ '; color: var(--accent); }
-    .month-detail { background: var(--bg); }
-    .month-detail > td { padding: 14px 16px 18px; }
-    .month-detail h5 {
-      margin: 12px 0 6px; font-size: 0.72rem; text-transform: uppercase;
-      letter-spacing: 1.2px; color: var(--muted); font-weight: 600;
-    }
-    .month-detail h5:first-child { margin-top: 0; }
-    .month-detail table { font-size: 0.82rem; background: var(--panel); }
-    .month-detail th, .month-detail td { padding: 6px 10px; white-space: nowrap; }
-    .all-tx-details > summary {
-      cursor: pointer; color: var(--link); font-size: 0.9rem; padding: 8px 0;
-      list-style: none; user-select: none;
-    }
-    .all-tx-details > summary::-webkit-details-marker { display: none; }
-    .all-tx-details > summary::before { content: '▸ '; font-size: 0.78rem; }
-    .all-tx-details[open] > summary::before { content: '▾ '; }
-    .data-table-wrap {
-      width: 100%; overflow-x: auto;
-      border: 1px solid var(--border); border-radius: var(--radius);
-      background: var(--panel); box-shadow: var(--shadow);
-    }
-    .data-table {
-      font-size: 0.82rem; width: max-content; min-width: 100%;
-      border: 0; border-radius: 0; box-shadow: none;
-    }
-    .data-table th, .data-table td { padding: 6px 10px; white-space: nowrap; }
-    .data-table th.sortable { cursor: pointer; user-select: none; }
-    .data-table th.sortable:hover { color: var(--text); }
-    .data-table th .sort-arrow { display: inline-block; width: 10px; margin-left: 4px; color: var(--muted); font-size: 0.72rem; }
-    .data-table th.sorted .sort-arrow { color: var(--accent); }
-    .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .data-table th.num { text-align: right; }
-  `;
 
   const TYPE_PILLS = [
     { id: 'all', label: 'All' },
@@ -446,7 +378,6 @@
         `${filtered.length} of ${txRows.length} transactions · ${win.from} → ${win.to}`;
 
       body.innerHTML = `
-        <style>${ACTIVITY_CSS}</style>
 
         <div class="data-toolbar" role="group" aria-label="Activity filters">
           <input type="search" id="act-q" placeholder="Search security / ISIN / text…" aria-label="Search transactions" value="${escapeHtml(state.q)}" />
@@ -488,27 +419,9 @@
 
         <div class="section-title">By month ${ii('monthly-accounting')} <span class="text-muted text-small">click a month for its transactions</span></div>
         ${nonRangeFilterActive() ? '<p class="text-muted text-small">Valuation columns (End cash / End MV / Total / Δ) are hidden while a security, type or investor filter is active — they are portfolio-level figures.</p>' : ''}
-        <div class="chart-wrap" style="overflow-x:auto">
-          <table class="report-table">
-            <thead><tr>
-              <th>Month</th>
-              <th class="text-right">Tx</th>
-              <th class="text-right">Deposits</th>
-              <th class="text-right">Withdrawals</th>
-              <th class="text-right">Buys</th>
-              <th class="text-right">Sells</th>
-              <th class="text-right">Dividends</th>
-              <th class="text-right">Fees</th>
-              <th class="text-right">Realized P/L</th>
-              ${showValuation ? `
-                <th class="text-right">End cash</th>
-                <th class="text-right">End MV</th>
-                <th class="text-right">Total</th>
-                <th class="text-right">Δ</th>` : ''}
-            </tr></thead>
-            <tbody>${renderLedgerRows(months, showValuation)}</tbody>
-          </table>
-        </div>
+        ${window.UI.table(LEDGER_COLS(showValuation), renderLedgerRows(months, showValuation), {
+          className: 'report-table', wrapClass: 'sticky-first', caption: 'Monthly ledger',
+        })}
 
         <details class="all-tx-details">
           <summary>All ${filtered.length} transactions in one table</summary>
@@ -544,6 +457,29 @@
     }
 
     // ── Year/month rows ──────────────────────────────────────────────────
+    // p1 keeps the month and the three numbers the table is actually read
+    // for; the rest of the cash-flow breakdown is one tap away.
+    function LEDGER_COLS(withValuation) {
+      const cols = [
+        { label: 'Month', p: 1 },
+        { label: 'Tx', className: 'text-right', p: 3 },
+        { label: 'Deposits', className: 'text-right', p: 3 },
+        { label: 'Withdrawals', className: 'text-right', p: 3 },
+        { label: 'Buys', className: 'text-right', p: 1 },
+        { label: 'Sells', className: 'text-right', p: 1 },
+        { label: 'Dividends', className: 'text-right', p: 2 },
+        { label: 'Fees', className: 'text-right', p: 3 },
+        { label: 'Realized P/L', className: 'text-right', p: 1 },
+      ];
+      if (withValuation) cols.push(
+        { label: 'End cash', className: 'text-right', p: 3 },
+        { label: 'End MV', className: 'text-right', p: 3 },
+        { label: 'Total', className: 'text-right', p: 2 },
+        { label: 'Δ', className: 'text-right', p: 2 },
+      );
+      return cols;
+    }
+
     function renderLedgerRows(months, withValuation) {
       const byYear = new Map();
       for (const m of months) {
@@ -553,7 +489,7 @@
       }
       const years = Array.from(byYear.keys()).sort().reverse();
       const dash = '—';
-      const money = (v, cls) => `<td class="text-right ${cls || ''}">${v != null ? fmtNok(v) : dash}</td>`;
+      const money = (v, cls) => (v != null ? `<span class="${cls || ''}">${fmtNok(v)}</span>` : dash);
 
       const sum = (ms) => ms.reduce((a, m) => ({
         txCount: a.txCount + m.txCount,
@@ -562,36 +498,41 @@
         dividends: a.dividends + m.dividends, fees: a.fees + m.fees, realized: a.realized + m.realized,
       }), { txCount: 0, deposits: 0, withdrawals: 0, buys: 0, sells: 0, dividends: 0, fees: 0, realized: 0 });
 
-      return years.map((year) => {
+      const out = [];
+      for (const year of years) {
         const yr = byYear.get(year);
         const s = sum(yr);
         const end = yr[yr.length - 1] || {};
         let dY = null;
         for (const m of yr) if (m.delta != null) dY = (dY || 0) + m.delta;
-        const header = `
-          <tr class="year-header">
-            <td><strong>${year}</strong></td>
-            <td class="text-right">${s.txCount || dash}</td>
-            ${money(s.deposits)}${money(s.withdrawals)}${money(s.buys)}${money(s.sells)}
-            ${money(s.dividends)}${money(s.fees)}${money(s.realized, pctClass(s.realized))}
-            ${withValuation ? `${money(end.endingCash)}${money(end.endingMv)}${money(end.total)}${money(dY, dY != null ? pctClass(dY) : '')}` : ''}
-          </tr>`;
-        const cols = withValuation ? 13 : 9;
-        const rows = yr.map((m) => `
-          <tr class="month-row" tabindex="0" role="button" aria-expanded="false" data-ym="${m.ym}">
-            <td>${m.ym}</td>
-            <td class="text-right ${m.txCount ? '' : 'text-muted'}">${m.txCount || dash}</td>
-            ${money(m.deposits)}${money(m.withdrawals, 'text-muted')}${money(m.buys)}${money(m.sells)}
-            ${money(m.dividends)}${money(m.fees, 'text-muted')}${money(m.realized, pctClass(m.realized))}
-            ${withValuation ? `
-              ${money(m.endingCash)}${money(m.endingMv)}
-              <td class="text-right"><strong>${m.total != null ? fmtNok(m.total) : dash}</strong></td>
-              ${money(m.delta, m.delta != null ? pctClass(m.delta) : '')}` : ''}
-          </tr>
-          <tr class="month-detail" hidden><td colspan="${cols}" data-detail="${m.ym}"></td></tr>
-        `).join('');
-        return header + rows;
-      }).join('');
+        out.push({
+          attrs: 'class="year-header"',
+          expand: false, // a grouping row has nothing of its own to reveal
+          cells: [
+            `<strong>${year}</strong>`, s.txCount || dash,
+            money(s.deposits), money(s.withdrawals), money(s.buys), money(s.sells),
+            money(s.dividends), money(s.fees), money(s.realized, pctClass(s.realized)),
+            ...(withValuation ? [money(end.endingCash), money(end.endingMv), money(end.total),
+              money(dY, dY != null ? pctClass(dY) : '')] : []),
+          ],
+        });
+        for (const m of yr) {
+          out.push({
+            attrs: `class="month-row" tabindex="0" role="button" aria-expanded="false" data-ym="${m.ym}"`,
+            after: (span) => `<tr class="month-detail" hidden><td colspan="${span}" data-detail="${m.ym}"></td></tr>`,
+            cells: [
+              m.ym,
+              m.txCount ? m.txCount : `<span class="text-muted">${dash}</span>`,
+              money(m.deposits), money(m.withdrawals, 'text-muted'), money(m.buys), money(m.sells),
+              money(m.dividends), money(m.fees, 'text-muted'), money(m.realized, pctClass(m.realized)),
+              ...(withValuation ? [money(m.endingCash), money(m.endingMv),
+                m.total != null ? `<strong>${fmtNok(m.total)}</strong>` : dash,
+                money(m.delta, m.delta != null ? pctClass(m.delta) : '')] : []),
+            ],
+          });
+        }
+      }
+      return out;
     }
 
     // ── Month drill-down ─────────────────────────────────────────────────
@@ -624,27 +565,27 @@
 
       const txTable = `
         <h5>Transactions (${rows.length})</h5>
-        <div class="table-scroll"><table>
-          <thead><tr>
-            <th>Date</th><th>Type</th><th>Security</th>
-            <th class="text-right">Qty</th><th class="text-right">Price</th>
-            <th class="text-right">Amount NOK</th><th class="text-right">Fee</th>
-            <th class="text-right">Saldo</th><th>Investors</th>
-          </tr></thead>
-          <tbody>${rows.map((r) => `
-            <tr>
-              <td class="text-small">${r.date}</td>
-              <td><span class="type-pill type-${escapeHtml(r.type || '')}">${escapeHtml(r.type || '')}</span></td>
-              <td>${escapeHtml(r.security || '')}</td>
-              <td class="text-right">${r.qty != null ? fmtQty(r.qty) : '—'}</td>
-              <td class="text-right">${r.price != null ? fmtQty(r.price) : '—'}</td>
-              <td class="text-right ${pctClass(r.amountNok)}">${fmtNok(r.amountNok)}</td>
-              <td class="text-right text-muted">${r.feeNok ? fmtNok(r.feeNok) : '—'}</td>
-              <td class="text-right text-muted">${r.saldo != null ? fmtNok(r.saldo) : '—'}</td>
-              <td class="text-muted text-small">${r.codes.join(', ')}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table></div>`;
+        ${window.UI.table([
+          { label: 'Date', className: 'text-small', p: 1 },
+          { label: 'Type', p: 2 },
+          { label: 'Security', p: 1 },
+          { label: 'Qty', className: 'text-right', p: 2 },
+          { label: 'Price', className: 'text-right', p: 3 },
+          { label: 'Amount NOK', className: 'text-right', p: 1 },
+          { label: 'Fee', className: 'text-right text-muted', p: 3 },
+          { label: 'Saldo', className: 'text-right text-muted', p: 3 },
+          { label: 'Investors', className: 'text-muted text-small', p: 2 },
+        ], rows.map((r) => [
+          r.date,
+          `<span class="type-pill type-${escapeHtml(r.type || '')}">${escapeHtml(r.type || '')}</span>`,
+          escapeHtml(r.security || ''),
+          r.qty != null ? fmtQty(r.qty) : '—',
+          r.price != null ? fmtQty(r.price) : '—',
+          `<span class="${pctClass(r.amountNok)}">${fmtNok(r.amountNok)}</span>`,
+          r.feeNok ? fmtNok(r.feeNok) : '—',
+          r.saldo != null ? fmtNok(r.saldo) : '—',
+          r.codes.join(', '),
+        ]), { caption: `Transactions in ${ym}` })}`;
 
       // Fate of the securities traded this month: still held → current MV +
       // unrealized; exited → total realized P/L over its lifetime.
@@ -654,39 +595,37 @@
         const held = holdingsBySec.get(sec);
         if (held) {
           const noPx = held.priced === false;
-          return `
-            <tr>
-              <td>${escapeHtml(sec)}</td>
-              <td><span class="tag">still held</span></td>
-              <td class="text-right">${fmtQty(held.qty)}</td>
-              <td class="text-right">${noPx ? '—' : fmtNok(held.marketValueNok)}</td>
-              <td class="text-right ${held.returnNok != null ? pctClass(held.returnNok) : ''}">${noPx || held.returnNok == null ? '—' : fmtNok(held.returnNok)}</td>
-              <td class="text-right ${held.returnPct != null ? pctClass(held.returnPct) : ''}">${noPx || held.returnPct == null ? '—' : fmtPct(held.returnPct)}</td>
-            </tr>`;
+          return [
+            escapeHtml(sec),
+            '<span class="tag">still held</span>',
+            fmtQty(held.qty),
+            noPx ? '—' : fmtNok(held.marketValueNok),
+            noPx || held.returnNok == null ? '—' : `<span class="${pctClass(held.returnNok)}">${fmtNok(held.returnNok)}</span>`,
+            noPx || held.returnPct == null ? '—' : `<span class="${pctClass(held.returnPct)}">${fmtPct(held.returnPct)}</span>`,
+          ];
         }
         const st = positions.get(sec);
         const realizedAll = st ? window.Positions.stateAt(st, '9999-12-31').realized : 0;
-        return `
-          <tr>
-            <td>${escapeHtml(sec)}</td>
-            <td><span class="tag">exited</span></td>
-            <td class="text-right text-muted">0</td>
-            <td class="text-right text-muted">—</td>
-            <td class="text-right ${pctClass(realizedAll)}">${fmtNok(realizedAll)}</td>
-            <td class="text-right text-muted">realized</td>
-          </tr>`;
-      }).join('');
+        return [
+          escapeHtml(sec),
+          '<span class="tag">exited</span>',
+          '<span class="text-muted">0</span>',
+          '<span class="text-muted">—</span>',
+          `<span class="${pctClass(realizedAll)}">${fmtNok(realizedAll)}</span>`,
+          '<span class="text-muted">realized</span>',
+        ];
+      });
 
       const fateTable = secs.length ? `
         <h5>Where those stocks stand today ${ii('holdings-table')}</h5>
-        <div class="table-scroll"><table>
-          <thead><tr>
-            <th>Security</th><th>Status</th>
-            <th class="text-right">Qty now</th><th class="text-right">MV now</th>
-            <th class="text-right">Gain/loss</th><th class="text-right">%</th>
-          </tr></thead>
-          <tbody>${fateRows}</tbody>
-        </table></div>` : '';
+        ${window.UI.table([
+          { label: 'Security', p: 1 },
+          { label: 'Status', p: 2 },
+          { label: 'Qty now', className: 'text-right', p: 3 },
+          { label: 'MV now', className: 'text-right', p: 1 },
+          { label: 'Gain/loss', className: 'text-right', p: 1 },
+          { label: '%', className: 'text-right', p: 2 },
+        ], fateRows, { caption: 'Where those stocks stand today' })}` : '';
 
       return txTable + fateTable;
     }
@@ -710,31 +649,33 @@
         const arrow = (c) => flatSort.column !== c
           ? '<span class="sort-arrow">↕</span>'
           : `<span class="sort-arrow">${flatSort.direction === 'asc' ? '▲' : '▼'}</span>`;
+        const NUM = ['qty', 'price', 'amountNok', 'feeNok', 'saldo'];
         const COLS = [
-          ['date', 'Date'], ['type', 'Type'], ['security', 'Security'], ['isin', 'ISIN'],
-          ['qty', 'Qty'], ['price', 'Price'], ['amountNok', 'Amount NOK'], ['feeNok', 'Fee'],
-          ['saldo', 'Saldo'], ['codes', 'Investors'],
+          ['date', 'Date', 1], ['type', 'Type', 2], ['security', 'Security', 1], ['isin', 'ISIN', 3],
+          ['qty', 'Qty', 2], ['price', 'Price', 3], ['amountNok', 'Amount NOK', 1], ['feeNok', 'Fee', 3],
+          ['saldo', 'Saldo', 3], ['codes', 'Investors', 2],
         ];
-        mount.innerHTML = `
-          <div class="data-table-wrap"><table class="data-table">
-            <thead><tr>${COLS.map(([k, l]) =>
-              `<th class="sortable ${flatSort.column === k ? 'sorted' : ''} ${['qty','price','amountNok','feeNok','saldo'].includes(k) ? 'num' : ''}" data-sort="${k}">${l}${arrow(k)}</th>`).join('')}
-            </tr></thead>
-            <tbody>${sorted.map((r) => `
-              <tr>
-                <td>${r.date}</td>
-                <td><span class="type-pill type-${escapeHtml(r.type || '')}">${escapeHtml(r.type || '')}</span></td>
-                <td>${escapeHtml(r.security || '')}</td>
-                <td class="text-muted text-small">${escapeHtml(r.isin || '')}</td>
-                <td class="num">${r.qty != null ? fmtQty(r.qty) : '—'}</td>
-                <td class="num">${r.price != null ? fmtQty(r.price) : '—'}</td>
-                <td class="num">${fmtNok(r.amountNok)}</td>
-                <td class="num text-muted">${r.feeNok ? fmtNok(r.feeNok) : '—'}</td>
-                <td class="num text-muted">${r.saldo != null ? fmtNok(r.saldo) : '—'}</td>
-                <td class="text-muted text-small">${r.codes.join(', ')}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table></div>`;
+        mount.innerHTML = window.UI.table(
+          COLS.map(([k, l, p]) => ({
+            label: l, p,
+            className: NUM.includes(k) ? 'num' : (k === 'isin' || k === 'codes' ? 'text-muted text-small' : ''),
+            thClass: `sortable ${flatSort.column === k ? 'sorted' : ''} ${NUM.includes(k) ? 'num' : ''}`,
+            thAttrs: `data-sort="${k}"`,
+            thExtra: arrow(k),
+          })),
+          sorted.map((r) => [
+            r.date,
+            `<span class="type-pill type-${escapeHtml(r.type || '')}">${escapeHtml(r.type || '')}</span>`,
+            escapeHtml(r.security || ''),
+            escapeHtml(r.isin || ''),
+            r.qty != null ? fmtQty(r.qty) : '—',
+            r.price != null ? fmtQty(r.price) : '—',
+            fmtNok(r.amountNok),
+            r.feeNok ? fmtNok(r.feeNok) : '—',
+            r.saldo != null ? fmtNok(r.saldo) : '—',
+            r.codes.join(', '),
+          ]),
+          { className: 'data-table', caption: 'All transactions' });
         mount.querySelectorAll('th.sortable').forEach((th) => {
           th.addEventListener('click', () => {
             const c = th.dataset.sort;

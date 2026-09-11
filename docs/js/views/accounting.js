@@ -5,47 +5,11 @@
 // are instant; the "↻ Reload" button clears the caches.
 
 (function () {
-  const STYLE_ID = 'accounting-view-style';
-  // Table styles that used to live inline in accounting.html.
-  const STYLE = `
-    .data-table-wrap {
-      width: 100%; overflow-x: auto;
-      border: 1px solid var(--border); border-radius: var(--radius);
-      background: var(--panel); box-shadow: var(--shadow);
-    }
-    .data-table {
-      font-size: 0.85rem; width: max-content; min-width: 100%;
-      border: 0; border-radius: 0; box-shadow: none;
-    }
-    .data-table th, .data-table td { padding: 8px 12px; white-space: nowrap; }
-    .data-table th.sortable { cursor: pointer; user-select: none; }
-    .data-table th.sortable:hover { color: var(--text); }
-    .data-table th .sort-arrow {
-      display: inline-block; width: 10px; margin-left: 4px;
-      color: var(--muted); font-size: 0.72rem;
-    }
-    .data-table th.sorted .sort-arrow { color: var(--accent); }
-    .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .data-table th.num { text-align: right; }
-    .data-table tr:hover td { background: rgba(106, 209, 255, 0.04); }
-    .data-table.fit { width: 100%; min-width: 0; table-layout: auto; }
-    .data-table.fit td.wrap, .data-table.fit th.wrap { white-space: normal; word-break: break-word; }
-  `;
-
-  function ensureStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement('style');
-    s.id = STYLE_ID;
-    s.textContent = STYLE;
-    document.head.appendChild(s);
-  }
-
   // Module-level caches — survive view unmount/remount within the session.
   let initial = null;            // { dnb, nordnetRaw, years } | { error }
   const yearCache = new Map();   // year -> { entry, sb, hb, nordnet }
 
   window.Views.accounting = async function (el, ctx) {
-    ensureStyle();
     const { me } = ctx;
     const { fmtNok, escapeHtml } = window.Fmt;
     const A = window.Accounting;
@@ -270,24 +234,17 @@
       const withUb = rows.filter((r) => r.ub != null && r.ub !== 0);
       const sorted = withUb.slice().sort((a, b) => Math.abs(b.ub) - Math.abs(a.ub));
       return `
-        <div class="data-table-wrap"><table class="data-table">
-          <thead><tr>
-            <th scope="col">Konto</th>
-            <th scope="col">Navn</th>
-            <th scope="col" class="num">IB</th>
-            <th scope="col" class="num">UB</th>
-          </tr></thead>
-          <tbody>
-            ${sorted.map((r) => `
-              <tr>
-                <td>${r.kontonr}</td>
-                <td>${escapeHtml(r.kontonavn)}</td>
-                <td class="num text-muted">${r.ib != null ? fmtNok(r.ib) : '—'}</td>
-                <td class="num ${r.ub < 0 ? 'negative' : ''}">${fmtNok(r.ub)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table></div>
+        ${window.UI.table([
+          { label: 'Konto', p: 1 },
+          { label: 'Navn', className: 'wrap', p: 1 },
+          { label: 'IB', className: 'num text-muted', p: 2 },
+          { label: 'UB', className: 'num', p: 1 },
+        ], sorted.map((r) => [
+          r.kontonr,
+          escapeHtml(r.kontonavn),
+          r.ib != null ? fmtNok(r.ib) : '—',
+          `<span class="${r.ub < 0 ? 'negative' : ''}">${fmtNok(r.ub)}</span>`,
+        ]), { className: 'data-table', caption: 'Saldobalanse' })}
       `;
     }
 
@@ -335,30 +292,23 @@
       const visible = visibleHbRows(rows);
       if (!visible.length) return '<p class="text-muted">No hovedbok rows match.</p>';
       return `
-        <div class="data-table-wrap"><table class="data-table fit">
-          <thead><tr>
-            <th scope="col" class="${thClass('bilagsnr')}" data-sort="bilagsnr">Bilag${sortArrow('bilagsnr')}</th>
-            <th scope="col" class="${thClass('date')}" data-sort="date">Dato${sortArrow('date')}</th>
-            <th scope="col" class="${thClass('kontonr', true)}" data-sort="kontonr">Konto${sortArrow('kontonr')}</th>
-            <th scope="col" class="wrap">Navn</th>
-            <th scope="col" class="wrap">Kommentar</th>
-            <th scope="col" class="${thClass('debet', true)}" data-sort="debet">Debet${sortArrow('debet')}</th>
-            <th scope="col" class="${thClass('kredit', true)}" data-sort="kredit">Kredit${sortArrow('kredit')}</th>
-          </tr></thead>
-          <tbody>
-            ${visible.map((r) => `
-              <tr>
-                <td>${escapeHtml(r.bilagsnr)}</td>
-                <td>${r.date || ''}</td>
-                <td class="num">${r.kontonr != null ? r.kontonr : ''}</td>
-                <td class="wrap">${escapeHtml(r.kontonavn || '')}</td>
-                <td class="wrap">${escapeHtml(r.kommentar || '')}</td>
-                <td class="num">${r.debet != null ? fmtNok(r.debet) : ''}</td>
-                <td class="num">${r.kredit != null ? fmtNok(r.kredit) : ''}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table></div>
+        ${window.UI.table([
+          { label: 'Bilag', p: 2, thClass: thClass('bilagsnr'), thAttrs: 'data-sort="bilagsnr"', thExtra: sortArrow('bilagsnr') },
+          { label: 'Dato', p: 1, thClass: thClass('date'), thAttrs: 'data-sort="date"', thExtra: sortArrow('date') },
+          { label: 'Konto', className: 'num', p: 2, thClass: thClass('kontonr', true), thAttrs: 'data-sort="kontonr"', thExtra: sortArrow('kontonr') },
+          { label: 'Navn', className: 'wrap', p: 1, thClass: 'wrap' },
+          { label: 'Kommentar', className: 'wrap', p: 3, thClass: 'wrap' },
+          { label: 'Debet', className: 'num', p: 1, thClass: thClass('debet', true), thAttrs: 'data-sort="debet"', thExtra: sortArrow('debet') },
+          { label: 'Kredit', className: 'num', p: 1, thClass: thClass('kredit', true), thAttrs: 'data-sort="kredit"', thExtra: sortArrow('kredit') },
+        ], visible.map((r) => [
+          escapeHtml(r.bilagsnr),
+          r.date || '',
+          r.kontonr != null ? r.kontonr : '',
+          escapeHtml(r.kontonavn || ''),
+          escapeHtml(r.kommentar || ''),
+          r.debet != null ? fmtNok(r.debet) : '',
+          r.kredit != null ? fmtNok(r.kredit) : '',
+        ]), { className: 'data-table', caption: 'Hovedbok' })}
       `;
     }
 
@@ -377,28 +327,24 @@
     function renderNordnetTable(rows) {
       const sorted = rows.slice().sort((a, b) => (b.markedsverdi || 0) - (a.markedsverdi || 0));
       return `
-        <div class="data-table-wrap"><table class="data-table">
-          <thead><tr>
-            <th scope="col">Verdipapir</th>
-            <th scope="col" class="num">Kostpris</th>
-            <th scope="col" class="num">Markedsverdi</th>
-            <th scope="col" class="num">Urealisert</th>
-            <th scope="col" class="num">Realisert</th>
-            <th scope="col" class="num">Utbytte</th>
-          </tr></thead>
-          <tbody>
-            ${sorted.map((r) => `
-              <tr>
-                <td><strong>${escapeHtml(r.security)}</strong></td>
-                <td class="num text-muted">${r.kostpris != null ? fmtNok(r.kostpris) : '—'}</td>
-                <td class="num">${r.markedsverdi != null ? fmtNok(r.markedsverdi) : '—'}</td>
-                <td class="num ${r.urealisert > 0 ? 'positive' : (r.urealisert < 0 ? 'negative' : '')}">${r.urealisert != null ? fmtNok(r.urealisert) : '—'}</td>
-                <td class="num ${r.realisert > 0 ? 'positive' : (r.realisert < 0 ? 'negative' : '')}">${r.realisert != null ? fmtNok(r.realisert) : '—'}</td>
-                <td class="num">${r.utbytte != null ? fmtNok(r.utbytte) : '—'}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table></div>
+        ${window.UI.table([
+          { label: 'Verdipapir', p: 1 },
+          { label: 'Kostpris', className: 'num text-muted', p: 2 },
+          { label: 'Markedsverdi', className: 'num', p: 1 },
+          { label: 'Urealisert', className: 'num', p: 1 },
+          { label: 'Realisert', className: 'num', p: 2 },
+          { label: 'Utbytte', className: 'num', p: 3 },
+        ], sorted.map((r) => {
+          const tone = (v) => (v > 0 ? 'positive' : (v < 0 ? 'negative' : ''));
+          return [
+            `<strong>${escapeHtml(r.security)}</strong>`,
+            r.kostpris != null ? fmtNok(r.kostpris) : '—',
+            r.markedsverdi != null ? fmtNok(r.markedsverdi) : '—',
+            `<span class="${tone(r.urealisert)}">${r.urealisert != null ? fmtNok(r.urealisert) : '—'}</span>`,
+            `<span class="${tone(r.realisert)}">${r.realisert != null ? fmtNok(r.realisert) : '—'}</span>`,
+            r.utbytte != null ? fmtNok(r.utbytte) : '—',
+          ];
+        }), { className: 'data-table', caption: 'Nordnet aksjer' })}
       `;
     }
 

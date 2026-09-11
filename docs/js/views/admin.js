@@ -9,54 +9,6 @@
 // Router gates the whole view to role === 'admin'.
 
 (function () {
-  const STYLE_ID = 'admin-view-style';
-  // Styles that used to live inline in admin.html.
-  const STYLE = `
-    .sheet-card {
-      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--shadow);
-    }
-    .sheet-card h3 { margin: 0 0 8px; font-size: 1.05rem; }
-    .sheet-card .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
-    .sheet-card .setup-line { color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
-    .admin-table { font-size: 0.9rem; }
-    .admin-table input { padding: 6px 8px; font-size: 0.9rem; background: var(--bg); }
-    .admin-table td { padding: 8px 10px; vertical-align: middle; }
-    .admin-table .unmapped { background: rgba(255, 91, 91, 0.07); }
-    .badge-unmapped { background: var(--danger); color: white; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
-    .badge-mapped { background: rgba(62, 224, 127, 0.15); color: var(--positive); padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
-    .investor-chips { display: flex; gap: 4px; flex-wrap: wrap; }
-    .investor-chip {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 4px 9px; border-radius: 999px;
-      background: var(--panel-2); border: 1px solid var(--border);
-      color: var(--muted); font-size: 0.82rem; font-weight: 500;
-      cursor: pointer; user-select: none; transition: all 0.12s;
-    }
-    .investor-chip input { position: absolute; opacity: 0; pointer-events: none; }
-    .investor-chip:hover { border-color: var(--accent); color: var(--text); }
-    .investor-chip:focus-within { outline: 2px solid var(--link); outline-offset: 2px; }
-    .investor-chip.checked { background: var(--accent); color: #051a0a; border-color: var(--accent); }
-    .admin-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
-    .admin-toolbar input[type="search"] { max-width: 260px; }
-    .admin-toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
-    .admin-table tr.dirty { background: rgba(255, 201, 79, 0.06); }
-    .admin-table tr.dirty td:nth-child(2) { border-left: 3px solid var(--accent-2); padding-left: 7px; }
-    .admin-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
-    .admin-table th.sortable:hover { color: var(--text); }
-    .admin-table th .sort-arrow { display: inline-block; width: 10px; margin-left: 4px; color: var(--muted); font-size: 0.75rem; }
-    .admin-table th.sorted .sort-arrow { color: var(--accent); }
-    .sec-table tr.needs-review td { background: rgba(255, 91, 91, 0.07); }
-  `;
-
-  function ensureStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement('style');
-    s.id = STYLE_ID;
-    s.textContent = STYLE;
-    document.head.appendChild(s);
-  }
-
   const TABS = (active) => window.UI.subTabs([
     { key: 'ownership', label: 'Ownership', href: '#/admin' },
     { key: 'securities', label: 'Securities', href: '#/admin/securities' },
@@ -64,7 +16,6 @@
   ], active);
 
   window.Views.admin = async function (el, ctx) {
-    ensureStyle();
     const sub = ctx.params[0] || 'ownership';
     if (sub === 'securities') return renderSecurities(el, ctx);
     if (sub === 'feed') return renderFeed(el, ctx);
@@ -110,10 +61,10 @@
       ${list.length
         ? table(
             [
-              { label: 'Ticker' }, { label: 'Name' }, { label: 'Aliases' },
-              { label: 'ISIN' }, { label: 'Cur' }, { label: 'Exchange' },
-              { label: 'Source' }, { label: 'Status' }, { label: 'Sold' }, { label: 'Notes' },
-              { label: 'Last checked' },
+              { label: 'Ticker', p: 1 }, { label: 'Name', p: 1 }, { label: 'Aliases', p: 3 },
+              { label: 'ISIN', p: 3 }, { label: 'Cur', p: 2 }, { label: 'Exchange', p: 3 },
+              { label: 'Source', p: 3 }, { label: 'Status', p: 1 }, { label: 'Sold', p: 2 },
+              { label: 'Notes', p: 3 }, { label: 'Last checked', p: 3 },
             ],
             rows,
             { caption: 'Securities registry' },
@@ -150,7 +101,8 @@
       ${tickerRows.length ? `
         <h3 class="section-title">Per-column freshness</h3>
         ${table(
-          [{ label: 'Column' }, { label: 'Last value', className: 'text-right' }, { label: 'Last date' }, { label: 'Points', className: 'text-right' }],
+          [{ label: 'Column', p: 1 }, { label: 'Last value', className: 'text-right', p: 1 },
+            { label: 'Last date', p: 2 }, { label: 'Points', className: 'text-right', p: 3 }],
           tickerRows.map((r) => ({ cells: [
             `<strong>${esc(r.col)}</strong>`,
             String(r.lastValue),
@@ -182,7 +134,8 @@
         return;
       }
       mount.innerHTML = table(
-        [{ label: 'Timestamp' }, { label: 'Context' }, { label: 'Ticker' }, { label: 'Message' }],
+        [{ label: 'Timestamp', p: 2 }, { label: 'Context', p: 3 },
+          { label: 'Ticker', p: 1 }, { label: 'Message', className: 'wrap', p: 1 }],
         entries.map((r) => ({ cells: [
           esc(String(r[0] || '')), esc(String(r[1] || '')), esc(String(r[2] || '')), esc(String(r[3] || '')),
         ] })),
@@ -373,20 +326,19 @@
         root.innerHTML = '<p class="text-muted">Nothing matches. Try a different filter.</p>';
         return;
       }
-      root.innerHTML = `
-        <div class="table-scroll"><table class="admin-table">
-          <thead><tr>
-            <th scope="col" class="${thClass('mapped')}" data-sort="mapped">Status${sortArrow('mapped')}</th>
-            <th scope="col" class="${thClass('security')}" data-sort="security">Stock${sortArrow('security')}</th>
-            <th scope="col" class="${thClass('memberString')}" data-sort="memberString">Investors${sortArrow('memberString')}</th>
-            <th scope="col" class="${thClass('factor')}" data-sort="factor">Factor${sortArrow('factor')}</th>
-            <th scope="col" class="${thClass('currentQty')} text-right text-small" data-sort="currentQty">Qty now${sortArrow('currentQty')}</th>
-          </tr></thead>
-          <tbody>
-            ${rows.map(renderRow).join('')}
-          </tbody>
-        </table></div>
-      `;
+      root.innerHTML = window.UI.table([
+        { label: 'Status', p: 2, thClass: thClass('mapped'), thAttrs: 'data-sort="mapped"', thExtra: sortArrow('mapped') },
+        { label: 'Stock', p: 1, thClass: thClass('security'), thAttrs: 'data-sort="security"', thExtra: sortArrow('security') },
+        { label: 'Investors', p: 1, thClass: thClass('memberString'), thAttrs: 'data-sort="memberString"', thExtra: sortArrow('memberString') },
+        { label: 'Factor', p: 1, thClass: thClass('factor'), thAttrs: 'data-sort="factor"', thExtra: sortArrow('factor') },
+        { label: 'Qty now', className: 'text-right text-small text-muted', p: 2, thClass: `${thClass('currentQty')} text-right text-small`, thAttrs: 'data-sort="currentQty"', thExtra: sortArrow('currentQty') },
+      ], rows.map(renderRow), {
+        className: 'admin-table',
+        caption: 'Ownership attribution',
+        // Every column here is an editing control — revealing them in a
+        // read-only detail panel would be misleading.
+        expandable: false,
+      });
       root.querySelectorAll('th.sortable').forEach((th) => {
         th.addEventListener('click', () => {
           const col = th.dataset.sort;
@@ -416,23 +368,19 @@
       const memberString = pending ? pending.memberString : s.memberString;
       const factor = pending ? pending.factor : s.factor;
       const selected = new Set(parseMembers(memberString));
-      return `
-        <tr data-sec="${escapeHtml(s.security)}" class="${s.mapped ? '' : 'unmapped'}${pending ? ' dirty' : ''}">
-          <td>${s.mapped ? '<span class="badge-mapped">mapped</span>' : '<span class="badge-unmapped">unmapped</span>'}</td>
-          <td><strong>${escapeHtml(s.security)}</strong></td>
-          <td>
-            <div class="investor-chips">
-              ${MEMBER_OPTIONS.map((m) => `
-                <label class="investor-chip ${selected.has(m) ? 'checked' : ''}">
-                  <input type="checkbox" value="${m}" ${selected.has(m) ? 'checked' : ''} /> ${m}
-                </label>
-              `).join('')}
-            </div>
-          </td>
-          <td><input name="factor" value="${factor != null ? factor : ''}" placeholder="auto" aria-label="Investment factor for ${escapeHtml(s.security)}" style="width:70px" /></td>
-          <td class="text-right text-small text-muted">${s.currentQty ? Number(s.currentQty).toFixed(0) : '—'}</td>
-        </tr>
-      `;
+      return {
+        attrs: `data-sec="${escapeHtml(s.security)}" class="${s.mapped ? '' : 'unmapped'}${pending ? ' dirty' : ''}"`,
+        cells: [
+          s.mapped ? '<span class="badge-mapped">mapped</span>' : '<span class="badge-unmapped">unmapped</span>',
+          `<strong>${escapeHtml(s.security)}</strong>`,
+          `<div class="investor-chips">${MEMBER_OPTIONS.map((m) => `
+            <label class="investor-chip ${selected.has(m) ? 'checked' : ''}">
+              <input type="checkbox" value="${m}" ${selected.has(m) ? 'checked' : ''} /> ${m}
+            </label>`).join('')}</div>`,
+          `<input class="factor-input" name="factor" value="${factor != null ? factor : ''}" placeholder="auto" aria-label="Investment factor for ${escapeHtml(s.security)}" />`,
+          s.currentQty ? Number(s.currentQty).toFixed(0) : '—',
+        ],
+      };
     }
 
     function parseMembers(str) {
