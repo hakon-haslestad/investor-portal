@@ -962,6 +962,7 @@ function doGet(e) {
   return jsonOut_({
     ok: true,
     gameId: room.g,
+    closed: !!room.closed,
     roster: room.r,
     joined: room.j || [],
     roundId: room.q,
@@ -1020,7 +1021,14 @@ function doPost(e) {
       if (room.j.indexOf(member) < 0) room.j.push(member);
       room.v = (room.v || 0) + 1;
       writeRoom_(body.code, room);
-      return jsonOut_({ ok: true, member: member, roundId: room.q, gameId: room.g });
+      return jsonOut_({ ok: true, member: member, roundId: room.q, gameId: room.g, closed: !!room.closed });
+    }
+
+    // Once the host has stopped, nothing more can be played into this room.
+    // Joining still works so a phone that arrives late is told the game ended
+    // rather than that the code is wrong, and closing stays idempotent.
+    if (room.closed && ['answer', 'game', 'round'].indexOf(body.action) >= 0) {
+      return jsonOut_({ ok: false, error: 'room closed' });
     }
 
     if (body.action === 'answer') {
@@ -1035,6 +1043,36 @@ function doPost(e) {
       room.v = (room.v || 0) + 1;
       writeRoom_(body.code, room);
       return jsonOut_({ ok: true, member: member });
+    }
+
+    // Switching games keeps the room, the code and everyone in it — only the
+    // question changes. Answers are cleared so nobody carries a call from the
+    // previous game into this one.
+    if (body.action === 'game') {
+      if (room.host && room.host !== member) {
+        return jsonOut_({ ok: false, error: 'not the host' });
+      }
+      room.g = String(body.gameId || '');
+      room.q = 0;
+      room.a = {};
+      room.prompt = '';
+      room.choices = 0;
+      room.v = (room.v || 0) + 1;
+      writeRoom_(body.code, room);
+      return jsonOut_({ ok: true, gameId: room.g });
+    }
+
+    // Closing tells the phones the game is over. The room is marked rather
+    // than deleted, so a phone gets "the host ended this" instead of the
+    // "no such room" it would get from a mistyped code.
+    if (body.action === 'close') {
+      if (room.host && room.host !== member) {
+        return jsonOut_({ ok: false, error: 'not the host' });
+      }
+      room.closed = true;
+      room.v = (room.v || 0) + 1;
+      writeRoom_(body.code, room);
+      return jsonOut_({ ok: true });
     }
 
     if (body.action === 'round') {

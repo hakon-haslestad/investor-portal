@@ -37,7 +37,18 @@
       if (!code) input.focus();
     }
 
+    function renderEnded() {
+      el.innerHTML = `
+        <div class="play-shell play-ended">
+          <h2>That's the game 🎉</h2>
+          <p class="text-muted">The host closed the room. Look up at the screen for the result.</p>
+          <a class="btn ghost" href="#/play">Join another room</a>
+        </div>`;
+    }
+
     function renderBoard(state) {
+      // The host stopped: say so rather than leaving dead buttons on screen.
+      if (state.closed) { renderEnded(); return; }
       // A number means plain 1..n; an array means the game gave the buttons
       // names. Either way these are game words, never club data.
       const labels = Array.isArray(state.choices)
@@ -87,6 +98,7 @@
         renderJoin(code, msg);
         return;
       }
+      if (room.closed) { renderEnded(); return; }
       navigate(`#/play?code=${code}`);
       let mine = null;
       let lastRound = -1;

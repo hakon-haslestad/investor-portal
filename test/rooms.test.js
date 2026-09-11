@@ -199,3 +199,54 @@ test('the room holds no club data — only codes and small integers', () => {
   // Nothing that names a holding or a number of kroner.
   assert.ok(!/kr|Equinor|NOK|price|value/i.test(raw), raw);
 });
+
+// ── One room across games, and ending it ──────────────────────────────────
+test('the host can switch games without anyone rejoining', () => {
+  const g = gs({ tokenInfo: goodToken('hh@x.no') });
+  const { code } = post(g, { action: 'create', token: 't', gameId: 'odd-one-out', roster: ['HH', 'JC'] });
+  post(g, { action: 'join', token: 't', code });
+  post(g, { action: 'round', token: 't', code, roundId: 1, prompt: 'a', choices: 4 });
+  post(g, { action: 'answer', token: 't', code, roundId: 1, value: 2 });
+
+  const r = post(g, { action: 'game', token: 't', code, gameId: 'back-trading' });
+  assert.equal(r.ok, true);
+  const st = get(g, { code });
+  assert.equal(st.gameId, 'back-trading', 'the new game is announced');
+  assert.deepEqual(st.joined, ['HH'], 'and nobody was kicked out');
+  assert.deepEqual(st.answers, {}, 'a call from the last game does not carry over');
+  assert.equal(st.roundId, 0);
+});
+
+test('closing the room tells the phones, rather than vanishing', () => {
+  const g = gs({ tokenInfo: goodToken('hh@x.no') });
+  const { code } = post(g, { action: 'create', token: 't', gameId: 'odd-one-out', roster: ['HH'] });
+  assert.equal(get(g, { code }).closed, false);
+
+  assert.equal(post(g, { action: 'close', token: 't', code }).ok, true);
+  const st = get(g, { code });
+  assert.equal(st.ok, true, 'the room still answers');
+  assert.equal(st.closed, true, 'and says it is over');
+});
+
+test('a closed room takes no more answers', () => {
+  const g = gs({ tokenInfo: goodToken('hh@x.no') });
+  const { code } = post(g, { action: 'create', token: 't', gameId: 'x', roster: ['HH'] });
+  post(g, { action: 'round', token: 't', code, roundId: 1, prompt: 'a', choices: 4 });
+  post(g, { action: 'close', token: 't', code });
+  assert.equal(post(g, { action: 'answer', token: 't', code, roundId: 1, value: 0 }).error, 'room closed');
+  assert.equal(post(g, { action: 'round', token: 't', code, roundId: 2, prompt: 'b' }).error, 'room closed');
+  // Joining still works, so a latecomer is told the game ended rather than
+  // that their code is wrong.
+  assert.equal(post(g, { action: 'join', token: 't', code }).ok, true);
+  // And closing twice is not an error.
+  assert.equal(post(g, { action: 'close', token: 't', code }).ok, true);
+});
+
+test('only the host can switch games or close the room', () => {
+  const g = gs({ tokenInfo: goodToken('hh@x.no') });
+  const { code } = post(g, { action: 'create', token: 't', gameId: 'x', roster: ['HH', 'JC'] });
+  const g2 = gs({ tokenInfo: goodToken('jc@x.no') });
+  g2._cache.set(`room:${code}`, g._cache.get(`room:${code}`));
+  assert.equal(post(g2, { action: 'close', token: 't', code }).error, 'not the host');
+  assert.equal(post(g2, { action: 'game', token: 't', code, gameId: 'y' }).error, 'not the host');
+});

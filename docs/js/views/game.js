@@ -83,7 +83,9 @@
       // A live room is held at module scope in GameRoom, NOT here: every
       // filter change remounts this view, and a room owned by the view would
       // die the first time someone touched a filter.
-      const room = hostedRoomFor(game);
+      const room = currentRoom();
+      // The room follows the host between games; tell it which one is on.
+      if (room && typeof room.setGame === 'function') room.setGame(game.id);
 
       active = game.component.mount(board, {
         trades, players, me,
@@ -119,31 +121,40 @@
     // A game can be hosted only if it collects an answer per player and the
     // web app is configured. Spin and Guess score nothing, so there is
     // nothing for a phone to send.
+    // A room can be opened from the grid (no game yet) or inside a hosted
+    // game. Games that score nothing have nothing for a phone to send.
     function canHost(g) {
-      return !!(g && g.hosted && window.GameRoom && window.GameRoom.configured());
+      if (!window.GameRoom || !window.GameRoom.configured()) return false;
+      return g ? !!g.hosted : true;
     }
 
-    // The room that is already open for this game, if any. Re-attaching here
-    // rather than re-creating is what lets hosting survive a filter change.
-    function hostedRoomFor(g) {
-      const r = window.GameRoom && window.GameRoom.current();
-      return r && r.gameId === g.id ? r : null;
+    // One room for the whole session. Opened from the grid and kept as the
+    // host moves between games — everyone stays in their seat, only the
+    // question changes.
+    function currentRoom() {
+      return (window.GameRoom && window.GameRoom.current()) || null;
     }
 
     async function startHosting(g) {
       const banner = el.querySelector('#host-banner');
       if (banner) banner.innerHTML = '<span class="text-muted">Opening a room…</span>';
       try {
-        await window.GameRoom.openHost({ gameId: g.id, roster: players });
-        mountGame();   // remount so the game picks the room up through props
+        await window.GameRoom.openHost({ gameId: g ? g.id : '', roster: players });
+        if (g) mountGame(); else mountGrid();
       } catch (e) {
         if (banner) banner.innerHTML = `<span class="flash error">Could not open a room: ${window.UI.esc(e.message || e)}</span>`;
       }
     }
 
+    async function stopHosting(g) {
+      const room = currentRoom();
+      if (room) await room.close();
+      if (g) mountGame(); else mountGrid();
+    }
+
     function renderHostBanner(g) {
       if (!canHost(g)) return '';
-      const room = hostedRoomFor(g);
+      const room = currentRoom();
       if (!room) {
         // "Host" and "Join" must be visibly different things. With only one
         // button, every phone that found this screen opened its own room
@@ -151,7 +162,7 @@
         return `<div id="host-banner" class="host-bar">
           <button type="button" class="btn small" id="host-start">📺 Host on this screen</button>
           <a class="btn ghost small" href="#/play">📱 Join a room</a>
-          <span class="text-muted text-small">Host on the big screen; everyone else joins from their phone.</span>
+          <span class="text-muted text-small">One room for the whole evening — open it here and it follows you from game to game.</span>
         </div>`;
       }
       const joinUrl = `${location.origin}${location.pathname}#/play?code=${room.code}`;
@@ -181,17 +192,14 @@
       if (start) start.addEventListener('click', () => startHosting(g));
       const copy = el.querySelector('#host-copy');
       if (copy) copy.addEventListener('click', async () => {
-        const room = hostedRoomFor(g);
+        const room = currentRoom();
         if (!room) return;
         const link = `${location.origin}${location.pathname}#/play?code=${room.code}`;
         try { await navigator.clipboard.writeText(link); copy.textContent = 'Copied ✓'; }
         catch (_e) { copy.textContent = 'Select the link above'; }
       });
       const stop = el.querySelector('#host-stop');
-      if (stop) stop.addEventListener('click', () => {
-        window.GameRoom.closeCurrent();
-        mountGame();
-      });
+      if (stop) stop.addEventListener('click', () => stopHosting(g));
     }
 
     function refreshRecent() {
@@ -210,12 +218,21 @@
           <div class="when">${trades.length} stock${trades.length === 1 ? '' : 's'} in play${droppedNote()} · ${players.length} player${players.length === 1 ? '' : 's'}</div>
         </div>
         ${S.renderFilterBar(filters, competitions, roster)}
-        ${window.GameRoom && window.GameRoom.configured()
-          ? '<div class="join-row"><a class="btn ghost small" href="#/play">📱 Join a room someone else is hosting</a></div>'
-          : ''}
+        ${renderHostBanner(null)}
         ${S.renderGrid(window.Games.registry, trades, filters, players.length)}`;
       S.bindFilterBar(el, filters, navigate, null, () => mountGrid(), { roster });
       S.bindGrid(el, filters, navigate);
+      bindHostBanner(null);
+      // Repaint the seats as phones join, without rebuilding the grid.
+      const gridRoom = currentRoom();
+      if (gridRoom) {
+        const off = gridRoom.onChange(() => {
+          const banner = el.querySelector('#host-banner');
+          if (!banner) { off(); return; }
+          banner.outerHTML = renderHostBanner(null);
+          bindHostBanner(null);
+        });
+      }
     }
 
     if (game) mountGame(); else mountGrid();

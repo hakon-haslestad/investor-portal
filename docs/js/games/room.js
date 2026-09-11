@@ -87,6 +87,8 @@
 
     hosted = {
       code: res.code,
+      // The room outlives any one game: the host switches games inside it and
+      // everybody stays put. This is why it is not keyed by game id.
       gameId,
       get state() { return state; },
       onChange(cb) { listeners.add(cb); cb(state); return () => listeners.delete(cb); },
@@ -100,7 +102,23 @@
         catch (_e) { /* the screen keeps working; phones retry on their poll */ }
         return roundId;
       },
-      close() { p.stop(); listeners.clear(); if (hosted && hosted.code === res.code) hosted = null; },
+      // Point the room at a different game. Everyone keeps their seat.
+      async setGame(id) {
+        if (this.gameId === id) return;
+        this.gameId = id;
+        roundId = 0;
+        state = { ...state, answers: {}, roundId: 0 };
+        listeners.forEach((cb) => cb(state));
+        try { await post({ action: 'game', code: res.code, gameId: id }); } catch (_e) { /* phones retry */ }
+      },
+      // Tell the phones it is over before we stop listening, so they show an
+      // end screen instead of silently going dead.
+      async close() {
+        try { await post({ action: 'close', code: res.code }); } catch (_e) { /* best effort */ }
+        p.stop();
+        listeners.clear();
+        if (hosted && hosted.code === res.code) hosted = null;
+      },
     };
     return hosted;
   }
@@ -113,7 +131,10 @@
     const listeners = new Set();
     let last = { roundId: res.roundId, answered: false };
 
-    const p = poller(() => get(code), (data) => {
+    // Declared before the poller so the callback can stop it without relying
+    // on the first tick happening to be async.
+    let poll = null;
+    poll = poller(() => get(code), (data) => {
       if (!data.ok) return;
       if (data.roundId !== last.roundId) {
         // A new question: unlock the buttons.
@@ -123,20 +144,25 @@
       }
       last.prompt = data.prompt || '';
       last.choices = data.choices || 0;
-      listeners.forEach((cb) => cb({ ...last, gameId: data.gameId, joined: data.joined }));
+      last.closed = !!data.closed;
+      last.gameId = data.gameId;
+      if (last.closed && poll) poll.stop();   // nothing more will change
+      listeners.forEach((cb) => cb({ ...last, joined: data.joined }));
     });
 
     return {
       code,
       member: res.member,
       gameId: res.gameId,
+      // True when the host had already stopped before this phone arrived.
+      closed: !!res.closed,
       onChange(cb) { listeners.add(cb); cb(last); return () => listeners.delete(cb); },
       async answer(value) {
         const r = await post({ action: 'answer', code, roundId: last.roundId, value });
         if (r.ok) { last.answered = true; listeners.forEach((cb) => cb({ ...last })); }
         return r;
       },
-      close() { p.stop(); listeners.clear(); },
+      close() { if (poll) poll.stop(); listeners.clear(); },
     };
   }
 

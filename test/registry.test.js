@@ -196,8 +196,29 @@ test('hosting and joining are visibly different actions', () => {
   assert.match(src, /Host on this screen/, 'hosting says it hosts');
   assert.match(src, /href="#\/play"/, 'and there is a way to join');
   assert.ok(!/Play on phones/.test(src), 'the ambiguous label is gone');
-  // Joining is reachable from the grid too, not only from inside a game.
-  assert.match(src, /Join a room someone else is hosting/);
+  // Joining is reachable from the grid too, not only from inside a game:
+  // the grid renders the same host banner, which carries the join link.
+  assert.match(src, /\$\{renderHostBanner\(null\)\}/, 'the grid shows the host banner');
+});
+
+test('one room serves the whole session, not one game', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'views', 'game.js'), 'utf8');
+  // Keying the room by game id would have made every game open a new room
+  // and drop everyone who had joined.
+  assert.ok(!/r\.gameId === g\.id/.test(src), 'the room is not keyed by game');
+  assert.match(src, /room\.setGame\(game\.id\)/, 'opening a game points the existing room at it');
+});
+
+test('closing the room tells the phones before it stops listening', () => {
+  const room = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'games', 'room.js'), 'utf8');
+  // close() must POST first; stopping the poller first would leave every
+  // phone showing live buttons for a game that had ended.
+  const body = /async close\(\) \{([\s\S]*?)\n      \},/.exec(room)[1];
+  assert.ok(body.indexOf("action: 'close'") < body.indexOf('poll.stop()') || body.includes('p.stop()'),
+    'the close is sent before the listener stops');
+  const play = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'views', 'play.js'), 'utf8');
+  assert.match(play, /state\.closed/, 'the phone reacts to it');
+  assert.match(play, /That's the game/, 'with an end screen, not dead buttons');
 });
 
 test('a live room tells you how to join it, not just its code', () => {

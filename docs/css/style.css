@@ -1079,6 +1079,8 @@ tr.row-detail > td { background: var(--panel-2); padding: 4px 12px 12px; }
 .play-btn.chosen { background: var(--accent); color: #051a0a; border-color: var(--accent); }
 .play-buttons.locked .play-btn { opacity: 0.55; }
 .play-foot { margin-top: 18px; text-align: center; }
+.play-ended { text-align: center; padding-top: 40px; }
+.play-ended h2 { font-size: 1.8rem; }
 
 @media (max-width: 720px) {
   .host-bar { padding: 10px 12px; gap: 10px; }
