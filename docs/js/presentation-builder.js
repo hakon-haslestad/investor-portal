@@ -73,6 +73,7 @@
 
     const summarySlide = buildSummarySlide(scored, noActivity, emptyNote);
     const curveSlide = buildCurveSlide(store, c, participants, names, noActivity, emptyNote);
+    const raceSlide = buildRaceSlide(store, c, participants, names, noActivity, emptyNote);
     const picksSlide = buildPicksSlide(store, c, scored, names, noActivity, emptyNote);
 
     // Setup slide groups by team_label so the budget appears once per team.
@@ -188,7 +189,7 @@
       competition: c,
       slides: [
         titleSlide, setupSlide, earlySlide, curveSlide, picksSlide,
-        pivotSlide, summarySlide, positionSlide, standingsSlide, companySlide, verdictSlide,
+        pivotSlide, summarySlide, positionSlide, raceSlide, standingsSlide, companySlide, verdictSlide,
       ],
     };
   }
@@ -345,16 +346,9 @@
     // every interior point is priced by actual closes. Fall back to even
     // spacing when the matrix has no in-window dates. Always include the end,
     // and anchor each line at 0% on the start date (return is 0 at entry).
-    const priceDates = ((store.prices && store.prices.dates) || [])
-      .filter((d) => d > c.start_date && d <= c.end_date);
-    // Daily status: keep every trading day up to ~130 points (a 6-month
-    // window stays fully daily; longer windows thin evenly).
-    const step = Math.max(1, Math.ceil(priceDates.length / 130));
-    const thinned = priceDates.filter((_, i) => i % step === 0);
-    const interior = thinned.length
-      ? thinned
-      : sampleDates(c.start_date, c.end_date, 14).filter((d) => d > c.start_date && d <= c.end_date);
-    const dates = interior.includes(c.end_date) ? interior : [...interior, c.end_date];
+    // Real trading days inside the window, thinned to ~130 — see
+    // windowSampleDates, which the race slide samples at too.
+    const dates = windowSampleDates(store, c);
 
     // Buy/sell markers per participant: their attributed in-window trades,
     // rendered in the same style as The Game's chart.
@@ -376,18 +370,7 @@
       }
     }
 
-    const acc = {};
-    for (const d of dates) {
-      const r = scoreWithDates(store, c, participants, c.start_date, d);
-      for (const row of r) {
-        (acc[row.code] = acc[row.code] || []).push({
-          date: d, y: row.pct,
-          // Hover shows the actual money: realized + unrealized + dividends.
-          tipValue: `${fmtNok(row.netPnl)} (${fmtPct(row.pct)})`,
-        });
-      }
-    }
-    for (const code of Object.keys(acc)) acc[code].unshift({ date: c.start_date, y: 0, tipValue: '0 kr (0.0%)' });
+    const { acc } = perInvestorReturnSeries(store, c, participants, dates);
     let i = 0;
     const palette = ['#4ade80', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#34d399', '#f87171'];
     const series = Object.keys(acc).map((code) => ({
@@ -428,6 +411,64 @@
 
   function pctCls(n) {
     return n > 0.5 ? 'positive' : n < -0.5 ? 'negative' : 'text-muted';
+  }
+
+  // Re-score the competition at each sampled date and collect one return
+  // series per participant. This is the single source both the curve slide
+  // and the race slide read, so they cannot disagree about who was ahead.
+  //
+  // Anchored at 0% on the start date: return is zero at entry.
+  function perInvestorReturnSeries(store, c, participants, dates) {
+    const acc = {};
+    for (const d of dates) {
+      for (const row of scoreWithDates(store, c, participants, c.start_date, d)) {
+        (acc[row.code] = acc[row.code] || []).push({
+          date: d, y: row.pct,
+          // Hover shows the actual money: realized + unrealized + dividends.
+          tipValue: `${fmtNok(row.netPnl)} (${fmtPct(row.pct)})`,
+        });
+      }
+    }
+    for (const code of Object.keys(acc)) {
+      acc[code].unshift({ date: c.start_date, y: 0, tipValue: '0 kr (0.0%)' });
+    }
+    return { acc, dates: [c.start_date, ...dates] };
+  }
+
+  // Which dates the window is sampled at: real trading days, thinned to ~130.
+  function windowSampleDates(store, c) {
+    const priceDates = ((store.prices && store.prices.dates) || [])
+      .filter((d) => d > c.start_date && d <= c.end_date);
+    const step = Math.max(1, Math.ceil(priceDates.length / 130));
+    const thinned = priceDates.filter((_, i) => i % step === 0);
+    const interior = thinned.length
+      ? thinned
+      : sampleDates(c.start_date, c.end_date, 14).filter((d) => d > c.start_date && d <= c.end_date);
+    return interior.includes(c.end_date) ? interior : [...interior, c.end_date];
+  }
+
+  // ─── Race slide ─────────────────────────────────────────────────────────────
+  // Every investor is a horse; position on the track is their competition
+  // return to that date — the same number the curve plots and the standings
+  // rank by, so the finish and the standings always agree.
+  function buildRaceSlide(store, c, participants, names, noActivity, emptyNote) {
+    const dates = windowSampleDates(store, c);
+    const { acc, dates: allDates } = perInvestorReturnSeries(store, c, participants, dates);
+    const lanes = Object.keys(acc).map((code) => ({
+      code,
+      name: names[code] || code,
+      colour: INVESTOR_COLORS[code] || '#8a92a6',
+      // Percentages become fractions: the race view works in return fractions.
+      positions: acc[code].map((p) => p.y / 100),
+      dates: acc[code].map((p) => p.date),
+      finalPct: acc[code].length ? acc[code][acc[code].length - 1].y : 0,
+    })).sort((a, b) => b.finalPct - a.finalPct);
+    return {
+      type: 'race',
+      title: 'The race',
+      lanes, dates: allDates, asOf: c.end_date,
+      noActivity, emptyNote,
+    };
   }
 
   function scoreWithDates(store, c, participants, from, to) {

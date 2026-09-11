@@ -155,3 +155,33 @@
   width: 100%; height: auto; display: block;
   max-height: min(62vh, 560px);
 }
+
+
+/* ─── Race slide ─────────────────────────────────────────────────────────
+   The .hr-* track, timeline and controls come from style.css, which the deck
+   already loads. Only the paddock and the slide fit are new here. */
+.race-paddock {
+  display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 16px;
+}
+.race-runner {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 999px; padding: 6px 14px 6px 8px;
+}
+.race-silk {
+  width: 14px; height: 14px; border-radius: 4px; display: inline-block; flex: none;
+}
+.race-code { font-weight: 700; }
+.race-name { color: var(--muted); font-size: 0.85rem; }
+
+/* The slide centres its children, so let the track have the room it needs
+   without the 62vh cap #chart-mount carries. */
+#race-mount { width: 100%; }
+#race-mount .hr-track-wrap { margin-top: 6px; }
+#race-mount svg { width: 100%; height: auto; display: block; max-height: min(56vh, 520px); }
+
+@media (max-width: 720px) {
+  .race-paddock { gap: 6px; }
+  .race-runner { padding: 4px 10px 4px 6px; }
+  .race-name { display: none; }
+}

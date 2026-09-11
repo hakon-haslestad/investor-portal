@@ -5,8 +5,6 @@
 (function () {
   const { fmtPct, escapeHtml, pctClass } = window.Fmt;
   const E = () => window.HorseRaceEngine;
-  const NS = 'http://www.w3.org/2000/svg';
-
   const WINDOWS = [
     { id: '5', label: 'Last 5 trading days', days: 5 },
     { id: '20', label: 'Last 20 trading days', days: 20 },
@@ -14,29 +12,13 @@
     { id: 'comp', label: 'Competition to date', days: 60 },
   ];
   const MAX_HORSES = 8;
-  const LANE_H = 54;
-  const VIEW_W = 1000;
-  const START_X = 90;
-  const RIGHT_X = 930;
 
   const DAY = 86400000;
   const addDays = (iso, n) => new Date(Date.parse(iso) + n * DAY).toISOString().slice(0, 10);
 
-  function svgEl(name, attrs) {
-    const el = document.createElementNS(NS, name);
-    for (const k in attrs) el.setAttribute(k, attrs[k]);
-    return el;
-  }
-
-  function reducedMotion() {
-    return typeof window.matchMedia === 'function'
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  }
-
   function mount(el, props) {
     const { trades, players, soberMode, pool, rng, history, competitionId } = props;
     let dead = false;
-    let raf = null;
     let windowId = '5';
     let hardMode = false;
     const picks = new Map(); // playerCode -> ticker
@@ -173,191 +155,22 @@
       runRace(race, days);
     }
 
-    function renderTrack(race) {
-      const h = race.lanes.length * LANE_H + 50;
-      // The dates actually raced over. Lanes are indexed by step, not by date,
-      // so the animation already assumes the closes line up across horses —
-      // they come from one shared StockPrices date index. The timeline shows
-      // lane 0's dates on that same basis, trimmed to the shortest lane.
-      const dates = race.lanes[0].dates.slice(0, race.steps);
-      const ticks = dates.map((d, i) => {
-        const pct = dates.length > 1 ? (i / (dates.length - 1)) * 100 : 0;
-        return `<span class="hr-tl-tick" style="left:${pct.toFixed(2)}%" title="${escapeHtml(d)}"></span>`;
-      }).join('');
-      el.innerHTML = `
-        <div class="hr-race">
-          <div class="hr-commentary" id="hr-say" role="status" aria-live="polite">They're under starter's orders…</div>
-          <div class="hr-track-wrap">
-            <svg id="hr-svg" viewBox="0 0 ${VIEW_W} ${h}" role="img" aria-label="Race track"></svg>
-          </div>
-          <div class="hr-timeline">
-            <div class="hr-tl-track">
-              <div class="hr-tl-fill" id="hr-tl-fill"></div>
-              ${ticks}
-              <div class="hr-tl-head" id="hr-tl-head"></div>
-            </div>
-            <div class="hr-tl-labels">
-              <span class="hr-tl-end">${escapeHtml(dates[0])}</span>
-              <span class="hr-tl-now" id="hr-tl-now">${escapeHtml(dates[0])}</span>
-              <span class="hr-tl-end">${escapeHtml(dates[dates.length - 1])}</span>
-            </div>
-          </div>
-          <div class="hr-controls">
-            <button class="btn ghost small" id="hr-pause">Pause</button>
-            <button class="btn ghost small" id="hr-skip">Skip to finish</button>
-          </div>
-        </div>`;
-      const svg = el.querySelector('#hr-svg');
-      // Lanes
-      race.lanes.forEach((l, i) => {
-        const y = 30 + i * LANE_H;
-        svg.appendChild(svgEl('rect', {
-          x: 0, y: y - 24, width: VIEW_W, height: LANE_H - 6,
-          fill: i % 2 ? 'rgba(255,255,255,0.02)' : 'transparent',
-        }));
-        const label = svgEl('text', { x: 6, y: y + 4, fill: '#8a92a6', 'font-size': '13' });
-        label.textContent = `${l.player} · ${l.ticker}`;
-        svg.appendChild(label);
-      });
-      // Start line
-      svg.appendChild(svgEl('line', {
-        x1: START_X, x2: START_X, y1: 10, y2: h - 10,
-        stroke: '#3a3a3a', 'stroke-width': '2', 'stroke-dasharray': '4 4',
-      }));
-      return {
-        svg, dates,
-        fill: el.querySelector('#hr-tl-fill'),
-        head: el.querySelector('#hr-tl-head'),
-        now: el.querySelector('#hr-tl-now'),
-      };
-    }
-
+    // The race itself lives in HorseRaceView, shared with the competition
+    // deck, so there is one animation rather than two that drift apart.
+    let view = null;
     function runRace(race, days) {
-      const track = renderTrack(race);
-      const svg = track.svg;
-
-      // Keep the timeline in step with the horses: fill, playhead and the
-      // date readout all follow the same t the animation uses.
-      function setTime(t) {
-        const pct = Math.max(0, Math.min(1, t)) * 100;
-        if (track.fill) track.fill.style.width = pct.toFixed(2) + '%';
-        if (track.head) track.head.style.left = pct.toFixed(2) + '%';
-        if (track.now) {
-          const i = Math.round(Math.max(0, Math.min(1, t)) * (track.dates.length - 1));
-          track.now.textContent = track.dates[i] || '';
-        }
-      }
-
-      const horses = race.lanes.map((l, i) => {
-        const y = 30 + i * LANE_H;
-        const g = svgEl('g', {});
-        // A ring behind the runner, lit only for whoever is in front.
-        const halo = svgEl('circle', {
-          cx: START_X, cy: y, r: 17, fill: 'none',
-          stroke: 'transparent', 'stroke-width': '2',
-        });
-        // The runner itself. 🏇 faces right, which is the way the race runs.
-        const horse = svgEl('text', {
-          x: START_X, y: y + 9, 'font-size': '26', 'text-anchor': 'middle',
-        });
-        horse.textContent = '🏇';
-        const txt = svgEl('text', {
-          x: START_X, y: y - 14, fill: '#e7e9ee', 'font-size': '12',
-          'font-weight': '600', 'text-anchor': 'middle',
-        });
-        g.appendChild(halo); g.appendChild(horse); g.appendChild(txt);
-        svg.appendChild(g);
-        return { lane: l, halo, horse, txt, y, seed: 0.13 + i * 0.19 };
-      });
-
-      const say = el.querySelector('#hr-say');
-      const seen = new Set();
-      let lastFiller = 0;
-
-      // The leader sits near the right edge throughout, so the scale expands
-      // as the race opens up — that is the camera following the leader, and it
-      // lands with the best final return exactly at the right edge.
-      function place(t) {
-        const positions = horses.map((hh) => E().interpolate(hh.lane.positions, t, hh.seed));
-        const maxPos = Math.max(1e-4, ...positions);
-        const scale = (RIGHT_X - START_X) / maxPos;
-        positions.forEach((pos, i) => {
-          const x = Math.max(14, Math.min(VIEW_W - 14, START_X + pos * scale));
-          const hh = horses[i];
-          hh.halo.setAttribute('cx', x.toFixed(1));
-          hh.horse.setAttribute('x', x.toFixed(1));
-          hh.txt.setAttribute('x', x.toFixed(1));
-          hh.txt.textContent = fmtPct(pos * 100, true);
-          // The emoji cannot be recoloured, so the running total carries the
-          // green/red instead.
-          hh.txt.setAttribute('fill', pos >= 0 ? '#3ee07f' : '#ff7a7a');
-        });
-        const lead = positions.indexOf(Math.max(...positions));
-        horses.forEach((hh, i) => hh.halo.setAttribute('stroke', i === lead ? '#ffc94f' : 'transparent'));
-        setTime(t);
-      }
-
-      function fireEvents(step, elapsed) {
-        for (const ev of race.events) {
-          if (ev.step <= step && !seen.has(ev.step + ev.text)) {
-            seen.add(ev.step + ev.text);
-            say.textContent = ev.text;
-            lastFiller = elapsed;
-            return;
-          }
-        }
-        if (elapsed - lastFiller > 6500) {
-          lastFiller = elapsed;
-          say.textContent = rng.pick(E().FILLER);
-        }
-      }
-
-      function finish() {
-        place(1);
-        renderResult(race);
-      }
-
-      if (reducedMotion()) {
-        // No animation at all: show the finish, offer a replay.
-        place(1);
-        say.textContent = 'Race finished.';
-        renderResult(race, true);
-        return;
-      }
-
-      const duration = E().durationFor(days);
-      const t0 = performance.now();
-      let paused = false;
-      let pausedAt = 0;
-      let offset = 0;
-
-      const frame = (now) => {
-        if (dead) return;
-        if (paused) return;
-        const elapsed = now - t0 - offset;
-        const t = Math.min(1, elapsed / duration);
-        place(t);
-        fireEvents(Math.floor(t * (race.steps - 1)), elapsed);
-        if (t >= 1) { finish(); return; }
-        raf = requestAnimationFrame(frame);
-      };
-      raf = requestAnimationFrame(frame);
-
-      el.querySelector('#hr-pause').addEventListener('click', (e) => {
-        paused = !paused;
-        e.target.textContent = paused ? 'Resume' : 'Pause';
-        if (paused) { pausedAt = performance.now(); if (raf) cancelAnimationFrame(raf); }
-        else { offset += performance.now() - pausedAt; raf = requestAnimationFrame(frame); }
-      });
-      el.querySelector('#hr-skip').addEventListener('click', () => {
-        paused = true;
-        if (raf) cancelAnimationFrame(raf);
-        finish();
+      if (view) view.destroy();
+      view = window.HorseRaceView.create(el, {
+        race,
+        duration: E().durationFor(days),
+        autoStart: true,
+        rng,
+        onFinish: (r) => renderResult(r),
       });
     }
 
     // ── Result ───────────────────────────────────────────────────────────
-    function renderResult(race, viaReducedMotion) {
+    function renderResult(race) {
       if (dead) return;
       const rank = race.ranking;
       const medals = ['🥇', '🥈', '🥉'];
@@ -396,7 +209,6 @@
 
       el.insertAdjacentHTML('beforeend', `
         <div class="hr-result">
-          ${viaReducedMotion ? '<p class="text-muted text-small">Animation skipped — you have reduced motion turned on.</p>' : ''}
           <div class="hr-podium">${podium}</div>
           ${window.UI.table([
             { label: '#', p: 1 },
@@ -408,28 +220,18 @@
           <p class="hr-drink">${escapeHtml(drink)}</p>
           <div class="hr-controls">
             <button class="btn game-spin" id="hr-again">Race again</button>
-            ${viaReducedMotion ? '<button class="btn ghost" id="hr-replay">Replay animation</button>' : ''}
           </div>
         </div>`);
 
       // "Race again" keeps the horses and lets the window change.
       el.querySelector('#hr-again').addEventListener('click', () => renderSetup());
-      const replay = el.querySelector('#hr-replay');
-      if (replay) replay.addEventListener('click', () => runRaceIgnoringMotion(race));
-    }
-
-    function runRaceIgnoringMotion(race) {
-      // Explicit opt-in overrides the reduced-motion default.
-      const orig = window.matchMedia;
-      window.matchMedia = () => ({ matches: false });
-      try { runRace(race, windowRange().days); } finally { window.matchMedia = orig; }
     }
 
     renderSetup();
 
     return {
       newRound: () => renderSetup(),
-      destroy() { dead = true; if (raf) cancelAnimationFrame(raf); },
+      destroy() { dead = true; if (view) { view.destroy(); view = null; } },
     };
   }
 

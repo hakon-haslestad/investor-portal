@@ -78,3 +78,53 @@ test('Games.register replaces rather than duplicates an existing id', () => {
   assert.equal(w.Games.registry.length, before, 'no duplicate');
   assert.equal(w.Games.byId('horse-race').name, 'Replaced');
 });
+
+// ── Load order across BOTH entry points ────────────────────────────────────
+const DECK = path.join(__dirname, '..', 'docs', 'presentation.html');
+
+function decksScripts() {
+  const html = fs.readFileSync(DECK, 'utf8');
+  return [...html.matchAll(/src="\.\/(js\/[a-z0-9/-]+\.js)/g)].map((m) => m[1]);
+}
+
+test('horse-race.js loads after the view it delegates the race to', () => {
+  const order = scriptOrder();
+  const view = order.indexOf('games/horse-race-view.js');
+  const game = order.indexOf('games/horse-race.js');
+  assert.ok(view >= 0, 'index.html loads the view');
+  assert.ok(view < game, 'the view must be defined before the game that uses it');
+});
+
+test('the deck loads the race modules, and in a workable order', () => {
+  const order = decksScripts();
+  for (const f of ['js/games/horse-race-engine.js', 'js/games/horse-race-view.js', 'js/games/horse-race-audio.js']) {
+    assert.ok(order.includes(f), `presentation.html loads ${f}`);
+  }
+  assert.ok(order.indexOf('js/games/horse-race-engine.js') < order.indexOf('js/games/horse-race-view.js'),
+    'the view needs the engine');
+  assert.ok(order.indexOf('js/games/horse-race-view.js') < order.indexOf('js/pages/presentation-page.js'),
+    'the page needs the view');
+});
+
+test('the deck does NOT drag in the games shell', () => {
+  const order = decksScripts();
+  for (const f of ['js/games/registry.js', 'js/games/shell.js', 'js/games/pool.js', 'js/games/horse-race.js']) {
+    assert.ok(!order.includes(f), `${f} has no business on the deck`);
+  }
+});
+
+test('the race modules reference no games-shell globals', () => {
+  for (const f of ['horse-race-engine.js', 'horse-race-view.js', 'horse-race-audio.js']) {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'games', f), 'utf8');
+    for (const g of ['GamePool', 'GameShell', 'GameRng', 'window.Games']) {
+      assert.ok(!src.includes(g), `${f} must not depend on ${g} — the deck does not load it`);
+    }
+  }
+});
+
+test('every file in docs/js/games is loaded by index.html', () => {
+  const order = scriptOrder();
+  for (const f of fs.readdirSync(path.join(__dirname, '..', 'docs', 'js', 'games'))) {
+    assert.ok(order.includes('games/' + f), `${f} is not loaded by index.html`);
+  }
+});

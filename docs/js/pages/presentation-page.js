@@ -46,7 +46,19 @@
   const slides = data.slides || [];
   let cur = 0;
 
+  // Anything a slide starts — an animation loop, an AudioContext — must be
+  // torn down before the next render blows its DOM away. The deck had no such
+  // hook; without this a race left running would outlive its slide.
+  let activeSlide = null;
+  function teardown() {
+    if (activeSlide && typeof activeSlide.destroy === 'function') {
+      try { activeSlide.destroy(); } catch (_e) { /* never block navigation */ }
+    }
+    activeSlide = null;
+  }
+
   function render() {
+    teardown();
     const s = slides[cur];
     root.innerHTML = `
       <div class="slide-header">
@@ -75,6 +87,7 @@
       case 'standings': return renderStandings(s);
       case 'company': return renderCompany(s);
       case 'verdict': return renderVerdict(s);
+      case 'race': return renderRace(s);
       default: return `<pre>${JSON.stringify(s, null, 2)}</pre>`;
     }
   }
@@ -97,6 +110,8 @@
         note.innerHTML = 'daily · <span style="color:#2D5BFF">●</span> buy &nbsp; <span style="color:#FF3B3B">●</span> sell';
         el.appendChild(note);
       }
+    } else if (s.type === 'race') {
+      mountRace(s);
     } else if (s.type === 'picks') {
       if (s.noActivity) return;
       (s.charts || []).forEach((ch, i) => {
@@ -105,6 +120,61 @@
         if (el) el.appendChild(window.Charts.priceChart({ points: ch.points, markers: ch.markers }));
       });
     }
+  }
+
+  // Two and a half minutes: long enough to be an event, short enough to hold
+  // a room. The paddock waits for a keypress rather than ambushing the room
+  // with a surprise clock.
+  const RACE_MS = 150000;
+
+  // The paddock. The track itself is built by HorseRaceView into #race-mount
+  // once mount() runs, because it needs real DOM nodes.
+  function renderRace(s) {
+    if (s.noActivity || !s.lanes || s.lanes.length < 2) {
+      return `
+        <h2>${escapeHtml(s.title)}</h2>
+        <p class="empty-note">${escapeHtml(s.emptyNote || 'Not enough runners to make a race of it.')}</p>`;
+    }
+    const paddock = s.lanes.map((l) => `
+      <div class="race-runner">
+        <span class="race-silk" style="background:${escapeHtml(l.colour)}"></span>
+        <span class="race-code">${escapeHtml(l.code)}</span>
+        <span class="race-name">${escapeHtml(l.name)}</span>
+      </div>`).join('');
+    return `
+      <h2>${escapeHtml(s.title)}</h2>
+      <p class="lead">Every investor is a horse. The track is their return since the window opened \u2014 so whoever crosses the line first wins the competition.</p>
+      <div class="race-paddock">${paddock}</div>
+      <div id="race-mount"></div>
+      <p class="chart-note">Space sends them off, and pauses. M mutes. Arrow keys leave at any point.</p>`;
+  }
+
+  function mountRace(s) {
+    const el = document.getElementById('race-mount');
+    if (!el || !s.lanes || s.lanes.length < 2) return;
+    const race = window.HorseRaceEngine.buildRace(s.lanes.map((l) => ({
+      label: l.code, sublabel: l.name, colour: l.colour,
+      positions: l.positions, dates: l.dates,
+    })));
+    if (!race.ok) {
+      el.innerHTML = '<p class="empty-note">Not enough runners with a full series to race.</p>';
+      return;
+    }
+    const audio = window.HorseRaceAudio && window.HorseRaceAudio.supported()
+      ? window.HorseRaceAudio.create() : null;
+    activeSlide = window.HorseRaceView.create(el, {
+      race,
+      duration: RACE_MS,
+      autoStart: false,   // the paddock waits; space or the button starts it
+      audio,
+      onFinish: (r) => {
+        const say = document.getElementById('hr-say');
+        if (say && r.ranking && r.ranking.length) {
+          const w = r.ranking[0];
+          say.textContent = `${w.sublabel || w.label} wins it.`;
+        }
+      },
+    });
   }
 
   function renderTitle(s) {
@@ -359,6 +429,22 @@
   window.__next = () => { cur = Math.min(slides.length - 1, cur + 1); render(); };
   window.__prev = () => { cur = Math.max(0, cur - 1); render(); };
   document.addEventListener('keydown', (e) => {
+    // The active slide gets first refusal on space and M: on the race slide
+    // space sends them off and pauses, rather than skipping past the race.
+    // Arrows always navigate, so there is no way to get stuck.
+    if (activeSlide && e.key === ' ') {
+      e.preventDefault();
+      // Once it has started, space toggles pause — including resuming, which
+      // a plain isRunning() check would miss because a paused race is neither
+      // running nor finished.
+      if (activeSlide.isFinished && activeSlide.isFinished()) window.__next();
+      else if (activeSlide.isStarted && activeSlide.isStarted()) activeSlide.pause();
+      else if (typeof activeSlide.start === 'function') activeSlide.start();
+      return;
+    }
+    if (activeSlide && (e.key === 'm' || e.key === 'M') && activeSlide.toggleMute) {
+      e.preventDefault(); activeSlide.toggleMute(); return;
+    }
     if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); window.__next(); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); window.__prev(); }
     else if (e.key === 'Home') { cur = 0; render(); }
