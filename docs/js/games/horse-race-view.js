@@ -21,14 +21,50 @@
   const NS = 'http://www.w3.org/2000/svg';
 
   const LANE_H = 54;
-  const VIEW_W = 1000;
-  // The name gutter is off the track entirely: the runners live to the right
-  // of NAME_W, so a negative return has somewhere to go without covering the
-  // label that says whose it is.
-  const NAME_W = 150;
-  const LEFT_X = NAME_W + 24;   // hard left stop for a runner
-  const START_X = 300;          // the start line, with room to fall back to
-  const RIGHT_X = 960;
+
+  // The viewBox is sized to the container's actual pixel width, so one unit is
+  // roughly one CSS pixel. That keeps the runners and labels at a constant
+  // physical size at any screen width — a fixed viewBox stretched across a
+  // wide monitor would blow the text up instead of lengthening the track.
+  //
+  // The name gutter is off the track entirely: runners live to the right of
+  // NAME_W, so a negative return has somewhere to go without covering the
+  // label saying whose it is.
+  function geometry(width) {
+    const w = Math.round(Math.max(340, Math.min(2400, width || 1000)));
+    const nameW = Math.round(Math.min(180, Math.max(76, w * 0.15)));
+    const leftX = nameW + 20;
+    const startX = leftX + Math.round(Math.min(170, Math.max(36, w * 0.10)));
+    return {
+      VIEW_W: w,
+      NAME_W: nameW,
+      LEFT_X: leftX,
+      START_X: startX,
+      RIGHT_X: w - 30,
+      // Below this there is no room for a full name beside the code.
+      showSublabel: nameW >= 112,
+    };
+  }
+
+  // Where each runner sits, in viewBox units. Pure, so the invariants that
+  // matter — names never covered, order never lied about — are testable.
+  //
+  // Each side of the start line gets its own scale: the leader always reaches
+  // the right edge and the worst always falls back to the left one. A single
+  // shared scale would squash the whole field whenever one runner was deeply
+  // under water. The track is therefore not linear across zero, but it is
+  // monotonic on each side, so the ORDER on screen is always honest — and
+  // every runner carries its own percentage anyway.
+  function placeX(positions, g) {
+    const maxPos = Math.max(1e-4, ...positions);
+    const minPos = Math.min(0, ...positions);
+    const posScale = (g.RIGHT_X - g.START_X) / maxPos;
+    const negScale = minPos < 0 ? (g.START_X - g.LEFT_X) / Math.abs(minPos) : 0;
+    return positions.map((pos) => {
+      const raw = g.START_X + pos * (pos >= 0 ? posScale : negScale);
+      return Math.max(g.LEFT_X, Math.min(g.VIEW_W - 14, raw));
+    });
+  }
   const FILLER_EVERY_MS = 6500;
 
   function svgEl(name, attrs) {
@@ -54,6 +90,10 @@
     let finished = false;
     let t0 = 0, pausedAt = 0, offset = 0;
 
+    // Measured once, at create: both entry points remount the race on
+    // navigation, so there is nothing to re-measure mid-run.
+    const g = geometry((el.clientWidth || el.offsetWidth || opts.width || 1000));
+    const { VIEW_W, NAME_W, START_X } = g;
     const h = race.lanes.length * LANE_H + 50;
     // Lanes are indexed by step, so the animation already assumes the points
     // line up across runners. The timeline shows lane 0's dates on that same
@@ -117,7 +157,7 @@
       });
       label.textContent = l.label || '';
       svg.appendChild(label);
-      if (l.sublabel) {
+      if (l.sublabel && g.showSublabel) {
         const sub = svgEl('text', { x: l.colour ? 22 : 6, y: y + 20, fill: '#8a92a6', 'font-size': '11' });
         sub.textContent = l.sublabel;
         svg.appendChild(sub);
@@ -166,22 +206,9 @@
     // the best final position exactly at the right edge.
     function place(t) {
       const positions = horses.map((hh) => E().interpolate(hh.lane.positions, t, hh.seed));
-      const maxPos = Math.max(1e-4, ...positions);
-      const minPos = Math.min(0, ...positions);
-      // Each side of the start line gets its own scale: the leader always runs
-      // to the right edge, and the worst always falls back to the left one.
-      // A single shared scale would squash the whole field whenever one person
-      // was deeply under water, and a horse pinned to an edge says nothing
-      // about how far ahead or behind it actually is.
-      //
-      // The track is therefore not linear across zero — but it is monotonic on
-      // each side, so the ORDER is always honest, and every runner carries its
-      // own percentage anyway.
-      const posScale = (RIGHT_X - START_X) / maxPos;
-      const negScale = minPos < 0 ? (START_X - LEFT_X) / Math.abs(minPos) : 0;
+      const xs = placeX(positions, g);
       positions.forEach((pos, i) => {
-        const raw = START_X + pos * (pos >= 0 ? posScale : negScale);
-        const x = Math.max(LEFT_X, Math.min(VIEW_W - 14, raw));
+        const x = xs[i];
         const hh = horses[i];
         hh.halo.setAttribute('cx', x.toFixed(1));
         hh.horseG.setAttribute('transform', `translate(${x.toFixed(1)},${hh.y + 9}) scale(-1,1)`);
@@ -311,5 +338,5 @@
     };
   }
 
-  window.HorseRaceView = { create, LANE_H, VIEW_W, START_X, RIGHT_X };
+  window.HorseRaceView = { create, geometry, placeX, LANE_H };
 })();

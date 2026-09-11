@@ -174,11 +174,16 @@
 .race-code { font-weight: 700; }
 .race-name { color: var(--muted); font-size: 0.85rem; }
 
-/* The slide centres its children, so let the track have the room it needs
-   without the 62vh cap #chart-mount carries. */
+/* The race gets the whole screen. Every other slide is a 1100px column, but
+   a track reads better the wider it is — the runners spread out instead of
+   bunching. Done by widening the slide rather than with 100vw, which would
+   add a horizontal scrollbar whenever a vertical one is present. */
+.slide.slide-race { max-width: none; padding-left: 28px; padding-right: 28px; }
 #race-mount { width: 100%; }
 #race-mount .hr-track-wrap { margin-top: 6px; }
-#race-mount svg { width: 100%; height: auto; display: block; max-height: min(56vh, 520px); }
+/* No max-height: at full width the viewBox aspect already keeps it short, and
+   a cap here would letterbox the track instead of filling the screen. */
+#race-mount svg { width: 100%; height: auto; display: block; }
 
 @media (max-width: 720px) {
   .race-paddock { gap: 6px; }

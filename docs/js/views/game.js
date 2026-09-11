@@ -36,6 +36,9 @@
     let active = null; // the mounted game instance
 
     function mountGame() {
+      // A game can ask for the full viewport (the race track does). The
+      // router removes this class on every dispatch, so it is scoped to here.
+      if (game.wide) el.classList.add('wide');
       const summary = S.filterSummary(filters, pool, compById);
       const recent = S.renderRecent(filters.competitionId, game.id);
       el.innerHTML = `

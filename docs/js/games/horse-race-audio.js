@@ -10,6 +10,12 @@
 (function () {
   const MUTE_KEY = 'portal.race.muted';
 
+  // The soundtrack, and the race length it was cut for. Both the deck and the
+  // Games tab read these, so a race can never be a different length from the
+  // music playing over it. Paths are relative to the HTML page, and both
+  // entry points sit at the site root.
+  const TRACK = { url: './audio/horse-race-2m30.mp3', ms: 150000 };
+
   function readMuted() {
     try { return localStorage.getItem(MUTE_KEY) === '1'; } catch (_e) { return false; }
   }
@@ -75,5 +81,5 @@
     };
   }
 
-  window.HorseRaceAudio = { create, supported, readMuted };
+  window.HorseRaceAudio = { create, supported, readMuted, TRACK };
 })();

@@ -91,6 +91,8 @@
       tags: ['party', 'recurring'],
       players: '2+',
       minTrades: 2,
+      // The track wants the whole screen — see .container.wide.
+      wide: true,
       drinkingRule: 'Last place drinks — or, in harder mode, drink once per horse that beat yours.',
       component: window.GameHorseRace,
     },

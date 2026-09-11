@@ -1,22 +1,19 @@
 const test = require('node:test');
 const assert = require('node:assert');
+const { context } = require('./harness');
 
-// The placement maths from horse-race-view.js place(). Mirrored here because
-// it lives inside a DOM closure; the constants are asserted against the source
-// below so the two cannot drift apart.
-const NAME_W = 150, LEFT_X = NAME_W + 24, START_X = 300, RIGHT_X = 960, VIEW_W = 1000;
-
-function place(positions) {
-  const maxPos = Math.max(1e-4, ...positions);
-  const minPos = Math.min(0, ...positions);
-  const posScale = (RIGHT_X - START_X) / maxPos;
-  const negScale = minPos < 0 ? (START_X - LEFT_X) / Math.abs(minPos) : 0;
-  return positions.map((pos) => {
-    const raw = START_X + pos * (pos >= 0 ? posScale : negScale);
-    return Math.max(LEFT_X, Math.min(VIEW_W - 14, raw));
+// The real geometry and placement, exported from the view rather than mirrored
+// here — so these tests cannot quietly drift from what the screen does.
+function V() {
+  const w = context([], {
+    Fmt: { fmtPct: String, escapeHtml: String },
+    HorseRaceEngine: { interpolate: () => 0, FILLER: [] },
   });
+  require('./harness').load(w, 'games/horse-race-view.js');
+  return w.HorseRaceView;
 }
 
+const WIDTHS = [360, 390, 768, 1000, 1440, 1920, 2560];
 const CASES = {
   'all positive': [0.05, 0.20, 0.12],
   'mixed': [0.30, -0.10, 0.05],
@@ -28,62 +25,106 @@ const CASES = {
   'one runner': [0.15],
 };
 
-test('the constants here match the ones the view actually uses', () => {
-  const fs = require('fs');
-  const path = require('path');
-  const src = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'games', 'horse-race-view.js'), 'utf8');
-  assert.match(src, new RegExp(`const NAME_W = ${NAME_W};`));
-  assert.match(src, new RegExp(`const START_X = ${START_X};`));
-  assert.match(src, new RegExp(`const RIGHT_X = ${RIGHT_X};`));
-  assert.match(src, new RegExp(`const VIEW_W = ${VIEW_W};`));
-  assert.match(src, /const LEFT_X = NAME_W \+ 24;/);
-});
-
-test('a runner never reaches the name gutter, however badly it is doing', () => {
-  for (const [name, ps] of Object.entries(CASES)) {
-    for (const x of place(ps)) {
-      assert.ok(x >= NAME_W, `${name}: runner at ${x} is over the names (gutter ends ${NAME_W})`);
-    }
+test('the viewBox tracks the real width, so text keeps its size at any screen', () => {
+  const { geometry } = V();
+  for (const w of WIDTHS) {
+    const g = geometry(w);
+    assert.equal(g.VIEW_W, Math.max(340, Math.min(2400, w)),
+      `at ${w}px the viewBox should match the pixels`);
   }
-  // Even an absurd loss stays on the track.
-  for (const x of place([0.2, -50])) assert.ok(x >= NAME_W);
+  // Absurd inputs are clamped rather than producing a broken box.
+  assert.equal(geometry(10).VIEW_W, 340, 'clamped up to something usable');
+  assert.equal(geometry(99999).VIEW_W, 2400, 'clamped down');
+  // A hidden element reports clientWidth 0, which means "unmeasurable", not
+  // "zero wide" — so it takes the default rather than the floor.
+  assert.equal(geometry(0).VIEW_W, 1000);
+  assert.equal(geometry(undefined).VIEW_W, 1000);
 });
 
-test('nobody is ever drawn off the right edge', () => {
-  for (const [name, ps] of Object.entries(CASES)) {
-    for (const x of place(ps)) assert.ok(x <= VIEW_W - 14, `${name}: ${x} overflows`);
+test('a wider screen gives more track, not bigger horses', () => {
+  const { geometry } = V();
+  const narrow = geometry(1000);
+  const wide = geometry(2000);
+  const trackOf = (g) => g.RIGHT_X - g.START_X;
+  assert.ok(trackOf(wide) > trackOf(narrow) * 1.7,
+    'doubling the screen should roughly double the running room');
+});
+
+test('the name gutter stays a sane share of the screen', () => {
+  const { geometry } = V();
+  for (const w of WIDTHS) {
+    const g = geometry(w);
+    assert.ok(g.NAME_W >= 76, `${w}px: gutter too small to hold a code`);
+    assert.ok(g.NAME_W / g.VIEW_W < 0.32, `${w}px: gutter eats ${(g.NAME_W / g.VIEW_W * 100).toFixed(0)}% of the track`);
+  }
+  assert.equal(geometry(360).showSublabel, false, 'no room for a full name on a phone');
+  assert.equal(geometry(1440).showSublabel, true, 'but plenty on a laptop');
+});
+
+test('a runner never reaches the name gutter, at any width or any result', () => {
+  const { geometry, placeX } = V();
+  for (const w of WIDTHS) {
+    const g = geometry(w);
+    for (const [name, ps] of Object.entries(CASES)) {
+      for (const x of placeX(ps, g)) {
+        assert.ok(x >= g.NAME_W, `${w}px ${name}: runner at ${x} covers the names (gutter ${g.NAME_W})`);
+      }
+    }
+    for (const x of placeX([0.2, -50], g)) assert.ok(x >= g.NAME_W, `${w}px: absurd loss still on track`);
+  }
+});
+
+test('nobody is drawn off either edge', () => {
+  const { geometry, placeX } = V();
+  for (const w of WIDTHS) {
+    const g = geometry(w);
+    for (const [name, ps] of Object.entries(CASES)) {
+      for (const x of placeX(ps, g)) {
+        assert.ok(x >= 0 && x <= g.VIEW_W, `${w}px ${name}: ${x} is outside 0..${g.VIEW_W}`);
+      }
+    }
   }
 });
 
 test('the leader always reaches the right edge, even beside a big loser', () => {
-  for (const [name, ps] of Object.entries(CASES)) {
-    if (Math.max(...ps) <= 0) continue; // nobody is up; there is no winner to park
-    const xs = place(ps);
-    assert.ok(Math.max(...xs) > RIGHT_X - 1, `${name}: leader only got to ${Math.max(...xs)}`);
-  }
-  // The case that motivated per-side scales: one disaster must not squash the field.
-  const xs = place([0.10, -0.95]);
-  assert.ok(Math.max(...xs) > RIGHT_X - 1, 'the winner still runs the full track');
-});
-
-test('finishing order on screen always matches the real returns', () => {
-  for (const [name, ps] of Object.entries(CASES)) {
-    const xs = place(ps);
-    const byValue = ps.map((_, i) => i).sort((a, b) => ps[a] - ps[b]);
-    const byScreen = ps.map((_, i) => i).sort((a, b) => xs[a] - xs[b]);
-    assert.deepEqual(byScreen, byValue, `${name}: the track lies about the order`);
+  const { geometry, placeX } = V();
+  for (const w of WIDTHS) {
+    const g = geometry(w);
+    for (const [name, ps] of Object.entries(CASES)) {
+      if (Math.max(...ps) <= 0) continue; // nobody is up, so nobody parks at the line
+      const xs = placeX(ps, g);
+      assert.ok(Math.max(...xs) > g.RIGHT_X - 1, `${w}px ${name}: leader only got to ${Math.max(...xs)}`);
+    }
+    const xs = placeX([0.10, -0.95], g);
+    assert.ok(Math.max(...xs) > g.RIGHT_X - 1, `${w}px: one disaster must not squash the winner`);
   }
 });
 
-test('a horse in profit is right of the line; one in loss is left of it', () => {
-  const ps = [0.10, -0.10, 0];
-  const [win, lose, flat] = place(ps);
-  assert.ok(win > START_X, 'profit runs ahead');
-  assert.ok(lose < START_X, 'loss falls back');
-  assert.equal(flat, START_X, 'flat sits exactly on the line');
+test('screen order always matches the real returns', () => {
+  const { geometry, placeX } = V();
+  for (const w of WIDTHS) {
+    const g = geometry(w);
+    for (const [name, ps] of Object.entries(CASES)) {
+      const xs = placeX(ps, g);
+      const byValue = ps.map((_, i) => i).sort((a, b) => ps[a] - ps[b]);
+      const byScreen = ps.map((_, i) => i).sort((a, b) => xs[a] - xs[b]);
+      assert.deepEqual(byScreen, byValue, `${w}px ${name}: the track lies about the order`);
+    }
+  }
+});
+
+test('profit is right of the line, loss is left, flat is on it', () => {
+  const { geometry, placeX } = V();
+  const g = geometry(1200);
+  const [win, lose, flat] = placeX([0.10, -0.10, 0], g);
+  assert.ok(win > g.START_X);
+  assert.ok(lose < g.START_X);
+  assert.equal(flat, g.START_X);
 });
 
 test('an all-flat field stands on the line rather than dividing by zero', () => {
-  for (const x of place([0, 0, 0])) assert.equal(x, START_X);
-  assert.ok(Number.isFinite(place([0])[0]));
+  const { geometry, placeX } = V();
+  const g = geometry(1000);
+  for (const x of placeX([0, 0, 0], g)) assert.equal(x, g.START_X);
+  assert.ok(Number.isFinite(placeX([0], g)[0]));
 });

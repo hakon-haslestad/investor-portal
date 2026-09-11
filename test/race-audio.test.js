@@ -8,6 +8,14 @@ const PAGE = path.join(DOCS, 'js', 'pages', 'presentation-page.js');
 
 function pageSrc() { return fs.readFileSync(PAGE, 'utf8'); }
 
+// The track and the race length live together in HorseRaceAudio.TRACK, so
+// both entry points read one definition.
+function track() {
+  const { context } = require('./harness');
+  const w = context(['games/horse-race-audio.js'], { Audio: function Audio() { return {}; } });
+  return w.HorseRaceAudio.TRACK;
+}
+
 // Minimal MPEG-1 Layer III frame walker — enough to total a duration without
 // pulling in a dependency.
 function mp3DurationMs(file) {
@@ -35,20 +43,17 @@ function mp3DurationMs(file) {
   return ms;
 }
 
-test('the deck points at an audio file that actually exists', () => {
-  const m = /const RACE_AUDIO = '(.+?)';/.exec(pageSrc());
-  assert.ok(m, 'RACE_AUDIO is declared');
-  const rel = m[1].replace(/^\.\//, '');
+test('the declared track actually exists', () => {
+  const rel = track().url.replace(/^\.\//, '');
   const file = path.join(DOCS, rel);
   assert.ok(fs.existsSync(file), `${rel} is missing — the race would fall back to synthesised audio`);
   assert.ok(fs.statSync(file).size > 10000, 'and is not a stub');
 });
 
 test('the soundtrack is the same length as the race', () => {
-  const src = pageSrc();
-  const raceMs = Number(/const RACE_MS = (\d+);/.exec(src)[1]);
-  const rel = /const RACE_AUDIO = '(.+?)';/.exec(src)[1].replace(/^\.\//, '');
-  const audioMs = mp3DurationMs(path.join(DOCS, rel));
+  const t = track();
+  const raceMs = t.ms;
+  const audioMs = mp3DurationMs(path.join(DOCS, t.url.replace(/^\.\//, '')));
   const driftS = Math.abs(audioMs - raceMs) / 1000;
   // They are paused and resumed together, so they only need to START aligned
   // and END together; a couple of seconds either way is inaudible.
@@ -57,7 +62,7 @@ test('the soundtrack is the same length as the race', () => {
 });
 
 test('the audio is same-origin, which is all the deck CSP permits', () => {
-  const rel = /const RACE_AUDIO = '(.+?)';/.exec(pageSrc())[1];
+  const rel = track().url;
   assert.ok(rel.startsWith('./'), `${rel} must be a relative path`);
   assert.ok(!/^https?:/.test(rel), 'default-src \'self\' blocks any remote media');
   const html = fs.readFileSync(path.join(DOCS, 'presentation.html'), 'utf8');
@@ -95,6 +100,16 @@ test('no synthesis is left behind', () => {
   for (const gone of ['AudioContext', 'createOscillator', 'createGain', 'createBiquadFilter', 'createSynth']) {
     assert.ok(!src.includes(gone), `${gone} should have gone with the synth`);
   }
+});
+
+test('both entry points race for exactly as long as the music', () => {
+  const t = track();
+  // The deck and the Games tab must both take their duration from TRACK, or
+  // one of them ends up racing over the wrong length of music.
+  assert.match(pageSrc(), /duration: TRACK\.ms/);
+  const game = fs.readFileSync(path.join(DOCS, 'js', 'games', 'horse-race.js'), 'utf8');
+  assert.match(game, /duration: TRACK\.ms/);
+  assert.ok(t.ms > 0);
 });
 
 test('mute is remembered between races', () => {

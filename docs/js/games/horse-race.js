@@ -127,7 +127,7 @@
 
     // ── Race ─────────────────────────────────────────────────────────────
     function startRace() {
-      const { from, to, days } = windowRange();
+      const { from, to } = windowRange();
       const horses = [];
       for (const [code, ticker] of picks) {
         const r = runners.find((x) => x.ticker === ticker);
@@ -152,19 +152,24 @@
         // Fall through: the setup screen now shows the warning; the user restarts.
         return;
       }
-      runRace(race, days);
+      runRace(race);
     }
 
     // The race itself lives in HorseRaceView, shared with the competition
     // deck, so there is one animation rather than two that drift apart.
     let view = null;
-    function runRace(race, days) {
+    function runRace(race) {
       if (view) view.destroy();
+      const TRACK = window.HorseRaceAudio.TRACK;
+      const audio = window.HorseRaceAudio.supported()
+        ? window.HorseRaceAudio.create({ url: TRACK.url }) : null;
       view = window.HorseRaceView.create(el, {
+        // Same length as the deck's race, because it is the same soundtrack:
+        // the music is cut to the race, so the race is cut to the music.
         race,
-        duration: E().durationFor(days),
+        duration: TRACK.ms,
         autoStart: true,
-        rng,
+        rng, audio,
         onFinish: (r) => renderResult(r),
       });
     }
