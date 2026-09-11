@@ -136,7 +136,45 @@
     return normalise(h.points);
   }
 
-  function buildRace(horses) {
+  // A competition window often opens weeks before anyone actually buys
+  // anything. Racing over that is dead air: every runner sits on the line
+  // while the clock burns. Trim the flat opening so the whole duration goes
+  // to the part where something happens.
+  //
+  // One flat step is kept, so the field is still seen standing at the line
+  // before it moves. Nothing is trimmed if nobody ever moves.
+  const FLAT_EPS = 1e-9;
+  // Only a genuinely dead opening is worth cutting. Dropping one or two steps
+  // buys no time and makes the timeline start on an odd date for no reason.
+  const MIN_SKIP_STEPS = 2;
+  function trimLeadingFlat(lanes) {
+    if (!lanes.length) return { lanes, skipped: null };
+    const steps = Math.min(...lanes.map((l) => l.positions.length));
+    let firstMove = -1;
+    for (let i = 0; i < steps; i++) {
+      if (lanes.some((l) => Math.abs(l.positions[i]) > FLAT_EPS)) { firstMove = i; break; }
+    }
+    // Never moved at all, or moved straight away: nothing worth cutting.
+    if (firstMove < 1) return { lanes, skipped: null };
+    const start = firstMove - 1;
+    if (start < MIN_SKIP_STEPS) return { lanes, skipped: null };
+    const first = lanes[0];
+    const skipped = {
+      steps: start,
+      fromDate: first.dates ? first.dates[0] : null,
+      toDate: first.dates ? first.dates[start] : null,
+    };
+    return {
+      lanes: lanes.map((l) => ({
+        ...l,
+        positions: l.positions.slice(start),
+        dates: (l.dates || []).slice(start),
+      })),
+      skipped,
+    };
+  }
+
+  function buildRace(horses, opts) {
     const lanes = [];
     const excluded = [];
     for (const h of horses || []) {
@@ -154,16 +192,22 @@
       });
     }
     if (lanes.length < 2) return { lanes, excluded, ok: false };
+    // Trim before commentary, so event steps index the trimmed lanes.
+    const trim = (opts && opts.trimLeadingFlat === false)
+      ? { lanes, skipped: null }
+      : trimLeadingFlat(lanes);
+    const run = trim.lanes;
     return {
-      lanes, excluded, ok: true,
-      steps: Math.min(...lanes.map((l) => l.positions.length)),
-      events: commentary(lanes),
-      ranking: lanes.slice().sort((a, b) => b.finalPos - a.finalPos),
+      lanes: run, excluded, ok: true, skipped: trim.skipped,
+      steps: Math.min(...run.map((l) => l.positions.length)),
+      events: commentary(run),
+      ranking: run.slice().sort((a, b) => b.finalPos - a.finalPos),
     };
   }
 
   window.HorseRaceEngine = {
-    normalise, volatility, oddsFor, commentary, rankAt, buildRace, laneFrom,
+    normalise, volatility, oddsFor, commentary, rankAt, buildRace, laneFrom, trimLeadingFlat,
+    MIN_SKIP_STEPS,
     durationFor, easeInOutCubic, interpolate,
     FILLER, BREAKAWAY_PP, PHOTO_FINISH_PP, ODDS_MIN, ODDS_MAX,
   };

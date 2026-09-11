@@ -122,6 +122,7 @@
             <span class="hr-tl-end">${escapeHtml(String(dates[dates.length - 1] || ''))}</span>
           </div>
         </div>
+        ${race.skipped ? `<p class="hr-skipped">Skipped ${race.skipped.steps} quiet day${race.skipped.steps === 1 ? '' : 's'} before the first trade${race.skipped.fromDate ? ` (${escapeHtml(String(race.skipped.fromDate))} → ${escapeHtml(String(race.skipped.toDate))})` : ''} — the clock goes to the part where something happens.</p>` : ''}
         <div class="hr-controls">
           <button class="btn game-spin" id="hr-go"${opts.autoStart ? ' hidden' : ''}>🏁 They're off</button>
           <button class="btn ghost small" id="hr-pause"${opts.autoStart ? '' : ' hidden'}>Pause</button>

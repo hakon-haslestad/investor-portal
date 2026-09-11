@@ -262,3 +262,99 @@ test('game lanes keep their ticker labels through the same path', () => {
   assert.equal(race.lanes[0].sublabel, 'HH', 'sublabel falls back to player');
   assert.equal(race.lanes[0].ticker, 'AAA', 'and ticker is still there for the game');
 });
+
+// ── Trimming dead air before the first trade ───────────────────────────────
+const d = (n) => `2024-${String(Math.floor(n / 28) + 1).padStart(2, '0')}-${String((n % 28) + 1).padStart(2, '0')}`;
+const lane = (label, positions) => ({ label, positions, dates: positions.map((_, i) => d(i)) });
+
+test('a long flat opening is cut, keeping one step on the line', () => {
+  const e = E();
+  // Nothing happens for 10 steps, then the race is on.
+  const race = e.buildRace([
+    lane('HH', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.02, 0.05, 0.09]),
+    lane('JC', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.01, -0.01, 0.03]),
+  ]);
+  assert.ok(race.ok);
+  assert.ok(race.skipped, 'the cut is reported, not silent');
+  assert.equal(race.skipped.steps, 9, 'one flat step is kept before the off');
+  assert.equal(race.lanes[0].positions[0], 0, 'and the field still starts on the line');
+  assert.equal(race.lanes[0].positions.length, 4);
+  assert.equal(race.steps, 4);
+  // The timeline must start where the race now starts.
+  assert.equal(race.lanes[0].dates.length, race.lanes[0].positions.length);
+  assert.equal(race.lanes[0].dates[0], d(9));
+  assert.equal(race.skipped.fromDate, d(0));
+  assert.equal(race.skipped.toDate, d(9));
+});
+
+test('trimming never changes who wins or by how much', () => {
+  const e = E();
+  const positions = [0, 0, 0, 0, 0, 0.02, 0.05, 0.09];
+  const trimmed = e.buildRace([lane('HH', positions), lane('JC', [0, 0, 0, 0, 0, 0.01, 0.02, 0.03])]);
+  const whole = e.buildRace([lane('HH', positions), lane('JC', [0, 0, 0, 0, 0, 0.01, 0.02, 0.03])],
+    { trimLeadingFlat: false });
+  assert.deepEqual(trimmed.ranking.map((l) => l.label), whole.ranking.map((l) => l.label));
+  assert.equal(trimmed.ranking[0].finalPos, whole.ranking[0].finalPos);
+  assert.ok(Math.abs(trimmed.ranking[0].finalPos - 0.09) < 1e-12, 'the real return is untouched');
+});
+
+test('a race that starts moving immediately is left alone', () => {
+  const e = E();
+  const race = e.buildRace([lane('HH', [0, 0.05, 0.10]), lane('JC', [0, -0.02, 0.01])]);
+  assert.equal(race.skipped, null);
+  assert.equal(race.lanes[0].positions.length, 3);
+});
+
+test('a brief quiet opening is left alone — only real dead air is cut', () => {
+  const e = E();
+  // One quiet step: not worth a trim, and the timeline would start oddly.
+  const short = e.buildRace([lane('HH', [0, 0, 0.05]), lane('JC', [0, 0, 0.02])]);
+  assert.equal(short.skipped, null, 'one quiet step is not dead air');
+  assert.equal(short.lanes[0].positions.length, 3);
+  // Two quiet steps reach the threshold.
+  const long = e.buildRace([lane('HH', [0, 0, 0, 0.05]), lane('JC', [0, 0, 0, 0.02])]);
+  assert.ok(long.skipped, `${e.MIN_SKIP_STEPS} steps is enough to cut`);
+  assert.equal(long.skipped.steps, 2);
+});
+
+test('a race where nobody ever moves is not trimmed to nothing', () => {
+  const e = E();
+  const race = e.buildRace([lane('HH', [0, 0, 0, 0, 0]), lane('JC', [0, 0, 0, 0, 0])]);
+  assert.ok(race.ok, 'it still runs');
+  assert.equal(race.skipped, null);
+  assert.equal(race.lanes[0].positions.length, 5, 'nothing is cut when there is no active period to reach');
+});
+
+test('the first runner to move starts the race for everyone', () => {
+  const e = E();
+  // JC does nothing for ages, but HH buys on step 3 — the race starts there.
+  const race = e.buildRace([
+    lane('HH', [0, 0, 0, 0.04, 0.06, 0.08]),
+    lane('JC', [0, 0, 0, 0, 0, 0.05]),
+  ]);
+  assert.equal(race.skipped.steps, 2);
+  assert.equal(race.lanes[1].positions.length, race.lanes[0].positions.length,
+    'lanes stay the same length as each other');
+  assert.equal(race.lanes[1].positions[0], 0, 'the late starter is still on the line');
+});
+
+test('trimming can be turned off', () => {
+  const e = E();
+  const ls = [lane('HH', [0, 0, 0, 0, 0.05]), lane('JC', [0, 0, 0, 0, 0.01])];
+  assert.equal(e.buildRace(ls, { trimLeadingFlat: false }).skipped, null);
+  assert.equal(e.buildRace(ls, { trimLeadingFlat: false }).lanes[0].positions.length, 5);
+  assert.ok(e.buildRace(ls).skipped, 'on by default');
+});
+
+test('commentary steps index the trimmed lanes, not the original', () => {
+  const e = E();
+  const race = e.buildRace([
+    lane('HH', [0, 0, 0, 0, 0, 0.01, 0.20]),   // a late breakaway
+    lane('JC', [0, 0, 0, 0, 0, 0.02, 0.03]),
+  ]);
+  assert.ok(race.skipped);
+  for (const ev of race.events) {
+    assert.ok(ev.step < race.steps,
+      `event at step ${ev.step} is past the end of the trimmed race (${race.steps})`);
+  }
+});

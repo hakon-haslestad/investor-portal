@@ -102,14 +102,27 @@ test('no synthesis is left behind', () => {
   }
 });
 
-test('both entry points race for exactly as long as the music', () => {
-  const t = track();
-  // The deck and the Games tab must both take their duration from TRACK, or
-  // one of them ends up racing over the wrong length of music.
+test('the deck races for exactly as long as the music', () => {
+  // The deck is the showpiece: its race and the soundtrack are the same
+  // length, so the music lands on the finish.
   assert.match(pageSrc(), /duration: TRACK\.ms/);
+  assert.ok(track().ms > 0);
+});
+
+test('the Games race keeps its own shorter clock, and says why', () => {
   const game = fs.readFileSync(path.join(DOCS, 'js', 'games', 'horse-race.js'), 'utf8');
-  assert.match(game, /duration: TRACK\.ms/);
-  assert.ok(t.ms > 0);
+  // A quick game, not a centrepiece — so it does NOT inherit the deck's
+  // 2.5 minutes just because it shares the recording.
+  assert.match(game, /duration: E\(\)\.durationFor\(days\)/);
+  assert.ok(!/duration: TRACK\.ms/.test(game), 'the game must not take the deck length');
+
+  const eng = fs.readFileSync(path.join(DOCS, 'js', 'games', 'horse-race-engine.js'), 'utf8');
+  const short = /windowDays <= 5 \? (\d+) : (\d+)/.exec(eng);
+  assert.ok(short, 'durationFor still decides the game length');
+  assert.equal(Number(short[1]), 60000, 'a five-day race is a minute');
+  assert.ok(Number(short[2]) <= 90000, 'and a wider window is not much more');
+  // The track outlasts the game, which is fine: it is cut off at the line.
+  assert.ok(track().ms > Number(short[1]), 'the recording is longer than the game');
 });
 
 test('mute is remembered between races', () => {

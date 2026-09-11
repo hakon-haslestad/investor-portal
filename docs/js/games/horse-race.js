@@ -127,7 +127,7 @@
 
     // ── Race ─────────────────────────────────────────────────────────────
     function startRace() {
-      const { from, to } = windowRange();
+      const { from, to, days } = windowRange();
       const horses = [];
       for (const [code, ticker] of picks) {
         const r = runners.find((x) => x.ticker === ticker);
@@ -152,22 +152,23 @@
         // Fall through: the setup screen now shows the warning; the user restarts.
         return;
       }
-      runRace(race);
+      runRace(race, days);
     }
 
     // The race itself lives in HorseRaceView, shared with the competition
     // deck, so there is one animation rather than two that drift apart.
     let view = null;
-    function runRace(race) {
+    function runRace(race, days) {
       if (view) view.destroy();
-      const TRACK = window.HorseRaceAudio.TRACK;
+      // A minute here, not the deck's two and a half: this is a quick game,
+      // not the centrepiece of a presentation. The soundtrack is cut for the
+      // longer race, so it simply gets cut off at the line — the bugle and
+      // the gallop are at the start, which is the part that matters.
       const audio = window.HorseRaceAudio.supported()
-        ? window.HorseRaceAudio.create({ url: TRACK.url }) : null;
+        ? window.HorseRaceAudio.create({ url: window.HorseRaceAudio.TRACK.url }) : null;
       view = window.HorseRaceView.create(el, {
-        // Same length as the deck's race, because it is the same soundtrack:
-        // the music is cut to the race, so the race is cut to the music.
         race,
-        duration: TRACK.ms,
+        duration: E().durationFor(days),
         autoStart: true,
         rng, audio,
         onFinish: (r) => renderResult(r),

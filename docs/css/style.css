@@ -386,6 +386,9 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
 }
 .hr-track-wrap svg { width: 100%; height: auto; display: block; }
 .hr-controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+/* Says so when dead air before the first trade was cut, because a timeline
+   that silently starts late is just wrong. */
+.hr-skipped { margin: 8px 0 0; font-size: 0.8rem; color: var(--muted); }
 
 /* Race timeline: where in the price window the race currently is. Ticks mark
    the actual closes, so with a 5-day race you can see the five data points
