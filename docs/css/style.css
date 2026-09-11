@@ -36,7 +36,7 @@ a:hover { text-decoration: underline; }
 .section-title { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin: 28px 0 12px; }
 
 .kpi-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 14px;
 }
 .kpi-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -64,7 +64,7 @@ table tr.row-link:hover { background: var(--panel-2); }
 .text-small { font-size: 0.82rem; }
 
 .leaderboard {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 14px;
 }
 .lb-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -221,7 +221,7 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
   padding: 16px 18px; margin-bottom: 14px; box-shadow: var(--shadow);
 }
 .competition-card .meta { color: var(--muted); font-size: 0.85rem; margin: 4px 0 8px; }
-.competition-card .ranks { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.competition-card .ranks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 8px; }
 .competition-card .ranks .r { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
 .competition-card .actions { margin-top: 10px; display: flex; gap: 8px; }
 
@@ -235,7 +235,7 @@ canvas { max-width: 100%; }
 .chart-wrap svg { width: 100%; height: auto; display: block; }
 .chart-wrap svg .crosshair-overlay { cursor: crosshair; }
 .chart-legend {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
   gap: 10px; margin: 12px 0 24px;
 }
 .chart-legend .key {
@@ -317,25 +317,6 @@ td.links a:hover { color: var(--accent); }
   /* KPI cards: 2-up on phone, smaller text */
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
 
-  /* "By investor" table → stacked cards. Hide the header, turn each row into a
-     card, and label each cell from its data-label. */
-  .investor-table thead { display: none; }
-  .investor-table, .investor-table tbody, .investor-table tr, .investor-table td { display: block; width: 100%; }
-  .investor-table tr {
-    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-    margin-bottom: 10px; padding: 6px 12px;
-  }
-  .investor-table td {
-    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
-    text-align: right; border-bottom: 1px solid var(--border); padding: 8px 0;
-  }
-  .investor-table tr td:last-child { border-bottom: none; }
-  .investor-table td::before {
-    content: attr(data-label); color: var(--muted); font-size: 0.72rem;
-    text-transform: uppercase; letter-spacing: 1px; text-align: left;
-  }
-  .investor-table td:first-child { text-align: left; }
-  .investor-table td:first-child::before { content: ''; }
   .kpi-card { padding: 12px; }
   .kpi-card .label { font-size: 0.7rem; letter-spacing: 1px; }
   .kpi-card .value { font-size: 1.15rem; }
@@ -346,12 +327,6 @@ td.links a:hover { color: var(--accent); }
   .lb-card { padding: 12px 14px; }
   .lb-card h3 { font-size: 0.9rem; }
 
-  /* Tables: horizontal scroll when wider than the viewport. The container
-     itself stays put, the table scrolls inside it. */
-  .container table {
-    display: block; overflow-x: auto; -webkit-overflow-scrolling: touch;
-    max-width: 100%; white-space: nowrap;
-  }
   table th, table td { padding: 8px 10px; font-size: 0.85rem; }
 
   /* Range picker: wrap on its own row, keep date inputs at content width */
@@ -382,6 +357,44 @@ td.links a:hover { color: var(--accent); }
 
   /* Tags / inline meta */
   .tag { font-size: 0.72rem; }
+
+  .subtabs { overflow-x: auto; flex-wrap: nowrap; }
+  .subtabs a { white-space: nowrap; padding: 8px 10px; font-size: 0.84rem; }
+  /* Heroes that carry range pickers: stack, let the picker scroll */
+  .hero { flex-direction: column; align-items: stretch; gap: 8px; }
+  .hero .when { order: 2; }
+  .hero .range-picker, .when .range-picker {
+    flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+  .range-picker .preset { flex: none; }
+
+  /* Activity toolbar: full-width search, chips wrap, count on its own line */
+  .data-toolbar { padding: 10px; gap: 8px; }
+  .data-toolbar input[type="search"] { width: 100%; order: -1; }
+  .data-toolbar .count { width: 100%; text-align: right; font-size: 0.78rem; }
+  .type-pills, .code-chips { width: 100%; }
+  .type-pills button, .code-chips button { padding: 6px 10px; min-height: 32px; }
+
+  /* Every drill-down / detail table scrolls instead of crushing */
+  .month-detail table, .fx-detail table, .table-scroll table { white-space: nowrap; }
+  .fx-detail > td, .month-detail > td { padding: 10px 6px 14px; }
+
+  /* KPI subs with period-comparison text can wrap */
+  .kpi-card .sub { white-space: normal; line-height: 1.35; }
+
+  /* Info popover: keep on-screen and scrollable */
+  .info-popover { max-width: calc(100vw - 24px); }
+  .info-popover-body { max-height: 55vh; }
+
+  /* Look-through multiple input: comfortable touch target */
+  #lt-multiple { min-height: 36px; }
+
+  /* Subtabs + nav already scroll; make the beta badge not add height */
+  .nav-badge { vertical-align: baseline; font-size: 0.55rem; }
+
+  /* Details expander tables */
+  .container.wide { padding-left: 12px; padding-right: 12px; }
 }
 
 /* ─── Tiny phones (≤400px) ───────────────────────────────────────────── */
@@ -389,6 +402,9 @@ td.links a:hover { color: var(--accent); }
   .kpi-grid { grid-template-columns: 1fr; }
   .chart-legend { grid-template-columns: 1fr; }
   .competition-card .ranks { grid-template-columns: 1fr; }
+
+  .kpi-card .value { font-size: 1.05rem; }
+  .subtabs a { padding: 8px 8px; font-size: 0.8rem; }
 }
 
 /* ─── SPA shell (rewrite) ────────────────────────────────────────────── */
@@ -436,12 +452,80 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 .inv-chip .dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; flex: none; }
 
 .price-freshness { color: var(--muted); font-size: 0.82rem; }
-.price-freshness.stale { color: var(--accent-2); }
 
-@media (max-width: 720px) {
-  .subtabs { overflow-x: auto; flex-wrap: nowrap; }
-  .subtabs a { white-space: nowrap; padding: 8px 10px; font-size: 0.84rem; }
+/* Write-access gate — shown on editing surfaces until the read+write Sheets
+   scope is granted (see UI.writeGate). */
+.write-gate {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin: 12px 0;
+  font-size: 0.88rem;
 }
+.write-gate .btn { flex: none; }
+
+/* ─── Responsive tables ──────────────────────────────────────────────────
+   The one mechanism every table uses. Columns declare a priority (UI.table's
+   `p`) and are hidden by CSS rather than dropped from the DOM, so the row
+   expander can recover them without a re-render. This is the only
+   mobile-first (min-width) section in the stylesheet — everything below it
+   is the legacy max-width cascade. */
+[data-p="2"], [data-p="3"] { display: none; }
+
+@media (min-width: 600px) {
+  [data-p="2"] { display: table-cell; }
+  /* Nothing left to reveal on a table whose widest column is p2. */
+  table[data-maxp="2"] .col-expand { display: none; }
+  table[data-maxp="2"] .row-detail { display: none; }
+}
+
+@media (min-width: 960px) {
+  [data-p="3"] { display: table-cell; }
+  table[data-maxp="3"] .col-expand { display: none; }
+  table[data-maxp="3"] .row-detail { display: none; }
+}
+
+/* Chevron column */
+th.col-expand, td.col-expand { width: 34px; padding-left: 6px; padding-right: 0; }
+.row-expand {
+  width: 30px; height: 30px; padding: 0; border-radius: 8px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.row-expand::before { content: '⌄'; font-size: 0.95rem; line-height: 1; transform: translateY(-2px); }
+.row-expand[aria-expanded="true"] { color: var(--text); border-color: var(--link); }
+.row-expand[aria-expanded="true"]::before { transform: translateY(1px) rotate(180deg); }
+.row-expand:hover { color: var(--text); border-color: var(--link); }
+
+/* The revealed columns, as label/value pairs */
+tr.row-detail > td { background: var(--panel-2); padding: 4px 12px 12px; }
+.row-detail-list { margin: 0; display: grid; grid-template-columns: 1fr; gap: 0; }
+.row-detail-list > div {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 14px;
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+}
+.row-detail-list > div:last-child { border-bottom: none; }
+.row-detail-list dt {
+  color: var(--muted); font-size: 0.7rem; text-transform: uppercase;
+  letter-spacing: 1px; flex: none;
+}
+.row-detail-list dd {
+  margin: 0; text-align: right; font-variant-numeric: tabular-nums;
+  white-space: normal; overflow-wrap: anywhere;
+}
+@media (min-width: 420px) { .row-detail-list { grid-template-columns: 1fr 1fr; column-gap: 28px; } }
+
+/* Scroll affordance: when a table still overflows (p2/p3 widths), fade the
+   right edge so it reads as scrollable rather than cut off. */
+.table-scroll { position: relative; }
+.table-scroll table { min-width: 100%; }
+
+/* Keep the identity column anchored while the rest scrolls sideways. */
+.table-scroll.sticky-first th:first-child,
+.table-scroll.sticky-first td:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--panel);
+}
+.price-freshness.stale { color: var(--accent-2); }
 
 /* ─── Metric info popovers ───────────────────────────────────────────── */
 .info-dot {
@@ -451,6 +535,11 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
   color: var(--link); font-size: 0.68rem; font-weight: 700; font-style: italic;
   cursor: pointer; padding: 0; vertical-align: middle; line-height: 1;
   margin-left: 4px;
+}
+.info-dot { position: relative; }
+.info-dot::after {
+  content: ''; position: absolute; top: 50%; left: 50%;
+  width: 44px; height: 44px; transform: translate(-50%, -50%);
 }
 .info-dot:hover { border-color: var(--link); background: var(--panel); }
 .kpi-card .label .info-dot, .section-title .info-dot { opacity: 0.75; }
@@ -500,50 +589,6 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 }
 .competition-card h3 .tag { margin-left: 6px; vertical-align: middle; }
 
-/* ─── Mobile sweep for SPA-era additions (≤720px) ────────────────────── */
-@media (max-width: 720px) {
-  /* Heroes that carry range pickers: stack, let the picker scroll */
-  .hero { flex-direction: column; align-items: stretch; gap: 8px; }
-  .hero .when { order: 2; }
-  .hero .range-picker, .when .range-picker {
-    flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
-    max-width: 100%;
-  }
-  .range-picker .preset { flex: none; }
-
-  /* Activity toolbar: full-width search, chips wrap, count on its own line */
-  .data-toolbar { padding: 10px; gap: 8px; }
-  .data-toolbar input[type="search"] { width: 100%; order: -1; }
-  .data-toolbar .count { width: 100%; text-align: right; font-size: 0.78rem; }
-  .type-pills, .code-chips { width: 100%; }
-  .type-pills button, .code-chips button { padding: 6px 10px; min-height: 32px; }
-
-  /* Every drill-down / detail table scrolls instead of crushing */
-  .month-detail table, .fx-detail table, .table-scroll table { white-space: nowrap; }
-  .fx-detail > td, .month-detail > td { padding: 10px 6px 14px; }
-
-  /* KPI subs with period-comparison text can wrap */
-  .kpi-card .sub { white-space: normal; line-height: 1.35; }
-
-  /* Info popover: keep on-screen and scrollable */
-  .info-popover { max-width: calc(100vw - 24px); }
-  .info-popover-body { max-height: 55vh; }
-
-  /* Look-through multiple input: comfortable touch target */
-  #lt-multiple { min-height: 36px; width: 72px !important; }
-
-  /* Subtabs + nav already scroll; make the beta badge not add height */
-  .nav-badge { vertical-align: baseline; font-size: 0.55rem; }
-
-  /* Details expander tables */
-  .all-tx-details .data-table-wrap { max-width: 100%; }
-}
-
-@media (max-width: 400px) {
-  .kpi-card .value { font-size: 1.05rem; }
-  .subtabs a { padding: 8px 8px; font-size: 0.8rem; }
-}
-
 /* Full-width opt-in for wide tables (investors overview) */
 .container.wide { max-width: none; padding-left: 20px; padding-right: 20px; }
 
@@ -553,6 +598,116 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 .compact-table th { font-size: 0.68rem; letter-spacing: 0.8px; }
-@media (max-width: 720px) {
-  .container.wide { padding-left: 12px; padding-right: 12px; }
+/* ─── View styles (folded in from the per-view <style> injections) ────────
+   These lived as JS template strings in the accounting, portfolio and admin
+   views, with .data-table-wrap / .data-table defined twice in near-identical
+   copies. There is one definition now, and .table-scroll is the wrapper. */
+
+/* Activity toolbar */
+.data-toolbar {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  margin-bottom: 14px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px;
 }
+.data-toolbar input[type="search"] {
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 10px; font-size: 0.9rem; width: 200px;
+}
+.data-toolbar .grow { flex: 1; }
+.data-toolbar .count { color: var(--muted); font-size: 0.85rem; }
+.type-pills, .code-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.type-pills button, .code-chips button {
+  padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--muted); font-size: 0.8rem; font-weight: 500;
+  transition: all 0.12s;
+}
+.type-pills button:hover, .code-chips button:hover { border-color: var(--accent); color: var(--text); }
+.type-pills button.active, .code-chips button.active { background: var(--accent); color: #051a0a; border-color: var(--accent); }
+.type-pill {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 0.74rem; font-weight: 600; background: var(--panel-2);
+  color: var(--muted); border: 1px solid var(--border);
+}
+.type-KJØPT { color: #ff9da4; border-color: rgba(255, 91, 91, 0.35); }
+.type-SALG, .type-SOLGT { color: var(--positive); border-color: rgba(62, 224, 127, 0.35); }
+.type-UTBYTTE { color: var(--accent-2); border-color: rgba(255, 201, 79, 0.35); }
+
+/* Month drill-down */
+.report-table tr.month-row { cursor: pointer; }
+.report-table tr.month-row:hover td { background: rgba(106, 209, 255, 0.05); }
+.report-table tr.month-row td[data-label="Month"]::before { content: '▸ '; color: var(--muted); font-size: 0.72rem; }
+.report-table tr.month-row[aria-expanded="true"] td[data-label="Month"]::before { content: '▾ '; color: var(--accent); }
+.month-detail { background: var(--bg); }
+.month-detail > td { padding: 14px 16px 18px; }
+.month-detail h5 {
+  margin: 12px 0 6px; font-size: 0.72rem; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--muted); font-weight: 600;
+}
+.month-detail h5:first-child { margin-top: 0; }
+.month-detail table { font-size: 0.82rem; background: var(--panel); }
+.month-detail th, .month-detail td { padding: 6px 10px; }
+
+.all-tx-details > summary {
+  cursor: pointer; color: var(--link); font-size: 0.9rem; padding: 8px 0;
+  list-style: none; user-select: none;
+}
+.all-tx-details > summary::-webkit-details-marker { display: none; }
+.all-tx-details > summary::before { content: '▸ '; font-size: 0.78rem; }
+.all-tx-details[open] > summary::before { content: '▾ '; }
+
+/* Dense data grid (accounting + the flat transaction list). No width:max-content:
+   priority columns decide what is shown, so the table fits rather than always
+   forcing a horizontal scroll. */
+.data-table { font-size: 0.85rem; border: 0; border-radius: 0; box-shadow: none; }
+.data-table th, .data-table td { padding: 8px 12px; }
+.data-table th.sortable { cursor: pointer; user-select: none; }
+.data-table th.sortable:hover { color: var(--text); }
+.data-table th .sort-arrow {
+  display: inline-block; width: 10px; margin-left: 4px;
+  color: var(--muted); font-size: 0.72rem;
+}
+.data-table th.sorted .sort-arrow { color: var(--accent); }
+.data-table td.num, .data-table th.num { text-align: right; }
+.data-table td.num { font-variant-numeric: tabular-nums; }
+.data-table tr:hover td { background: rgba(106, 209, 255, 0.04); }
+.data-table td.wrap, .data-table th.wrap { white-space: normal; word-break: break-word; }
+
+/* Admin */
+.sheet-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--shadow);
+}
+.sheet-card h3 { margin: 0 0 8px; font-size: 1.05rem; }
+.sheet-card .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.sheet-card .setup-line { color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
+.admin-table { font-size: 0.9rem; }
+.admin-table input { padding: 6px 8px; font-size: 0.9rem; background: var(--bg); }
+.admin-table input.factor-input { width: 72px; min-height: 34px; }
+.admin-table td { padding: 8px 10px; vertical-align: middle; }
+.admin-table .unmapped { background: rgba(255, 91, 91, 0.07); }
+.badge-unmapped { background: var(--danger); color: white; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
+.badge-mapped { background: rgba(62, 224, 127, 0.15); color: var(--positive); padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
+.investor-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.investor-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 10px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--muted); font-size: 0.82rem; font-weight: 500;
+  cursor: pointer; user-select: none; transition: all 0.12s;
+}
+.investor-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.investor-chip:hover { border-color: var(--accent); color: var(--text); }
+.investor-chip:focus-within { outline: 2px solid var(--link); outline-offset: 2px; }
+.investor-chip.checked { background: var(--accent); color: #051a0a; border-color: var(--accent); }
+.admin-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.admin-toolbar input[type="search"] { max-width: 260px; }
+.admin-toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+.admin-table tr.dirty { background: rgba(255, 201, 79, 0.06); }
+.admin-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.admin-table th.sortable:hover { color: var(--text); }
+.admin-table th .sort-arrow { display: inline-block; width: 10px; margin-left: 4px; color: var(--muted); font-size: 0.75rem; }
+.admin-table th.sorted .sort-arrow { color: var(--accent); }
+.sec-table tr.needs-review td { background: rgba(255, 91, 91, 0.07); }

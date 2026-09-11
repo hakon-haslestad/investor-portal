@@ -51,16 +51,31 @@
     const backM = (months) => { const d = new Date(today); d.setUTCMonth(d.getUTCMonth() - months); return iso(d); };
     let earliest = null;
     for (const t of store.transactions) if (t.tradeDate && (!earliest || t.tradeDate < earliest)) earliest = t.tradeDate;
+    // p: column priority (see UI.table). A phone keeps one short horizon, the
+    // calendar year and lifetime — the three people actually read.
     const HORIZONS = [
-      { key: '1w', label: '1w', from: back(7) },
-      { key: '1m', label: '1m', from: backM(1) },
-      { key: '3m', label: '3m', from: backM(3) },
-      { key: '6m', label: '6m', from: backM(6) },
-      { key: 'ytd', label: 'YTD', from: `${today.getUTCFullYear()}-01-01` },
-      { key: '1y', label: '1y', from: backM(12) },
-      { key: '3y', label: '3y', from: backM(36) },
-      { key: 'all', label: 'All', from: earliest || backM(12) },
+      { key: '1w', label: '1w', from: back(7), p: 3 },
+      { key: '1m', label: '1m', from: backM(1), p: 1 },
+      { key: '3m', label: '3m', from: backM(3), p: 3 },
+      { key: '6m', label: '6m', from: backM(6), p: 3 },
+      { key: 'ytd', label: 'YTD', from: `${today.getUTCFullYear()}-01-01`, p: 1 },
+      { key: '1y', label: '1y', from: backM(12), p: 3 },
+      { key: '3y', label: '3y', from: backM(36), p: 3 },
+      { key: 'all', label: 'All', from: earliest || backM(12), p: 1 },
     ];
+    // Money is condensed on a phone so the p1 columns fit 360px.
+    const money = window.Fmt.fmtNokFit;
+    const COLS = [
+      { label: 'Investor', p: 1 },
+      { label: 'Total value', className: 'text-right', p: 2 },
+      { label: 'Market value', className: 'text-right', p: 1 },
+      { label: 'Realized', className: 'text-right', p: 2 },
+      { label: 'Unrealized', className: 'text-right', p: 2 },
+      { label: 'Dividends', className: 'text-right', p: 3 },
+      { label: 'All-time return', className: 'text-right', p: 2 },
+      ...HORIZONS.map((h) => ({ label: `Δ${h.label}`, className: 'text-right', p: h.p })),
+    ];
+
     const usesMatrix = window.Portfolio.usePriceMatrix(store);
     const mvNow = {}; const mvThen = {};
     for (const code of codes) {
@@ -72,9 +87,9 @@
     }
     const deltaCell = (code, h) => {
       const was = mvThen[code] ? mvThen[code][h.key] : null;
-      if (was == null || !(Math.abs(was) > 0.5)) return `<td class="text-right text-muted" data-label="${h.label}">—</td>`;
+      if (was == null || !(Math.abs(was) > 0.5)) return '<span class="text-muted">—</span>';
       const pct = ((mvNow[code] - was) / Math.abs(was)) * 100;
-      return `<td class="text-right ${pctClass(pct)}" data-label="${h.label}">${fmtPct(pct)}</td>`;
+      return `<span class="${pctClass(pct)}">${fmtPct(pct)}</span>`;
     };
 
     el.innerHTML = `
@@ -83,36 +98,22 @@
         <div class="when">as of today · Δ columns are attributed market-value change ${UI.infoIcon('mv-change')}</div>
       </div>
       ${SUBTABS('overview')}
-      <div style="overflow-x:auto">
-      <table class="investor-table compact-table">
-        <thead><tr>
-          <th>Investor</th>
-          <th class="text-right">Total value</th>
-          <th class="text-right">Market value</th>
-          <th class="text-right">Realized</th>
-          <th class="text-right">Unrealized</th>
-          <th class="text-right">Dividends</th>
-          <th class="text-right">All-time return</th>
-          ${HORIZONS.map((h) => `<th class="text-right">Δ${h.label}</th>`).join('')}
-        </tr></thead>
-        <tbody>
-          ${codes.map((code) => {
-            const s2 = dash.perInvestor[code];
-            return `
-              <tr class="row-link" tabindex="0" role="link" data-code="${escapeHtml(code)}" aria-label="Open ${escapeHtml(names[code] || code)}">
-                <td data-label="Investor">${UI.investorChip(code)} <span class="text-muted text-small">${escapeHtml(names[code] || '')}</span></td>
-                <td class="text-right" data-label="Total value">${fmtNok(s2.totalValue)}</td>
-                <td class="text-right" data-label="Market value"><strong>${fmtNok(s2.marketValue)}</strong></td>
-                <td class="text-right ${pctClass(s2.realized)}" data-label="Realized">${fmtNok(s2.realized)}</td>
-                <td class="text-right ${pctClass(s2.unrealized)}" data-label="Unrealized">${fmtNok(s2.unrealized)}</td>
-                <td class="text-right" data-label="Dividends">${fmtNok(s2.dividends)}</td>
-                <td class="text-right ${pctClass(s2.portfolioReturnPct)}" data-label="All-time return">${fmtPct(s2.portfolioReturnPct)}</td>
-                ${HORIZONS.map((h) => deltaCell(code, h)).join('')}
-              </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      </div>
+      ${window.UI.table(COLS, codes.map((code) => {
+        const s2 = dash.perInvestor[code];
+        return {
+          attrs: `class="row-link" tabindex="0" role="link" data-code="${escapeHtml(code)}" aria-label="Open ${escapeHtml(names[code] || code)}"`,
+          cells: [
+            `${UI.investorChip(code)} <span class="text-muted text-small">${escapeHtml(names[code] || '')}</span>`,
+            money(s2.totalValue),
+            `<strong>${money(s2.marketValue)}</strong>`,
+            `<span class="${pctClass(s2.realized)}">${money(s2.realized)}</span>`,
+            `<span class="${pctClass(s2.unrealized)}">${money(s2.unrealized)}</span>`,
+            money(s2.dividends),
+            `<span class="${pctClass(s2.portfolioReturnPct)}">${fmtPct(s2.portfolioReturnPct)}</span>`,
+            ...HORIZONS.map((h) => deltaCell(code, h)),
+          ],
+        };
+      }), { className: 'investor-table compact-table', wrapClass: 'sticky-first', caption: 'Investors, current standing' })}
     `;
     el.querySelectorAll('tr.row-link').forEach((tr) => {
       const go = () => ctx.navigate(`#/investors/${tr.dataset.code}`);
@@ -142,6 +143,19 @@
     let preset = 'ytd';
     try { preset = JSON.parse(localStorage.getItem('portal.investor.range') || '{}').preset || 'ytd'; } catch (_e) {}
     const win = window.Portfolio.computeWindow(store, preset);
+    // Money is condensed on a phone so the p1 columns fit 360px.
+    const money = window.Fmt.fmtNokFit;
+    const COLS = [
+      { label: 'Investor', p: 1 },
+      { label: 'Total value', className: 'text-right', p: 2 },
+      { label: 'Market value', className: 'text-right', p: 1 },
+      { label: 'Realized', className: 'text-right', p: 2 },
+      { label: 'Unrealized', className: 'text-right', p: 2 },
+      { label: 'Dividends', className: 'text-right', p: 3 },
+      { label: 'All-time return', className: 'text-right', p: 2 },
+      ...HORIZONS.map((h) => ({ label: `Δ${h.label}`, className: 'text-right', p: h.p })),
+    ];
+
     const usesMatrix = window.Portfolio.usePriceMatrix(store);
     const then = usesMatrix ? window.Portfolio.investorValueAt(store, code, win.from) : null;
     const wm = usesMatrix ? window.Portfolio.windowMetrics(store, win.from, win.to).perInvestor[code] : null;
@@ -176,15 +190,15 @@
       ${s.holdings.length === 0
         ? '<p class="text-muted">No active positions. All cashed out.</p>'
         : UI.table([
-            { label: 'Security' },
-            { label: 'Qty', className: 'text-right' },
-            { label: 'Avg cost', className: 'text-right' },
-            { label: 'Current px', className: 'text-right' },
-            { label: 'Market value', className: 'text-right' },
-            { label: 'Unrealized', className: 'text-right' },
-            { label: 'U/L %', className: 'text-right' },
-            { label: 'Realized so far', className: 'text-right' },
-            { label: 'Research', className: 'links' },
+            { label: 'Security', p: 1 },
+            { label: 'Qty', className: 'text-right', p: 2 },
+            { label: 'Avg cost', className: 'text-right', p: 2 },
+            { label: 'Current px', className: 'text-right', p: 3 },
+            { label: 'Market value', className: 'text-right', p: 1 },
+            { label: 'Unrealized', className: 'text-right', p: 2 },
+            { label: 'U/L %', className: 'text-right', p: 1 },
+            { label: 'Realized so far', className: 'text-right', p: 3 },
+            { label: 'Research', className: 'links', p: 3 },
           ], s.holdings.map((h) => [
             `${UI.esc(h.security)} ${h.weight < 1 ? `<span class="tag">${(h.weight * 100).toFixed(0)}% share</span>` : ''}`,
             fmtQty(h.qty),
@@ -202,15 +216,15 @@
       ${detail.previous.length === 0 ? '' : `
         ${UI.section(`Previous holdings (${detail.previous.length})`, { info: 'previous-holdings', extra: '<span class="text-muted text-small">closed positions</span>' })}
         ${UI.table([
-          { label: 'Security' },
-          { label: 'Invested', className: 'text-right' },
-          { label: 'Proceeds', className: 'text-right' },
-          { label: 'Dividends', className: 'text-right' },
-          { label: 'Realized', className: 'text-right' },
-          { label: 'Net result', className: 'text-right' },
-          { label: 'Return %', className: 'text-right' },
-          { label: 'First → last' },
-          { label: 'Research', className: 'links' },
+          { label: 'Security', p: 1 },
+          { label: 'Invested', className: 'text-right', p: 2 },
+          { label: 'Proceeds', className: 'text-right', p: 3 },
+          { label: 'Dividends', className: 'text-right', p: 3 },
+          { label: 'Realized', className: 'text-right', p: 2 },
+          { label: 'Net result', className: 'text-right', p: 1 },
+          { label: 'Return %', className: 'text-right', p: 1 },
+          { label: 'First → last', p: 3 },
+          { label: 'Research', className: 'links', p: 3 },
         ], detail.previous.map((p) => [
           `${UI.esc(p.security)} ${p.weight < 1 ? `<span class="tag">${(p.weight * 100).toFixed(0)}% share</span>` : ''}`,
           `<span class="text-muted">${fmtNok(p.invested)}</span>`,
@@ -225,12 +239,12 @@
 
       ${UI.section(`Recent transactions (last ${detail.recent.length})`)}
       ${UI.table([
-        { label: 'Date' },
-        { label: 'Type' },
-        { label: 'Security' },
-        { label: 'Qty (share)', className: 'text-right' },
-        { label: 'Price', className: 'text-right' },
-        { label: 'Amount (share)', className: 'text-right' },
+        { label: 'Date', p: 1 },
+        { label: 'Type', p: 2 },
+        { label: 'Security', p: 1 },
+        { label: 'Qty (share)', className: 'text-right', p: 2 },
+        { label: 'Price', className: 'text-right', p: 3 },
+        { label: 'Amount (share)', className: 'text-right', p: 1 },
       ], detail.recent.map((t) => [
         `<span class="text-small">${t.tradeDate || ''}</span>`,
         `<span class="tag">${UI.esc(t.type)}</span>`,

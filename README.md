@@ -27,8 +27,11 @@ Hosted on GitHub Pages from `docs/`.
 
 ## Stack
 
-Vanilla HTML/CSS/JS. No bundler, no build step, no dependencies. Auth is
-Google Identity Services (GIS) implicit token flow; data access is the
+Vanilla HTML/CSS/JS. No bundler, no build step, no dependencies. Auth is a
+single Google OAuth 2.0 implicit *redirect* flow — the page navigates to
+Google and comes back with the token in the URL fragment, with no popup and
+no third-party script. The same redirect upgrades to the read+write scope
+when an admin opens an editing screen. Data access is the
 Google Sheets v4 REST API called from the browser. The only "backend" is
 a time-driven Google Apps Script inside the sheet (see
 [apps-script/README.md](./apps-script/README.md)) — everything stays on
@@ -45,6 +48,10 @@ Google's free tier.
    - **Authorized JavaScript origins**:
      `https://<your-gh-user>.github.io` (add `http://localhost:8000`
      too if you want local development).
+   - **Authorized redirect URIs** — required, this is what the sign-in
+     flow actually uses: `https://<your-gh-user>.github.io/investor-portal/`
+     (and `http://localhost:8000/` for local development). The trailing
+     slash matters: the portal always sends the canonical directory URL.
 5. Copy the OAuth client ID into `docs/js/config.js` (`OAUTH_CLIENT_ID`)
    and the Sheet ID into the same file (`SHEET_ID`).
 6. Share the Google Sheet with each investor's Google account (named
@@ -67,6 +74,27 @@ file, commit, push, GitHub Pages rebuilds in under a minute.
 **Cache busting:** local `./js/` and `./css/` references in the HTML
 pages carry a `?v=YYYYMMDD` query string. When you change a JS/CSS file,
 bump this version (find-and-replace across `docs/*.html`).
+
+**Tables:** every table goes through `UI.table(cols, rows, opts)` in
+`docs/js/components.js` — don't hand-write a `<table>`. Each column
+declares a priority so the table fits a phone:
+
+| `p` | Visible from | What belongs there                       |
+| --- | ------------ | ---------------------------------------- |
+| `1` | always       | the identity column + the number the table is read for |
+| `2` | 600px        | the normal desktop reading set           |
+| `3` | 960px        | completeness / audit columns             |
+
+Hidden columns stay in the DOM and are revealed by a chevron button, so
+nothing is lost on a small screen — pick `p1` for what someone would
+want at a glance, not for what is cheapest to render. `opts.foot` adds a
+totals row that hides in step with its columns; a row can pass
+`expand: false` (grouping rows) and a whole table `expandable: false`
+(editing grids, where a read-only panel would mislead).
+
+**Charts** size themselves via `Charts.fitBox`: font sizes are in viewBox
+units, so on a narrow screen the box shrinks rather than the text. Pass
+`width`/`height` only when a layout genuinely needs a different aspect.
 
 ## Sheet contract
 

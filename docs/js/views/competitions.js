@@ -147,6 +147,7 @@
           : scored.map(renderCompetition).join('')}
 
         <div class="section-title" id="new">Create a competition</div>
+        <div id="write-gate"></div>
         <form class="competition-card" id="new-form">
           <p class="text-muted text-small">
             Only <strong>new buys made during the date range</strong> count toward the competition.
@@ -188,6 +189,15 @@
           </div>
         </form>
       `;
+
+      // Creating or deleting a competition writes to the sheet. Ask for the
+      // scope up front — the grant is a redirect, so it cannot happen mid-form.
+      const canWrite = window.UI.writeGate(el.querySelector('#write-gate'),
+        'Creating or deleting a competition');
+      if (!canWrite) {
+        el.querySelectorAll('#new-form button[type="submit"], [data-delete]')
+          .forEach((b) => { b.disabled = true; b.title = 'Enable editing first'; });
+      }
 
       el.querySelector('#jump-new').addEventListener('click', (e) => {
         e.preventDefault();
@@ -237,7 +247,6 @@
           return;
         }
         try {
-          await window.Auth.requestWriteAccess();
           const id = await window.CompetitionsData.createCompetition({
             name: fd.get('name'),
             start_date: fd.get('start_date'),
@@ -256,7 +265,6 @@
           const id = btn.dataset.delete;
           if (!confirm(`Delete competition ${id}? This permanently removes it and its participants/picks from the sheet.`)) return;
           try {
-            await window.Auth.requestWriteAccess();
             await window.CompetitionsData.deleteCompetition(id);
             await reload();
           } catch (err) {

@@ -78,6 +78,9 @@
 
   function start(base) {
     ctxBase = base;
+    // Delegated once on #view — it survives every innerHTML re-render, so
+    // views never have to wire up their own table expanders.
+    window.UI.bindRowExpanders(document.getElementById('view'));
     window.addEventListener('hashchange', dispatch);
     dispatch();
   }

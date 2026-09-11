@@ -27,6 +27,9 @@
   const params = new URLSearchParams(location.search);
   const id = params.get('competition');
   const root = document.getElementById('root');
+  // The deck renders the same UI.table primitive as the SPA, so it needs the
+  // same delegated expander for the columns a narrow screen hides.
+  window.UI.bindRowExpanders(root);
   if (!id) {
     root.innerHTML = '<p>No competition selected. <a href="./index.html#/competitions">Pick one</a>.</p>';
     return;
@@ -226,21 +229,21 @@
       <h2>${escapeHtml(s.title)}</h2>
       <p class="lead">${escapeHtml(s.teaser)}</p>
       <div class="pivot-trades">
-        <table>
-          <thead><tr><th>Date</th><th>Who</th><th>Type</th><th>Security</th><th class="text-right">Qty</th><th class="text-right">Amount</th></tr></thead>
-          <tbody>
-            ${s.trades.map((t) => `
-              <tr>
-                <td class="text-small">${t.date}</td>
-                <td><strong>${t.code}</strong></td>
-                <td class="text-small"><span class="tag">${t.type}</span></td>
-                <td>${escapeHtml(t.security)}</td>
-                <td class="text-right">${fmtQty(t.qty)}</td>
-                <td class="text-right ${pctClass(t.amount)}">${fmtNok(t.amount)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+        ${window.UI.table([
+          { label: 'Date', className: 'text-small', p: 1 },
+          { label: 'Who', p: 1 },
+          { label: 'Type', className: 'text-small', p: 2 },
+          { label: 'Security', p: 1 },
+          { label: 'Qty', className: 'text-right', p: 3 },
+          { label: 'Amount', className: 'text-right', p: 1 },
+        ], s.trades.map((t) => [
+          t.date,
+          `<strong>${t.code}</strong>`,
+          `<span class="tag">${t.type}</span>`,
+          escapeHtml(t.security),
+          fmtQty(t.qty),
+          `<span class="${pctClass(t.amount)}">${fmtNok(t.amount)}</span>`,
+        ]), { caption: 'Pivot trades' })}
       </div>
     `;
   }
@@ -260,33 +263,31 @@
           <div class="investor-card">
             <h3>${r.code} <span class="text-muted text-small">${escapeHtml(r.name)}${r.teamLabel ? ` · ${escapeHtml(r.teamLabel)}` : ''}</span></h3>
             ${r.breakdown.length === 0 ? '<p class="text-muted">No positions in this window.</p>' : `
-            <table>
-              <thead><tr><th>Security</th><th class="text-right">Cost</th><th class="text-right">MV @ end</th><th class="text-right">Unrealized</th><th class="text-right">Realized</th><th class="text-right">Divs</th><th class="text-right">P/E</th><th class="text-right">EPS</th></tr></thead>
-              <tbody>
-                ${r.breakdown.map((b) => `
-                  <tr>
-                    <td>${escapeHtml(b.security)}</td>
-                    <td class="text-right">${fmtNok(b.costSum)}</td>
-                    <td class="text-right">${fmtNok(b.marketValue)}</td>
-                    <td class="text-right ${pctClass(b.unrealized)}">${fmtNok(b.unrealized)}</td>
-                    <td class="text-right ${pctClass(b.realized)}">${fmtNok(b.realized)}</td>
-                    <td class="text-right">${fmtNok(b.divs)}</td>
-                    <td class="text-right text-muted">${fmtNum(b.pe)}</td>
-                    <td class="text-right text-muted">${fmtNum(b.eps)}</td>
-                  </tr>
-                `).join('')}
-                <tr class="summary-row">
-                  <td>Total</td>
-                  <td class="text-right">${fmtNok(r.total.costSum)}</td>
-                  <td class="text-right">${fmtNok(r.total.mv)}</td>
-                  <td class="text-right ${pctClass(r.total.unrealized)}">${fmtNok(r.total.unrealized)}</td>
-                  <td class="text-right ${pctClass(r.total.realized)}">${fmtNok(r.total.realized)}</td>
-                  <td class="text-right">${fmtNok(r.total.divs)}</td>
-                  <td class="text-right"></td>
-                  <td class="text-right"></td>
-                </tr>
-              </tbody>
-            </table>
+            ${window.UI.table([
+              { label: 'Security', p: 1 },
+              { label: 'Cost', className: 'text-right', p: 2 },
+              { label: 'MV @ end', className: 'text-right', p: 1 },
+              { label: 'Unrealized', className: 'text-right', p: 1 },
+              { label: 'Realized', className: 'text-right', p: 2 },
+              { label: 'Divs', className: 'text-right', p: 3 },
+              { label: 'P/E', className: 'text-right text-muted', p: 3 },
+              { label: 'EPS', className: 'text-right text-muted', p: 3 },
+            ], r.breakdown.map((b) => [
+              escapeHtml(b.security),
+              fmtNok(b.costSum),
+              fmtNok(b.marketValue),
+              `<span class="${pctClass(b.unrealized)}">${fmtNok(b.unrealized)}</span>`,
+              `<span class="${pctClass(b.realized)}">${fmtNok(b.realized)}</span>`,
+              fmtNok(b.divs),
+              fmtNum(b.pe),
+              fmtNum(b.eps),
+            ]), {
+              caption: `Positions for ${r.code}`,
+              foot: ['Total', fmtNok(r.total.costSum), fmtNok(r.total.mv),
+                `<span class="${pctClass(r.total.unrealized)}">${fmtNok(r.total.unrealized)}</span>`,
+                `<span class="${pctClass(r.total.realized)}">${fmtNok(r.total.realized)}</span>`,
+                fmtNok(r.total.divs), '', ''],
+            })}
             `}
           </div>
         `).join('')}

@@ -6,6 +6,26 @@
     const v = Math.round(Number(n));
     return v.toLocaleString('nb-NO') + ' kr';
   }
+  // Condensed money for narrow screens: 412 300 kr → 412k. Used by the
+  // always-visible (p1) columns of wide tables, which have to fit a phone.
+  function fmtNokShort(n) {
+    if (n == null || !Number.isFinite(Number(n))) return '—';
+    const v = Number(n);
+    const a = Math.abs(v);
+    if (a < 10_000) return Math.round(v).toLocaleString('nb-NO');
+    if (a < 1_000_000) return Math.round(v / 1000).toLocaleString('nb-NO') + 'k';
+    return (v / 1_000_000).toFixed(a < 10_000_000 ? 1 : 0).replace('.', ',') + 'M';
+  }
+  // True while the viewport is too narrow for full-length money strings.
+  function isNarrow() {
+    return typeof window.matchMedia === 'function'
+      && window.matchMedia('(max-width: 599px)').matches;
+  }
+  // fmtNok that condenses itself on a phone.
+  function fmtNokFit(n) {
+    return isNarrow() ? fmtNokShort(n) : fmtNok(n);
+  }
+
   function fmtPct(n, sign = true) {
     if (n == null || !Number.isFinite(Number(n))) return '—';
     const v = Number(n);
@@ -31,5 +51,5 @@
   }
   const PODIUM = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
 
-  window.Fmt = { fmtNok, fmtPct, fmtQty, pctClass, escapeHtml, PODIUM };
+  window.Fmt = { fmtNok, fmtNokShort, fmtNokFit, isNarrow, fmtPct, fmtQty, pctClass, escapeHtml, PODIUM };
 })();

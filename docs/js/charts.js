@@ -19,6 +19,31 @@
     return el;
   }
 
+  // ── Fitting a chart to the viewport ──────────────────────────────────────
+  // Every font-size in these charts is expressed in viewBox units, and CSS
+  // scales the whole SVG to its container (.chart-wrap svg { width: 100% }).
+  // So on a 360px screen a 1180-unit-wide box renders its 22-unit axis labels
+  // at ~6.7px — unreadable. The fix is not bigger fonts but a smaller box:
+  // shrink the viewBox on narrow viewports and the scale factor moves back
+  // toward 1, restoring the text to roughly its intended size.
+  //
+  // baseFont is the smallest font-size the chart uses, in viewBox units; the
+  // box is shrunk until that would render at MIN_PX, and never past HARD_FLOOR
+  // of the original width (below that the layout stops making sense).
+  const MIN_PX = 11;
+  const HARD_FLOOR = 0.33;
+  function fitBox(width, height, baseFont) {
+    const vw = (typeof window !== 'undefined' && window.innerWidth) || width;
+    // Container padding: .container is 12px a side on mobile, plus .chart-wrap.
+    const avail = Math.max(260, vw - 52);
+    if (avail >= width) return { width, height };
+    const wanted = (avail * baseFont) / MIN_PX;
+    const w = Math.round(Math.max(width * HARD_FLOOR, Math.min(width, wanted)));
+    // Height is left alone: a proportionally taller chart reads better on a
+    // phone than a letterboxed one.
+    return { width: w, height };
+  }
+
   function dateToTs(d) { return Date.parse(d); }
   function tsToDate(t) { return new Date(t); }
 
@@ -80,7 +105,8 @@
       let cursor = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1);
       // Density: skip months to keep <= ~12 ticks
       const months = Math.round(span / (yearMs / 12)) + 1;
-      const step = months > 12 ? Math.ceil(months / 8) : 1;
+      const maxTicks = width < 700 ? 5 : 8;
+      const step = months > maxTicks ? Math.ceil(months / maxTicks) : 1;
       let i = 0;
       while (cursor <= xMax) {
         if (cursor >= xMin && (i % step === 0)) {
@@ -133,7 +159,8 @@
 
   // series: [{ name, color, points: [{date, y}] }]
   // Renders one stacked area per series; points must share x dates.
-  function stackedArea({ series, width = 900, height = 240, title }) {
+  function stackedArea({ series, width: _w = 900, height: _h = 240, title }) {
+    const { width, height } = fitBox(_w, _h, 11);
     const svg = svgEl('svg', {
       viewBox: `0 0 ${width} ${height}`, xmlns: NS,
       role: 'img', 'aria-label': title || 'stacked area chart',
@@ -211,7 +238,8 @@
   // series: [{ name, color, points: [{date, y}] }]
   // When interactive=true, hovering the chart shows a crosshair, per-series
   // dots, and a floating tooltip listing every investor's value at that date.
-  function multiLine({ series, width = 900, height = 240, title, interactive = false }) {
+  function multiLine({ series, width: _w = 900, height: _h = 240, title, interactive = false }) {
+    const { width, height } = fitBox(_w, _h, 10);
     const svg = svgEl('svg', {
       viewBox: `0 0 ${width} ${height}`, xmlns: NS,
       role: 'img', 'aria-label': title || 'line chart',
@@ -343,7 +371,7 @@
     // Tooltip box: date header + one row per investor (+ trade lines)
     const TIP_PAD = 8;
     const TIP_ROW_H = 14;
-    const TIP_W = 280;
+    const TIP_W = Math.min(280, Math.round(width * 0.62));
     const TIP_H = TIP_PAD * 2 + TIP_ROW_H * (series.length + 1) + 4;
 
     const tipBg = svgEl('rect', {
@@ -535,11 +563,12 @@
   function priceChart(opts) {
     const {
       points = [], markers = [],
-      width = 1180, height = 440,
+      width: _w = 1180, height: _h = 440,
       line = '#1FE0CE', fillTop = 'rgba(31,224,206,0.16)', fillBottom = 'rgba(31,224,206,0)',
       buy = '#2D5BFF', sell = '#FF3B3B',
       yUnit = '', invested = null,
     } = opts || {};
+    const { width, height } = fitBox(_w, _h, 17);
     const PADP = { top: 30, right: 70, bottom: 48, left: 12 };
     const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     // When the series spans more than one calendar year, tack a 2-digit year
@@ -617,8 +646,9 @@
       svg.appendChild(u);
     }
 
-    // X-axis labels (time): up to 5 evenly spaced dates along the bottom.
-    const nLabels = Math.min(5, points.length);
+    // X-axis labels (time): up to 5 evenly spaced dates along the bottom —
+    // fewer once the box has been narrowed, or they collide.
+    const nLabels = Math.min(width < _w ? 3 : 5, points.length);
     const baseY = PADP.top + plotH;
     for (let k = 0; k < nLabels; k++) {
       const ts = xMin + ((xMax - xMin) * k) / (nLabels - 1);
@@ -663,7 +693,7 @@
     const dot = svgEl('circle', { r: '6', fill: line, stroke: '#fff', 'stroke-width': '1.5' });
     hover.appendChild(dot);
     const hasInvested = invested != null && Number.isFinite(invested);
-    const TIPW = 300, TIPH = hasInvested ? 128 : 96;
+    const TIPW = Math.min(300, Math.round(width * 0.62)), TIPH = hasInvested ? 128 : 96;
     // Trades snapped to the nearest charted date so hovering a marker day
     // lists them (label carries security/amount when the caller provides it).
     const tradesByIdx = new Map();
@@ -754,9 +784,10 @@
   // trades: [{ date, amount (abs NOK), type: 'buy'|'sell', label }]
   function tradeScatter(opts) {
     const {
-      trades = [], from, to, width = 1100, height = 420,
+      trades = [], from, to, width: _w = 1100, height: _h = 420,
       buy = '#2D5BFF', sell = '#FF3B3B',
     } = opts || {};
+    const { width, height } = fitBox(_w, _h, 13);
     const PADT = { top: 24, right: 70, bottom: 46, left: 12 };
     const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const fmtDate = (iso) => { const d = new Date(iso); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`; };
@@ -792,8 +823,8 @@
       svg.appendChild(lbl);
     }
 
-    // X date ticks (up to 6).
-    const nx = 6;
+    // X date ticks (up to 6; fewer on a narrowed box).
+    const nx = width < _w ? 4 : 6;
     for (let k = 0; k < nx; k++) {
       const ts = xMin + ((xMax - xMin) * k) / (nx - 1);
       const cx = xAt(ts);
@@ -829,7 +860,7 @@
     hover.appendChild(cross);
     const ring = svgEl('circle', { fill: 'none', stroke: '#fff', 'stroke-width': 2.5 });
     hover.appendChild(ring);
-    const TIP_W = 300, TIP_H = 78, TIP_PAD = 10;
+    const TIP_W = Math.min(300, Math.round(width * 0.62)), TIP_H = 78, TIP_PAD = 10;
     const tipBg = svgEl('rect', {
       width: TIP_W, height: TIP_H, rx: 6, ry: 6,
       fill: '#181a22', stroke: '#262a36', 'stroke-width': 1, opacity: 0.97,
@@ -905,5 +936,6 @@
     return svg;
   }
 
-  window.Charts = { stackedArea, multiLine, legend, priceChart, tradeScatter };
+  window.Charts = {
+    fitBox, stackedArea, multiLine, legend, priceChart, tradeScatter };
 })();
