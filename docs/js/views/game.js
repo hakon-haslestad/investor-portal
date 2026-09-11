@@ -145,28 +145,48 @@
       if (!canHost(g)) return '';
       const room = hostedRoomFor(g);
       if (!room) {
+        // "Host" and "Join" must be visibly different things. With only one
+        // button, every phone that found this screen opened its own room
+        // instead of joining the one on the wall.
         return `<div id="host-banner" class="host-bar">
-          <button type="button" class="btn small" id="host-start">📱 Play on phones</button>
-          <span class="text-muted text-small">Everyone answers on their own phone; this screen shows the questions.</span>
+          <button type="button" class="btn small" id="host-start">📺 Host on this screen</button>
+          <a class="btn ghost small" href="#/play">📱 Join a room</a>
+          <span class="text-muted text-small">Host on the big screen; everyone else joins from their phone.</span>
         </div>`;
       }
       const joinUrl = `${location.origin}${location.pathname}#/play?code=${room.code}`;
       const st = room.state || { joined: [], answers: {} };
+      const waiting = players.filter((p) => !(st.joined || []).includes(p.code));
       return `<div id="host-banner" class="host-bar hosting">
-        <div class="host-code"><span class="host-code-label">Room</span><strong>${window.UI.esc(room.code)}</strong></div>
-        <div class="host-join">${window.UI.esc(joinUrl)}</div>
+        <div class="host-code"><span class="host-code-label">Room code</span><strong>${window.UI.esc(room.code)}</strong></div>
+        <div class="host-how">
+          <div class="host-how-step">On each phone: open this portal → <strong>Games</strong> → <strong>Join a room</strong> → type <strong>${window.UI.esc(room.code)}</strong></div>
+          <div class="host-how-url">${window.UI.esc(joinUrl)}
+            <button type="button" class="btn ghost small" id="host-copy">Copy link</button></div>
+        </div>
         <div class="host-seats">${players.map((p) => {
           const joined = (st.joined || []).includes(p.code);
           const answered = Object.prototype.hasOwnProperty.call(st.answers || {}, p.code);
-          return `<span class="host-seat ${answered ? 'answered' : joined ? 'joined' : ''}">${window.UI.esc(p.code)}</span>`;
+          return `<span class="host-seat ${answered ? 'answered' : joined ? 'joined' : ''}" title="${answered ? 'answered' : joined ? 'joined' : 'not joined yet'}">${window.UI.esc(p.code)}</span>`;
         }).join('')}</div>
-        <button type="button" class="btn ghost small" id="host-stop">Stop</button>
+        <div class="host-waiting">${waiting.length
+          ? `waiting for ${waiting.map((p) => window.UI.esc(p.name)).join(', ')}`
+          : 'everyone is in'}</div>
+        <button type="button" class="btn ghost small" id="host-stop">Stop hosting</button>
       </div>`;
     }
 
     function bindHostBanner(g) {
       const start = el.querySelector('#host-start');
       if (start) start.addEventListener('click', () => startHosting(g));
+      const copy = el.querySelector('#host-copy');
+      if (copy) copy.addEventListener('click', async () => {
+        const room = hostedRoomFor(g);
+        if (!room) return;
+        const link = `${location.origin}${location.pathname}#/play?code=${room.code}`;
+        try { await navigator.clipboard.writeText(link); copy.textContent = 'Copied ✓'; }
+        catch (_e) { copy.textContent = 'Select the link above'; }
+      });
       const stop = el.querySelector('#host-stop');
       if (stop) stop.addEventListener('click', () => {
         window.GameRoom.closeCurrent();
@@ -190,6 +210,9 @@
           <div class="when">${trades.length} stock${trades.length === 1 ? '' : 's'} in play${droppedNote()} · ${players.length} player${players.length === 1 ? '' : 's'}</div>
         </div>
         ${S.renderFilterBar(filters, competitions, roster)}
+        ${window.GameRoom && window.GameRoom.configured()
+          ? '<div class="join-row"><a class="btn ghost small" href="#/play">📱 Join a room someone else is hosting</a></div>'
+          : ''}
         ${S.renderGrid(window.Games.registry, trades, filters, players.length)}`;
       S.bindFilterBar(el, filters, navigate, null, () => mountGrid(), { roster });
       S.bindGrid(el, filters, navigate);

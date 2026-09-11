@@ -18,8 +18,8 @@
     function renderJoin(code, error) {
       el.innerHTML = `
         <div class="play-shell">
-          <h2>Play along</h2>
-          <p class="text-muted">Enter the room code shown on the big screen.</p>
+          <h2>Join a room</h2>
+          <p class="text-muted">Type the four letters showing on the big screen. Somebody has to be hosting there first — this does not start a game.</p>
           ${error ? `<div class="flash error">${esc(error)}</div>` : ''}
           <input id="play-code" class="play-code-input" value="${esc(code || '')}"
                  maxlength="4" autocapitalize="characters" autocomplete="off"
@@ -81,7 +81,10 @@
       try {
         room = await window.GameRoom.joinRoom(code);
       } catch (e) {
-        renderJoin(code, e.message || String(e));
+        const msg = /no such room/i.test(e.message || '')
+          ? `No room "${code}". Check the code on the big screen — rooms also close after a couple of hours.`
+          : (e.message || String(e));
+        renderJoin(code, msg);
         return;
       }
       navigate(`#/play?code=${code}`);

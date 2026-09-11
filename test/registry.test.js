@@ -188,3 +188,21 @@ test('the rooms endpoint is either unset or a real deployed web app', () => {
   // editor, so a phone would fail against it with no useful error.
   assert.ok(!url.endsWith('/dev'), 'a /dev URL works only for the script owner');
 });
+
+test('hosting and joining are visibly different actions', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'views', 'game.js'), 'utf8');
+  // The original had one button, so every phone that reached this screen
+  // opened its own room instead of joining the one on the wall.
+  assert.match(src, /Host on this screen/, 'hosting says it hosts');
+  assert.match(src, /href="#\/play"/, 'and there is a way to join');
+  assert.ok(!/Play on phones/.test(src), 'the ambiguous label is gone');
+  // Joining is reachable from the grid too, not only from inside a game.
+  assert.match(src, /Join a room someone else is hosting/);
+});
+
+test('a live room tells you how to join it, not just its code', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'views', 'game.js'), 'utf8');
+  assert.match(src, /Join a room<\/strong> → type/, 'the steps are on screen');
+  assert.match(src, /host-copy/, 'and the link can be copied');
+  assert.match(src, /waiting for/, 'the screen names who has not joined yet');
+});

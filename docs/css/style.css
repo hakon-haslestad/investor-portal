@@ -1035,7 +1035,17 @@ tr.row-detail > td { background: var(--panel-2); padding: 4px 12px 12px; }
 .host-code { display: flex; align-items: baseline; gap: 8px; }
 .host-code-label { color: var(--muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1.2px; }
 .host-code strong { font-size: 1.9rem; letter-spacing: 4px; font-variant-numeric: tabular-nums; }
-.host-join { color: var(--muted); font-size: 0.76rem; word-break: break-all; flex: 1; min-width: 160px; }
+/* Joining has to be spelled out: with only a Host button, every phone that
+   found this screen opened its own room instead of joining the one on the
+   wall. */
+.host-how { flex: 1; min-width: 200px; }
+.host-how-step { font-size: 0.88rem; }
+.host-how-url {
+  color: var(--muted); font-size: 0.72rem; word-break: break-all;
+  margin-top: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.host-waiting { color: var(--muted); font-size: 0.78rem; width: 100%; }
+.join-row { margin: 10px 0 2px; }
 .host-seats { display: flex; gap: 6px; flex-wrap: wrap; }
 /* A seat lights when the phone joins and fills when the answer lands. */
 .host-seat {
