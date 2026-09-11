@@ -33,9 +33,13 @@
 
       const st = positions.get(pool.canon(tx.security)) || positions.get(tx.security);
       let entryPrice = null;
+      let entryDate = null;
       if (st) {
         const before = window.Positions.stateAt(st, addDays(tx.tradeDate, -1));
         if (before && before.qty > 0) entryPrice = before.costSum / before.qty;
+        // First event on the position — the replay already has it in order,
+        // so there is no need to walk the ledger again for a date.
+        if (st.dates && st.dates.length) entryDate = st.dates[0];
       }
 
       const owners = window.Ledger.splitForSecurity(store.attributionMap, tx.security)
@@ -44,7 +48,7 @@
       out.push({
         id: `${tx.tradeDate}|${tx.security}|${tx.nordnetId || tx.sourceRow || qty}`,
         security: tx.security,
-        exitDate: tx.tradeDate,
+        exitDate: tx.tradeDate, entryDate,
         exitPrice, qty, entryPrice,
         realizedPct: entryPrice ? (exitPrice / entryPrice - 1) * 100 : null,
         owners,
@@ -173,6 +177,37 @@
     }
 
     // ── Replay ───────────────────────────────────────────────────────────
+    // Facts about the trade, read left to right as one line rather than as a
+    // block of cards — they are context for the call, not the point of it.
+    function factStrip(rows) {
+      return `<div class="bt-facts">${rows.map(([label, value, cls, sub]) => `
+        <div class="bt-fact">
+          <dt>${escapeHtml(label)}</dt>
+          <dd class="${cls || ''}">${value}</dd>
+          ${sub ? `<small>${escapeHtml(sub)}</small>` : ''}
+        </div>`).join('')}</div>`;
+    }
+
+    // Players across the top, each one's call underneath them — so the room
+    // reads as a row of people rather than a stack of form rows.
+    function renderBets() {
+      return `<div class="bt-bets">${roster.map((p) => {
+        const bet = bets.get(p.code);
+        const state = bet === undefined ? 'waiting' : 'in';
+        return `<div class="bt-bet ${state}" data-player="${escapeHtml(p.code)}">
+          <div class="bt-bet-who">${escapeHtml(p.name)}</div>
+          <div class="bt-bet-buttons">
+            <button type="button" class="${bet === true ? 'bt-choice active' : 'bt-choice'}" data-bet="hold" aria-pressed="${bet === true}">
+              <span class="bt-choice-icon">💎</span><span class="bt-choice-label">Hold</span>
+            </button>
+            <button type="button" class="${bet === false ? 'bt-choice active' : 'bt-choice'}" data-bet="sell" aria-pressed="${bet === false}">
+              <span class="bt-choice-icon">✂️</span><span class="bt-choice-label">Sell</span>
+            </button>
+          </div>
+        </div>`;
+      }).join('')}</div>`;
+    }
+
     function renderAsk(trade) {
       const s = seriesFor(pool, trade, trade.exitDate); // nothing after the exit
       el.innerHTML = `
@@ -182,26 +217,17 @@
             <span class="bt-sec">${escapeHtml(trade.security)}</span>
             <span class="tag">sold ${escapeHtml(trade.exitDate)}</span>
           </div>
-          <div class="detail-grid">
-            <div class="kpi-card"><div class="label">Entry</div><div class="value">${trade.entryPrice ? fmtNok(trade.entryPrice) : '—'}</div></div>
-            <div class="kpi-card"><div class="label">Exit</div><div class="value">${fmtNok(trade.exitPrice)}</div></div>
-            <div class="kpi-card"><div class="label">Realised</div><div class="value ${trade.realizedPct != null ? pctClass(trade.realizedPct) : ''}">${trade.realizedPct != null ? fmtPct(trade.realizedPct, true) : '—'}</div></div>
-            <div class="kpi-card"><div class="label">Sold by</div><div class="value">${escapeHtml(trade.ownerNames)}</div></div>
-          </div>
+          ${factStrip([
+            ['Entry', trade.entryPrice ? fmtNok(trade.entryPrice) : '—', ''],
+            ['Exit', fmtNok(trade.exitPrice), ''],
+            ['Realised', trade.realizedPct != null ? fmtPct(trade.realizedPct, true) : '—',
+              trade.realizedPct != null ? pctClass(trade.realizedPct) : ''],
+            ['Held', pool.holdingText({ firstDate: trade.entryDate, lastDate: trade.exitDate, sold: true }), ''],
+            ['Sold by', escapeHtml(trade.ownerNames), ''],
+          ])}
           <div id="bt-chart"></div>
           <p class="bt-ask">Would you have held?</p>
-          <div class="bt-bets">
-            ${roster.map((p) => {
-              const bet = bets.get(p.code);
-              return `<div class="bt-bet" data-player="${escapeHtml(p.code)}">
-                <span class="bt-bet-who">${escapeHtml(p.name)}</span>
-                <span class="bt-bet-buttons">
-                  <button type="button" class="preset ${bet === true ? 'active' : ''}" data-bet="hold" aria-pressed="${bet === true}">Hold 💎</button>
-                  <button type="button" class="preset ${bet === false ? 'active' : ''}" data-bet="sell" aria-pressed="${bet === false}">Sell ✂️</button>
-                </span>
-              </div>`;
-            }).join('')}
-          </div>
+          ${renderBets()}
           <div class="bt-buttons">
             <button class="btn game-spin" id="bt-reveal" ${bets.size ? '' : 'disabled'}>
               ${bets.size ? `Reveal 👀 (${bets.size}/${roster.length} in)` : 'Everyone place a call first'}
@@ -308,17 +334,14 @@
           </div>
           ${strip ? `<div class="bt-strip">${strip}</div>
             <p class="text-muted text-small">Each horizon is what the price did by then. Hover for the close it used.</p>` : ''}
-          <div class="detail-grid">
-            <div class="kpi-card"><div class="label">Best case if you had held</div>
-              <div class="value positive">${r.missedMoney ? fmtNok(r.missedMoney) : '—'}</div>
-              <div class="sub">${r.maxAfter ? `peaked ${fmtPct(r.maxAfter.value * 100, true)} on ${escapeHtml(r.maxAfter.date)}` : ''}</div></div>
-            <div class="kpi-card"><div class="label">Worst case avoided</div>
-              <div class="value">${r.moneySaved ? fmtNok(r.moneySaved) : '—'}</div>
-              <div class="sub">${r.minAfter ? `bottomed ${fmtPct(r.minAfter.value * 100, true)} on ${escapeHtml(r.minAfter.date)}` : ''}</div></div>
-            ${r.oneYear ? `<div class="kpi-card"><div class="label">If you had held one year</div>
-              <div class="value ${pctClass(r.oneYear.pct)}">${fmtPct(r.oneYear.pct, true)}</div>
-              <div class="sub">${fmtNok(r.oneYear.money)}</div></div>` : ''}
-          </div>
+          ${factStrip([
+            ['Best if held', r.missedMoney ? fmtNok(r.missedMoney) : '—', 'positive',
+              r.maxAfter ? `peak ${fmtPct(r.maxAfter.value * 100, true)} · ${r.maxAfter.date}` : ''],
+            ['Worst avoided', r.moneySaved ? fmtNok(r.moneySaved) : '—', '',
+              r.minAfter ? `low ${fmtPct(r.minAfter.value * 100, true)} · ${r.minAfter.date}` : ''],
+            ...(r.oneYear ? [['Held one year', fmtPct(r.oneYear.pct, true), pctClass(r.oneYear.pct),
+              fmtNok(r.oneYear.money)]] : []),
+          ])}
           <div id="bt-chart"></div>
           ${caveats.map((c) => `<p class="bt-caveat">⚠ ${escapeHtml(c)}</p>`).join('')}
           <div style="margin-top:14px"><button class="btn game-spin" id="bt-next">Another trade</button></div>
