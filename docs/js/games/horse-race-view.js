@@ -204,7 +204,6 @@
           seen.add(ev.step + ev.text);
           say.textContent = ev.text;
           lastFiller = elapsed;
-          if (audio) audio.cue(ev.kind);
           if (opts.onEvent) opts.onEvent(ev);
           return;
         }
@@ -225,7 +224,7 @@
       if (finished) return;
       finished = true;
       place(1);
-      if (audio) { audio.cue('finish'); audio.stop(); }
+      if (audio) audio.stop();
       showControls(false);
       if (goBtn) goBtn.hidden = true;
       if (opts.onFinish) opts.onFinish(race);
@@ -237,7 +236,6 @@
       const t = Math.min(1, elapsed / duration);
       place(t);
       fireEvents(Math.floor(t * ((race.steps || 2) - 1)), elapsed);
-      if (audio) audio.setPace(t);
       if (t >= 1) { finish(); return; }
       raf = requestAnimationFrame(frame);
     };
@@ -253,9 +251,9 @@
         return;
       }
       showControls(true);
-      // The AudioContext is created HERE, inside the user gesture that
-      // started the race — creating it on mount would be blocked.
-      if (audio) { audio.start(); audio.cue('off'); }
+      // Started HERE, inside the user gesture that started the race — audio
+      // begun any other way is blocked by the browser.
+      if (audio) audio.start();
       say.textContent = "And they're off!";
       t0 = performance.now();
       raf = requestAnimationFrame(frame);

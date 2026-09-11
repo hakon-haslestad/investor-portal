@@ -46,9 +46,10 @@
   const slides = data.slides || [];
   let cur = 0;
 
-  // Anything a slide starts — an animation loop, an AudioContext — must be
-  // torn down before the next render blows its DOM away. The deck had no such
-  // hook; without this a race left running would outlive its slide.
+  // Anything a slide starts — an animation loop, a playing soundtrack — must
+  // be torn down before the next render blows its DOM away. The deck had no
+  // such hook; without this a race left running would outlive its slide, and
+  // you would hear it over the next one.
   let activeSlide = null;
   function teardown() {
     if (activeSlide && typeof activeSlide.destroy === 'function') {
@@ -125,7 +126,10 @@
   // Two and a half minutes: long enough to be an event, short enough to hold
   // a room. The paddock waits for a keypress rather than ambushing the room
   // with a surprise clock.
+  // 150 s — and the soundtrack is cut to exactly that length, so the two run
+  // together. Change one and you must change the other.
   const RACE_MS = 150000;
+  const RACE_AUDIO = './audio/horse-race-2m30.mp3';
 
   // The paddock. The track itself is built by HorseRaceView into #race-mount
   // once mount() runs, because it needs real DOM nodes.
@@ -161,7 +165,7 @@
       return;
     }
     const audio = window.HorseRaceAudio && window.HorseRaceAudio.supported()
-      ? window.HorseRaceAudio.create() : null;
+      ? window.HorseRaceAudio.create({ url: RACE_AUDIO }) : null;
     activeSlide = window.HorseRaceView.create(el, {
       race,
       duration: RACE_MS,
