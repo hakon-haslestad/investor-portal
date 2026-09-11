@@ -209,6 +209,61 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
 .game-result .detail-grid .kpi-card { min-width: 150px; text-align: left; }
 .game-result #game-chart:not(:empty) { margin-top: 18px; }
 
+/* ─── Games catalogue ────────────────────────────────────────────────────
+   Card grid, shell chrome and the sober-mode toggle. The cards reuse the
+   panel look from .competition-card; the grid is the same auto-fit shape as
+   .kpi-grid, so it inherits the mobile behaviour rather than inventing one. */
+.game-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 14px; margin-top: 12px;
+}
+.game-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.game-card h3 { margin: 0; font-size: 1.05rem; }
+.game-card-icon { font-size: 1.8rem; line-height: 1; }
+.game-card-tagline { margin: 0; color: var(--muted); font-size: 0.88rem; line-height: 1.45; flex: 1; }
+.game-card-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.game-card-tags .tag.players { background: transparent; border: 1px dashed var(--border); }
+.game-card-drink { margin: 0; font-size: 0.82rem; color: var(--accent-2); }
+.game-card-gate { margin: 0; font-size: 0.82rem; color: var(--muted); font-style: italic; }
+.game-card .btn { align-self: flex-start; text-decoration: none; }
+.game-card .btn:hover { text-decoration: none; }
+/* Not playable with the current filters — readable, but clearly inert. */
+.game-card.disabled { opacity: 0.55; }
+.game-card.disabled .game-card-icon { filter: grayscale(1); }
+
+.game-tags { margin-top: 12px; }
+
+/* Shell */
+.game-shell-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.game-shell-head h2 { margin: 0; font-size: 1.4rem; flex: 1; }
+.game-back { font-size: 0.88rem; color: var(--muted); }
+.game-back:hover { color: var(--text); }
+.game-shell-filters { margin: 4px 0 12px; color: var(--muted); font-size: 0.82rem; }
+.game-rules, .game-recent { margin-top: 10px; }
+.recent-rounds { margin: 0; padding-left: 18px; }
+.recent-rounds li { font-size: 0.88rem; margin: 4px 0; }
+
+/* Sober toggle sits inside the filter bar, so it must not inherit the
+   full-width input rule. */
+.sober-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--muted); font-size: 0.8rem; text-transform: none; letter-spacing: 0;
+  padding: 6px 10px; cursor: pointer; white-space: nowrap;
+}
+.sober-toggle input[type="checkbox"] { width: auto; margin: 0; min-height: 0; }
+
+@media (max-width: 720px) {
+  .game-shell-head h2 { font-size: 1.15rem; width: 100%; order: 3; }
+  .game-result { padding: 18px 14px; }
+  .game-result .verdict { font-size: 1.5rem; }
+  .game-result .who-name { font-size: 1.5rem; }
+  .guess-prompt { font-size: 1.35rem; }
+}
+
 .tag {
   display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--panel-2);
   color: var(--muted); font-size: 0.78rem;
