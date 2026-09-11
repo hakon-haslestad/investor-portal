@@ -103,6 +103,60 @@
       for (let i = 0; i < 5; i++) tone(1046.5, t + i * 0.13, 0.22, 0.13, 'sine');
     }
 
+    // A cheer, as opposed to the crowd bed swelling. Brighter noise with a
+    // fast attack and a long tail, plus a couple of whistles on the big ones —
+    // this is what actually makes a lead change feel like something.
+    function cheer(intensity, dur) {
+      if (!ctx || !master) return;
+      const t = ctx.currentTime;
+      const src = noise();
+      src.loop = true;
+      // Band-passed up where voices live, swept down as the roar dies away.
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(1400, t);
+      bp.frequency.exponentialRampToValueAtTime(500, t + dur);
+      bp.Q.value = 0.7;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(intensity, t + 0.18);
+      g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+      src.connect(bp).connect(g).connect(master);
+      src.start(t);
+      src.stop(t + dur + 0.1);
+
+      // Whistles, for the moments that deserve them.
+      if (intensity > 0.16) {
+        for (let i = 0; i < 2; i++) {
+          const at = t + 0.12 + Math.random() * 0.5;
+          const o = ctx.createOscillator();
+          o.type = 'sine';
+          const f = 1900 + Math.random() * 700;
+          o.frequency.setValueAtTime(f, at);
+          o.frequency.linearRampToValueAtTime(f * 1.18, at + 0.28);
+          const og = ctx.createGain();
+          og.gain.setValueAtTime(0, at);
+          og.gain.linearRampToValueAtTime(0.05, at + 0.05);
+          og.gain.exponentialRampToValueAtTime(0.0006, at + 0.42);
+          o.connect(og).connect(master);
+          o.start(at);
+          o.stop(at + 0.5);
+        }
+      }
+    }
+
+    // Ambient roars so the crowd never goes dead between incidents.
+    let ambientTimer = null;
+    function scheduleAmbient() {
+      if (!running) return;
+      const wait = 9000 + Math.random() * 9000;
+      ambientTimer = setTimeout(() => {
+        if (!running) return;
+        cheer(0.07 + Math.random() * 0.05, 1.6);
+        scheduleAmbient();
+      }, wait);
+    }
+
     function swell(amount, dur) {
       if (!crowdGain) return;
       const t = ctx.currentTime;
@@ -150,11 +204,13 @@
 
         running = true;
         scheduleHooves();
+        scheduleAmbient();
       },
 
       stop() {
         running = false;
         if (hoofTimer) { clearTimeout(hoofTimer); hoofTimer = null; }
+        if (ambientTimer) { clearTimeout(ambientTimer); ambientTimer = null; }
         if (ctx) {
           try { if (master) master.disconnect(); } catch (_e) { /* already gone */ }
           try { ctx.close(); } catch (_e) { /* already closed */ }
@@ -168,11 +224,13 @@
       // Hooked to the same events that drive the commentary bar.
       cue(kind) {
         if (!running || !ctx) return;
-        if (kind === 'off') bugle();
-        else if (kind === 'finish') { bell(); swell(0.30, 2.2); }
-        else if (kind === 'lead') swell(0.18, 1.4);
-        else if (kind === 'photo') swell(0.28, 2.0);
-        else if (kind === 'breakaway') swell(0.12, 1.0);
+        if (kind === 'off') { bugle(); cheer(0.16, 2.0); }
+        else if (kind === 'finish') { bell(); swell(0.30, 2.6); cheer(0.30, 3.2); }
+        else if (kind === 'lead') { swell(0.18, 1.4); cheer(0.20, 1.8); }
+        else if (kind === 'photo') { swell(0.28, 2.0); cheer(0.28, 2.6); }
+        else if (kind === 'breakaway') { swell(0.12, 1.0); cheer(0.17, 1.5); }
+        else if (kind === 'stumble') cheer(0.11, 1.2);
+        else if (kind === 'cheer') cheer(0.22, 2.0);
       },
 
       mute(on) {
@@ -184,8 +242,13 @@
       suspend(on) {
         suspended = !!on;
         applyGain();
-        if (suspended && hoofTimer) { clearTimeout(hoofTimer); hoofTimer = null; }
-        else if (!suspended && running && !hoofTimer) scheduleHooves();
+        if (suspended) {
+          if (hoofTimer) { clearTimeout(hoofTimer); hoofTimer = null; }
+          if (ambientTimer) { clearTimeout(ambientTimer); ambientTimer = null; }
+        } else if (running) {
+          if (!hoofTimer) scheduleHooves();
+          if (!ambientTimer) scheduleAmbient();
+        }
       },
       isMuted() { return muted; },
       isSuspended() { return suspended; },
