@@ -45,6 +45,9 @@
     // exists to show whose call is whose, which is noise with nobody to tell
     // apart.
     const solo = roster.length === 1;
+    // With a room open every phone knows who it is, so everybody answers at
+    // once. Turn order only exists so an on-screen tap has an owner.
+    const hosted = !!room;
 
     function currentPlayer() {
       for (let k = 0; k < roster.length; k++) {
@@ -84,10 +87,11 @@
     // see who has called it and who is still thinking.
     function playerRow() {
       if (solo) return '';
-      const active = currentPlayer();
+      // Nobody is "next" when phones answer simultaneously.
+      const active = hosted ? null : currentPlayer();
       return `<div class="game-players">${roster.map((p) => {
         const pick = picks.get(p.code);
-        const isTurn = !answered && p.code === active.code;
+        const isTurn = !answered && !!active && p.code === active.code;
         const right = answered && pick != null ? pick === round.answer : null;
         const cls = ['game-player',
           right === true ? 'correct' : right === false ? 'wrong' : (pick != null ? 'in' : 'waiting'),
@@ -137,11 +141,21 @@
                 <dl class="ooo-fields">${cardFields(t, round.hideFields)}</dl>
               </button>`).join('')}
           </div>
+          ${!answered && !solo ? `<div class="guess-actions">
+            <button type="button" class="btn game-spin" id="ooo-reveal" ${rnd.count ? '' : 'disabled'}>
+              ${rnd.count ? `Reveal 👀 (${rnd.count}/${roster.length} in)` : 'Waiting for a first answer'}
+            </button>
+            <span class="text-muted text-small">${hosted
+              ? 'Everyone answers on their own phone — reveal whenever you like.'
+              : 'Pass the screen round, or reveal early.'}</span>
+          </div>` : ''}
           <div id="ooo-result"></div>
         </div>`;
       el.querySelectorAll('.ooo-card').forEach((btn) => {
         btn.addEventListener('click', () => answer(Number(btn.getAttribute('data-i'))));
       });
+      const revealBtn = el.querySelector('#ooo-reveal');
+      if (revealBtn) revealBtn.addEventListener('click', resolveNow);
       if (answered) renderVerdict();
     }
 
@@ -158,8 +172,13 @@
       resolveRound();
     }
 
-    // Everyone is in. Score it. Reached from a local tap or from the last
-    // phone answering, which must behave identically.
+    function resolveNow() {
+      if (answered || !round || rnd.count === 0) return;
+      resolveRound();
+    }
+
+    // Everyone is in. Score it. Reached from a local tap, the last phone
+    // answering, or the host revealing early — all identical.
     function resolveRound() {
       if (answered || !round) return;
       answered = true;
@@ -168,9 +187,11 @@
         played += 1;
         if (pick === round.answer) { correct += 1; scores.set(code, (scores.get(code) || 0) + 1); }
       }
+      // Only those who actually answered count towards the table streak.
+      const answeredCount = picks.size;
       // The streak belongs to the table as a whole: a round counts when
       // everyone got it.
-      const allRight = [...picks.values()].every((p) => p === round.answer);
+      const allRight = answeredCount > 0 && [...picks.values()].every((p) => p === round.answer);
       if (allRight) { streak += 1; best = Math.max(best, streak); } else streak = 0;
       render();
     }
@@ -184,9 +205,10 @@
         if (idx !== round.answer && [...picks.values()].includes(idx)) btn.classList.add('is-wrong');
       });
 
-      const wrong = roster.filter((p) => picks.get(p.code) !== round.answer);
-      const rightOnes = roster.filter((p) => picks.get(p.code) === round.answer);
-      const allRight = wrong.length === 0;
+      const answeredBy = roster.filter((p) => picks.get(p.code) != null);
+      const wrong = answeredBy.filter((p) => picks.get(p.code) !== round.answer);
+      const rightOnes = answeredBy.filter((p) => picks.get(p.code) === round.answer);
+      const allRight = wrong.length === 0 && answeredBy.length > 0;
       const drink = soberMode
         ? (solo
           ? (allRight ? '+1 point' : 'no point')
@@ -199,7 +221,7 @@
         <div class="game-result ${allRight ? 'win' : 'loss'} ooo-verdict">
           <div class="verdict">${solo
             ? (allRight ? 'Correct 🎯' : 'Wrong 💀')
-            : (allRight ? 'All correct 🎯' : `${rightOnes.length}/${roster.length} got it`)}</div>
+            : (allRight ? 'All correct 🎯' : `${rightOnes.length}/${answeredBy.length} got it`)}</div>
           <div class="who-state">${escapeHtml(round.description)}</div>
           <div class="pnl">${drink}</div>
           <div style="margin-top:14px"><button class="btn game-spin" id="ooo-next">Next round</button></div>
@@ -222,7 +244,10 @@
       if (round) {
         rnd.open({
           prompt: "Which one doesn't belong?",
-          labels: round.cards.map((_, i) => String(i + 1)),
+          // The real names, not bare numbers: a phone is a signed-in member,
+          // so there is nothing to hide from it, and "3" tells you nothing
+          // when you are looking down at your hand.
+          labels: round.cards.map((c) => c.security),
           key: `${rounds}|${round.ruleId}|${round.cards.map((c) => c.security).join('|')}`,
         });
       }

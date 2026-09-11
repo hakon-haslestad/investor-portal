@@ -72,12 +72,15 @@ test('a round offers five candidates, one of which is the real one', () => {
   for (const n of names) assert.ok(SIX.some((t) => t.security === n), `${n} is a real holding`);
 });
 
-test('the options are numbered, so a phone can pick by number', () => {
+test('the screen numbers the options, and the phone gets the actual names', () => {
   const { el, rounds } = mountGuess(SIX, ROSTER);
   const nums = [...el.innerHTML.matchAll(/class="guess-num">(\d)</g)].map((m) => m[1]);
-  assert.deepEqual(nums, ['1', '2', '3', '4', '5']);
-  // The phone gets bare numbers — the names stay on the shared screen.
-  assert.deepEqual(rounds[0].choices, ['1', '2', '3', '4', '5']);
+  assert.deepEqual(nums, ['1', '2', '3', '4', '5'], 'numbered on the big screen');
+  // Names, not digits: a phone is a signed-in member, and "3" tells you
+  // nothing when you are looking down at your hand.
+  const names = [...el.innerHTML.matchAll(/class="guess-name">([^<]+)</g)].map((m) => m[1]);
+  assert.deepEqual(rounds[0].choices, names, 'the phone shows what the screen shows');
+  assert.ok(rounds[0].choices.every((c) => /^[A-Za-z]/.test(c)), 'real names, not indices');
   assert.match(rounds[0].prompt, /which stock/i);
 });
 
@@ -119,4 +122,37 @@ test('playing alone drops the multi-player chrome', () => {
   const { el } = mountGuess(SIX, [{ code: 'HH', name: 'Hakon' }]);
   assert.ok(!el.innerHTML.includes('game-players'), 'no player row');
   assert.match(el.innerHTML, /class="game-facts"/, 'but the score strip stays');
+});
+
+test('everyone answers at once when a room is open — no turn order', () => {
+  const { el } = mountGuess(SIX, ROSTER);
+  // With phones, each device knows who it is, so nobody is "next".
+  assert.ok(!/your turn/.test(el.innerHTML), 'no turn indicator');
+  assert.ok(!/game-player active/.test(el.innerHTML), 'and nobody is highlighted as up');
+});
+
+test('without a room it stays hot-seat, so an on-screen tap has an owner', () => {
+  const { el } = mountGuess(SIX, ROSTER, false);
+  assert.match(el.innerHTML, /your turn/, 'someone has to be next when sharing one screen');
+});
+
+test('the round can be revealed before everyone has answered', () => {
+  const { el, push } = mountGuess(SIX, ROSTER);
+  // Four people playing a five-member club must not wait on an absent fifth.
+  assert.match(el.innerHTML, /Waiting for a first answer/);
+  assert.match(el.innerHTML, /id="guess-reveal" disabled/);
+  push({ HH: 0 });
+  assert.match(el.innerHTML, /Reveal 👀 \(1\/2 in\)/);
+  assert.ok(!/id="guess-reveal" disabled/.test(el.innerHTML), 'and it is now pressable');
+});
+
+test('the reveal marks the right answer and names the stock', () => {
+  const { el, push } = mountGuess(SIX, ROSTER);
+  push({ HH: 0, JC: 1 });
+  // The verdict panel itself renders into #guess-result, which this DOM stub
+  // discards — so assert on the board, which is what a player looks at.
+  assert.match(el.innerHTML, /It was <strong>/, 'the stock is named');
+  assert.equal((el.innerHTML.match(/guess-option is-answer/g) || []).length, 1,
+    'exactly one option is marked correct');
+  assert.ok(/guess-option[^"]*is-wrong/.test(el.innerHTML), 'and a wrong pick is marked');
 });

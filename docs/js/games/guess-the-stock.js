@@ -28,6 +28,9 @@
 
     const roster = players && players.length ? players : [{ code: '', name: 'Player' }];
     const solo = roster.length === 1;
+    // With a room open every phone knows who it is, so everybody answers at
+    // once. Turn order only exists so an on-screen tap has an owner.
+    const hosted = !!room;
 
     // Only stocks with enough history to draw are worth dealing; the view
     // already filters the pool, this narrows to what makes a chart.
@@ -74,7 +77,7 @@
 
       rnd.open({
         prompt: 'Which stock is this?',
-        labels: options.map((_, i) => String(i + 1)),
+        labels: options.map((o) => o.security),
         key: `${rounds}|${entry.security}`,
       });
       render();
@@ -90,6 +93,14 @@
       const who = code || currentPlayer().code;
       if (!rnd.set(who, i)) return;
       if (rnd.complete) resolve(); else render();
+    }
+
+    // Not everyone who is on the roster is necessarily in the room — four
+    // people playing a five-member club should not be stuck waiting for a
+    // fifth who is not here.
+    function revealNow() {
+      if (revealed || !round || rnd.count === 0) return;
+      resolve();
     }
 
     function resolve() {
@@ -117,10 +128,11 @@
 
     function playerRow() {
       if (solo) return '';
-      const active = currentPlayer();
+      // Nobody is "next" when phones answer simultaneously.
+      const active = hosted ? null : currentPlayer();
       return `<div class="game-players">${roster.map((p) => {
         const pick = rnd.valueFor(p.code);
-        const isTurn = !revealed && p.code === active.code;
+        const isTurn = !revealed && !!active && p.code === active.code;
         const right = revealed && pick != null ? pick === round.answer : null;
         const cls = ['game-player',
           right === true ? 'correct' : right === false ? 'wrong' : (pick != null ? 'in' : 'waiting'),
@@ -163,6 +175,14 @@
               </button>`;
             }).join('')}
           </div>
+          ${!revealed && !solo ? `<div class="guess-actions">
+            <button type="button" class="btn game-spin" id="guess-reveal" ${rnd.count ? '' : 'disabled'}>
+              ${rnd.count ? `Reveal 👀 (${rnd.count}/${roster.length} in)` : 'Waiting for a first answer'}
+            </button>
+            <span class="text-muted text-small">${hosted
+              ? 'Everyone answers on their own phone — reveal whenever you like.'
+              : 'Pass the screen round, or reveal early.'}</span>
+          </div>` : ''}
           <div id="guess-result"></div>
         </div>`;
 
@@ -176,6 +196,8 @@
       el.querySelectorAll('.guess-option').forEach((b) => {
         b.addEventListener('click', () => answer(Number(b.getAttribute('data-i'))));
       });
+      const revealBtn = el.querySelector('#guess-reveal');
+      if (revealBtn) revealBtn.addEventListener('click', revealNow);
       if (revealed) renderVerdict();
     }
 
@@ -183,9 +205,10 @@
       const mountEl = el.querySelector('#guess-result');
       if (!mountEl) return;
       const e = round.entry;
-      const rightOnes = roster.filter((p) => rnd.valueFor(p.code) === round.answer);
-      const wrong = roster.filter((p) => rnd.valueFor(p.code) !== round.answer);
-      const allRight = wrong.length === 0;
+      const answeredBy = roster.filter((p) => rnd.valueFor(p.code) != null);
+      const rightOnes = answeredBy.filter((p) => rnd.valueFor(p.code) === round.answer);
+      const wrong = answeredBy.filter((p) => rnd.valueFor(p.code) !== round.answer);
+      const allRight = wrong.length === 0 && answeredBy.length > 0;
       const drink = soberMode
         ? (solo ? (allRight ? '+1 point' : 'no point') : `${rightOnes.length} point${rightOnes.length === 1 ? '' : 's'} awarded`)
         : (allRight ? (solo ? 'Nobody drinks' : 'Nobody drinks 🎉')
@@ -195,7 +218,7 @@
         <div class="game-result ${allRight ? 'win' : 'loss'} ooo-verdict">
           <div class="verdict">${solo
             ? (allRight ? 'Correct 🎯' : 'Wrong 💀')
-            : (allRight ? 'All correct 🎯' : `${rightOnes.length}/${roster.length} got it`)}</div>
+            : (allRight ? 'All correct 🎯' : `${rightOnes.length}/${answeredBy.length} got it`)}</div>
           <div class="who-state">${escapeHtml(e.investorName)} · ${e.sold ? 'sold' : 'holding'}</div>
           <div class="pnl ${pctClass(e.pnlNok)}">${fmtNok(e.pnlNok)} · ${fmtPct(e.pnlPct, true)}</div>
           <div class="pnl">${drink}</div>

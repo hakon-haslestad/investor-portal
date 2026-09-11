@@ -1077,19 +1077,29 @@ tr.row-detail > td { background: var(--panel-2); padding: 4px 12px 12px; }
 .play-buttons.n2 { grid-template-columns: 1fr; }
 .play-buttons.n3 { grid-template-columns: 1fr; }
 .play-buttons.n4 { grid-template-columns: 1fr 1fr; }
-.play-buttons.n5, .play-buttons.n6 { grid-template-columns: 1fr 1fr; }
+.play-buttons.n5, .play-buttons.n6,
+.play-buttons.n7, .play-buttons.n8, .play-buttons.n9 { grid-template-columns: 1fr 1fr; }
 /* An odd last option takes the full width rather than sitting half-empty. */
 .play-buttons.n3 .play-btn:last-child,
-.play-buttons.n5 .play-btn:last-child { grid-column: 1 / -1; }
+.play-buttons.n5 .play-btn:last-child,
+.play-buttons.n7 .play-btn:last-child,
+.play-buttons.n9 .play-btn:last-child { grid-column: 1 / -1; }
+/* Buttons carry real names now, not digits — "Storskogen Group AB" has to
+   fit and stay readable at arm's length, so they wrap and size down with the
+   option count rather than being one fixed heading size. */
 .play-btn {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  font-size: 1.8rem; font-weight: 800; padding: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 12px 14px; cursor: pointer;
+  font-size: 1.5rem; font-weight: 700;
   background: var(--panel); color: var(--text);
   border: 2px solid var(--border); border-radius: var(--radius);
-  min-height: 72px; line-height: 1.15; word-break: break-word;
+  min-height: 72px; line-height: 1.2; overflow-wrap: anywhere; hyphens: auto;
 }
-.play-buttons.n2 .play-btn { font-size: 2.2rem; }
-.play-buttons.n5 .play-btn, .play-buttons.n6 .play-btn { font-size: 1.5rem; }
+.play-buttons.n2 .play-btn { font-size: 1.9rem; }
+.play-buttons.n3 .play-btn { font-size: 1.6rem; }
+.play-buttons.n5 .play-btn, .play-buttons.n6 .play-btn { font-size: 1.15rem; }
+.play-buttons.n7 .play-btn, .play-buttons.n8 .play-btn,
+.play-buttons.n9 .play-btn { font-size: 1rem; }
 .play-btn:active { transform: scale(0.98); }
 /* The chosen one stays lit and everything else recedes — at arm's length the
    difference has to be obvious, not a shade of grey. */
@@ -1100,6 +1110,12 @@ tr.row-detail > td { background: var(--panel-2); padding: 4px 12px 12px; }
 .play-buttons.locked .play-btn { opacity: 0.35; }
 .play-buttons.locked .play-btn.chosen { opacity: 1; }
 .play-error { margin: 0 0 10px; }
+
+/* Reveal before everyone is in — four people in a five-member club should
+   not be stuck waiting on an absent fifth. */
+.guess-actions {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px;
+}
 
 /* ─── Guess the stock ────────────────────────────────────────────────────
    Five numbered candidates under the chart. The numbers matter: they are

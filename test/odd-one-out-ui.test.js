@@ -195,9 +195,9 @@ test('a hosted game mounts without touching state that does not exist yet', () =
 test('hosting announces each round to the phones, with a button count', () => {
   const { rounds } = mountWithRoom(ROSTER);
   assert.equal(rounds.length, 1, 'the first round is announced on mount');
-  // Labels, not a bare count: every game now names its buttons so the phone
-  // board is built the same way whatever the game.
-  assert.deepEqual(rounds[0].choices, ['1', '2', '3', '4'], 'four cards, four buttons');
+  // The card names, not indices — a phone shows what it is choosing between.
+  assert.equal(rounds[0].choices.length, 4, 'four cards, four buttons');
+  assert.ok(rounds[0].choices.every((c) => /^[A-Z]/.test(c)), `real names, got ${rounds[0].choices}`);
   assert.match(rounds[0].prompt, /belong/i);
 });
 

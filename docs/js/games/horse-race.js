@@ -97,7 +97,7 @@
       shortlist.push({ ticker: '', name: 'Sit this one out', sitOut: true });
       rnd.open({
         prompt: 'Pick your horse',
-        labels: shortlist.map((r) => r.ticker || 'Sit out'),
+        labels: shortlist.map((r) => r.name || r.ticker || 'Sit out'),
         key: `${windowId}|${shortlist.map((r) => r.ticker).join('|')}`,
       });
 
