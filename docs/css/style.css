@@ -36,7 +36,7 @@ a:hover { text-decoration: underline; }
 .section-title { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin: 28px 0 12px; }
 
 .kpi-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 14px;
 }
 .kpi-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -64,7 +64,7 @@ table tr.row-link:hover { background: var(--panel-2); }
 .text-small { font-size: 0.82rem; }
 
 .leaderboard {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 14px;
 }
 .lb-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -221,7 +221,7 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
   padding: 16px 18px; margin-bottom: 14px; box-shadow: var(--shadow);
 }
 .competition-card .meta { color: var(--muted); font-size: 0.85rem; margin: 4px 0 8px; }
-.competition-card .ranks { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.competition-card .ranks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 8px; }
 .competition-card .ranks .r { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
 .competition-card .actions { margin-top: 10px; display: flex; gap: 8px; }
 
@@ -235,7 +235,7 @@ canvas { max-width: 100%; }
 .chart-wrap svg { width: 100%; height: auto; display: block; }
 .chart-wrap svg .crosshair-overlay { cursor: crosshair; }
 .chart-legend {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
   gap: 10px; margin: 12px 0 24px;
 }
 .chart-legend .key {
@@ -357,6 +357,44 @@ td.links a:hover { color: var(--accent); }
 
   /* Tags / inline meta */
   .tag { font-size: 0.72rem; }
+
+  .subtabs { overflow-x: auto; flex-wrap: nowrap; }
+  .subtabs a { white-space: nowrap; padding: 8px 10px; font-size: 0.84rem; }
+  /* Heroes that carry range pickers: stack, let the picker scroll */
+  .hero { flex-direction: column; align-items: stretch; gap: 8px; }
+  .hero .when { order: 2; }
+  .hero .range-picker, .when .range-picker {
+    flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+  .range-picker .preset { flex: none; }
+
+  /* Activity toolbar: full-width search, chips wrap, count on its own line */
+  .data-toolbar { padding: 10px; gap: 8px; }
+  .data-toolbar input[type="search"] { width: 100%; order: -1; }
+  .data-toolbar .count { width: 100%; text-align: right; font-size: 0.78rem; }
+  .type-pills, .code-chips { width: 100%; }
+  .type-pills button, .code-chips button { padding: 6px 10px; min-height: 32px; }
+
+  /* Every drill-down / detail table scrolls instead of crushing */
+  .month-detail table, .fx-detail table, .table-scroll table { white-space: nowrap; }
+  .fx-detail > td, .month-detail > td { padding: 10px 6px 14px; }
+
+  /* KPI subs with period-comparison text can wrap */
+  .kpi-card .sub { white-space: normal; line-height: 1.35; }
+
+  /* Info popover: keep on-screen and scrollable */
+  .info-popover { max-width: calc(100vw - 24px); }
+  .info-popover-body { max-height: 55vh; }
+
+  /* Look-through multiple input: comfortable touch target */
+  #lt-multiple { min-height: 36px; }
+
+  /* Subtabs + nav already scroll; make the beta badge not add height */
+  .nav-badge { vertical-align: baseline; font-size: 0.55rem; }
+
+  /* Details expander tables */
+  .container.wide { padding-left: 12px; padding-right: 12px; }
 }
 
 /* ─── Tiny phones (≤400px) ───────────────────────────────────────────── */
@@ -364,6 +402,9 @@ td.links a:hover { color: var(--accent); }
   .kpi-grid { grid-template-columns: 1fr; }
   .chart-legend { grid-template-columns: 1fr; }
   .competition-card .ranks { grid-template-columns: 1fr; }
+
+  .kpi-card .value { font-size: 1.05rem; }
+  .subtabs a { padding: 8px 8px; font-size: 0.8rem; }
 }
 
 /* ─── SPA shell (rewrite) ────────────────────────────────────────────── */
@@ -486,11 +527,6 @@ tr.row-detail > td { background: var(--panel-2); padding: 4px 12px 12px; }
 }
 .price-freshness.stale { color: var(--accent-2); }
 
-@media (max-width: 720px) {
-  .subtabs { overflow-x: auto; flex-wrap: nowrap; }
-  .subtabs a { white-space: nowrap; padding: 8px 10px; font-size: 0.84rem; }
-}
-
 /* ─── Metric info popovers ───────────────────────────────────────────── */
 .info-dot {
   display: inline-flex; align-items: center; justify-content: center;
@@ -553,49 +589,6 @@ tr.row-detail > td { background: var(--panel-2); padding: 4px 12px 12px; }
 }
 .competition-card h3 .tag { margin-left: 6px; vertical-align: middle; }
 
-/* ─── Mobile sweep for SPA-era additions (≤720px) ────────────────────── */
-@media (max-width: 720px) {
-  /* Heroes that carry range pickers: stack, let the picker scroll */
-  .hero { flex-direction: column; align-items: stretch; gap: 8px; }
-  .hero .when { order: 2; }
-  .hero .range-picker, .when .range-picker {
-    flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
-    max-width: 100%;
-  }
-  .range-picker .preset { flex: none; }
-
-  /* Activity toolbar: full-width search, chips wrap, count on its own line */
-  .data-toolbar { padding: 10px; gap: 8px; }
-  .data-toolbar input[type="search"] { width: 100%; order: -1; }
-  .data-toolbar .count { width: 100%; text-align: right; font-size: 0.78rem; }
-  .type-pills, .code-chips { width: 100%; }
-  .type-pills button, .code-chips button { padding: 6px 10px; min-height: 32px; }
-
-  /* Every drill-down / detail table scrolls instead of crushing */
-  .month-detail table, .fx-detail table, .table-scroll table { white-space: nowrap; }
-  .fx-detail > td, .month-detail > td { padding: 10px 6px 14px; }
-
-  /* KPI subs with period-comparison text can wrap */
-  .kpi-card .sub { white-space: normal; line-height: 1.35; }
-
-  /* Info popover: keep on-screen and scrollable */
-  .info-popover { max-width: calc(100vw - 24px); }
-  .info-popover-body { max-height: 55vh; }
-
-  /* Look-through multiple input: comfortable touch target */
-  #lt-multiple { min-height: 36px; }
-
-  /* Subtabs + nav already scroll; make the beta badge not add height */
-  .nav-badge { vertical-align: baseline; font-size: 0.55rem; }
-
-  /* Details expander tables */
-}
-
-@media (max-width: 400px) {
-  .kpi-card .value { font-size: 1.05rem; }
-  .subtabs a { padding: 8px 8px; font-size: 0.8rem; }
-}
-
 /* Full-width opt-in for wide tables (investors overview) */
 .container.wide { max-width: none; padding-left: 20px; padding-right: 20px; }
 
@@ -605,11 +598,6 @@ tr.row-detail > td { background: var(--panel-2); padding: 4px 12px 12px; }
   font-variant-numeric: tabular-nums;
 }
 .compact-table th { font-size: 0.68rem; letter-spacing: 0.8px; }
-@media (max-width: 720px) {
-  .container.wide { padding-left: 12px; padding-right: 12px; }
-}
-
-
 /* ─── View styles (folded in from the per-view <style> injections) ────────
    These lived as JS template strings in the accounting, portfolio and admin
    views, with .data-table-wrap / .data-table defined twice in near-identical

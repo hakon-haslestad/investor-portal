@@ -29,13 +29,13 @@
 .slide-title h1 { font-size: 4rem; }
 .slide-title .participants { color: var(--muted); margin-top: 18px; }
 
-.setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px; }
 .setup-row { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
 .setup-row .name { font-size: 1.1rem; font-weight: 600; }
 .setup-row .team { color: var(--muted); font-size: 0.85rem; margin-bottom: 8px; }
 .setup-row .buyin { color: var(--muted); font-size: 0.8rem; margin-top: 6px; }
 
-.standings { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 20px; }
+.standings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 16px; margin-top: 20px; }
 .standings .col h3 { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.4px; margin: 0 0 10px; }
 .standings .rank-row { background: var(--panel); border: 1px solid var(--border); padding: 12px 14px; border-radius: var(--radius); margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
 .standings .rank-row .badge { font-size: 1.6rem; }

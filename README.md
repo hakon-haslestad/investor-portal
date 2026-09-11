@@ -75,6 +75,27 @@ file, commit, push, GitHub Pages rebuilds in under a minute.
 pages carry a `?v=YYYYMMDD` query string. When you change a JS/CSS file,
 bump this version (find-and-replace across `docs/*.html`).
 
+**Tables:** every table goes through `UI.table(cols, rows, opts)` in
+`docs/js/components.js` — don't hand-write a `<table>`. Each column
+declares a priority so the table fits a phone:
+
+| `p` | Visible from | What belongs there                       |
+| --- | ------------ | ---------------------------------------- |
+| `1` | always       | the identity column + the number the table is read for |
+| `2` | 600px        | the normal desktop reading set           |
+| `3` | 960px        | completeness / audit columns             |
+
+Hidden columns stay in the DOM and are revealed by a chevron button, so
+nothing is lost on a small screen — pick `p1` for what someone would
+want at a glance, not for what is cheapest to render. `opts.foot` adds a
+totals row that hides in step with its columns; a row can pass
+`expand: false` (grouping rows) and a whole table `expandable: false`
+(editing grids, where a read-only panel would mislead).
+
+**Charts** size themselves via `Charts.fitBox`: font sizes are in viewBox
+units, so on a narrow screen the box shrinks rather than the text. Pass
+`width`/`height` only when a layout genuinely needs a different aspect.
+
 ## Sheet contract
 
 | Tab                        | Purpose                                                    |
