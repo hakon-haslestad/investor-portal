@@ -436,6 +436,17 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 .inv-chip .dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; flex: none; }
 
 .price-freshness { color: var(--muted); font-size: 0.82rem; }
+
+/* Write-access gate — shown on editing surfaces until the read+write Sheets
+   scope is granted (see UI.writeGate). */
+.write-gate {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin: 12px 0;
+  font-size: 0.88rem;
+}
+.write-gate .btn { flex: none; }
 .price-freshness.stale { color: var(--accent-2); }
 
 @media (max-width: 720px) {

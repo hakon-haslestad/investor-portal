@@ -239,10 +239,33 @@
     }
   }
 
+  // ── Write-access gate ────────────────────────────────────────────────────
+  // Upgrading to the read+write Sheets scope is a full-page redirect, so an
+  // in-flight edit cannot survive it. Call this when an editing surface OPENS,
+  // not when Save is pressed: the user grants access first and their work is
+  // never thrown away mid-form.
+  //
+  // Returns true when the session can already write. Otherwise renders an
+  // "Enable editing" prompt into `mount` and returns false.
+  function writeGate(mount, what) {
+    if (!mount) return window.Auth.hasWriteScope();
+    if (window.Auth.hasWriteScope()) { mount.innerHTML = ''; return true; }
+    mount.innerHTML = `<div class="flash write-gate">
+      <div><strong>Editing needs write access.</strong> ${esc(what || 'This action')} writes to the club\'s Google Sheet. You will bounce through Google once and land back here.</div>
+      <button type="button" class="btn" data-write-gate>Enable editing</button>
+    </div>`;
+    mount.querySelector('[data-write-gate]').addEventListener('click', () => {
+      // Navigates away; consumeRedirectToken() restores this hash on return.
+      window.Auth.requestWriteAccess();
+    });
+    return false;
+  }
+
   window.UI = {
     esc, kpiGrid, section, table, subTabs,
     rangePicker, bindRangePicker, RANGE_PRESETS,
     flash, emptyState, investorChip,
     infoIcon, enableInfoPopovers, fundamentalsTable, renderSecurityDrilldown,
+    writeGate,
   };
 })();

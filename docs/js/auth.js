@@ -1,10 +1,19 @@
-// Google Identity Services Token Client wrapper.
-// Issues access tokens (~1h TTL, no refresh tokens — that's normal for browser flows).
-// Re-auth on reload is silent if the user has an active Google session and previously consented.
+// Google OAuth 2.0 implicit *redirect* flow — the portal's one and only
+// sign-in mechanism. Navigate to Google, come back with the token in the URL
+// fragment. No popups, no Google Identity Services library.
+//
+// Issues access tokens (~1h TTL, no refresh tokens — that's normal for browser
+// flows). Re-auth on reload is silent while the stored token is still valid;
+// after that the user clicks Sign in once more.
+//
+// The same redirect is reused to upgrade to the read+write Sheets scope
+// (see requestWriteAccess), so there is exactly one code path to reason about.
 
 (function () {
   const STORAGE_KEY = 'portal.token';
-  // (token clients are created per-request — see requestToken)
+  const EMAIL_KEY = 'portal.email';
+  const STATE_KEY = 'portal.oauth_state';
+  const RETURN_KEY = 'portal.oauth_return';
   let cachedToken = null;
   let cachedEmail = null;
 
@@ -23,8 +32,13 @@
   function coversScopes(haveStr, neededStr) {
     const have = scopeSet(haveStr);
     // 'openid' is implied whenever any userinfo/identity scope was granted.
+    const SHEETS = 'https://www.googleapis.com/auth/spreadsheets';
     for (const s of scopeSet(neededStr)) {
       if (s === 'openid' && (have.has('openid') || have.has(normScope('email')))) continue;
+      // The read+write Sheets scope subsumes the read-only one. Google never
+      // echoes both, so without this an upgraded token looks like it lost
+      // read access and gets thrown away on the next page load.
+      if (s === SHEETS + '.readonly' && have.has(SHEETS)) continue;
       if (!have.has(s)) return false;
     }
     return true;
@@ -41,7 +55,7 @@
       // (so changing config.js OAUTH_SCOPE invalidates stale tokens).
       if (!coversScopes(parsed.scope, window.PORTAL_CONFIG.OAUTH_SCOPE)) {
         sessionStorage.removeItem(STORAGE_KEY);
-        sessionStorage.removeItem('portal.email');
+        sessionStorage.removeItem(EMAIL_KEY);
         return null;
       }
       return parsed;
@@ -53,59 +67,19 @@
     cachedToken = tok;
   }
 
+  // Everything this origin cached on behalf of the signed-in user. The sheet
+  // title cache is keyed per spreadsheet (sheet.js spreadsheetTitle), so it is
+  // swept by prefix rather than by name.
   function clearToken() {
     sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem('portal.email');
+    sessionStorage.removeItem(EMAIL_KEY);
+    sessionStorage.removeItem(STATE_KEY);
+    sessionStorage.removeItem(RETURN_KEY);
+    for (const k of Object.keys(sessionStorage)) {
+      if (k.startsWith('portal.sheetTitle.')) sessionStorage.removeItem(k);
+    }
     cachedToken = null;
     cachedEmail = null;
-  }
-
-  function waitForGis() {
-    return new Promise((resolve) => {
-      if (window.google && window.google.accounts && window.google.accounts.oauth2) return resolve();
-      const t = setInterval(() => {
-        if (window.google && window.google.accounts && window.google.accounts.oauth2) {
-          clearInterval(t); resolve();
-        }
-      }, 50);
-    });
-  }
-
-  // One FRESH GIS token client per request. Reusing a client after a
-  // blocked/abandoned popup poisons it: the next requestAccessToken routes
-  // its response to the stale internal request and the promise hangs
-  // forever — exactly the "sign in and land back at the gate" loop.
-  // error_callback catches popup-blocked/closed so callers get a rejection
-  // instead of a hang.
-  function requestToken({ silent, scope }) {
-    const requestScope = scope || window.PORTAL_CONFIG.OAUTH_SCOPE;
-    return new Promise((resolve, reject) => {
-      waitForGis().then(() => {
-        let settled = false;
-        const client = window.google.accounts.oauth2.initTokenClient({
-          client_id: window.PORTAL_CONFIG.OAUTH_CLIENT_ID,
-          scope: requestScope,
-          callback: (resp) => {
-            if (settled) return;
-            settled = true;
-            if (resp.error) return reject(new Error(resp.error_description || resp.error));
-            const tok = {
-              access_token: resp.access_token,
-              expires_at: Date.now() + (Number(resp.expires_in || 3600) * 1000),
-              scope: resp.scope,
-            };
-            storeToken(tok);
-            resolve(tok);
-          },
-          error_callback: (err) => {
-            if (settled) return;
-            settled = true;
-            reject(new Error((err && (err.message || err.type)) || 'popup failed'));
-          },
-        });
-        client.requestAccessToken({ prompt: silent ? '' : 'consent' });
-      }).catch(reject);
-    });
   }
 
   function tokenHasScope(tok, scopeString) {
@@ -119,16 +93,15 @@
     });
     if (!r.ok) throw new Error('userinfo failed: ' + r.status);
     const j = await r.json();
-    sessionStorage.setItem('portal.email', j.email || '');
+    sessionStorage.setItem(EMAIL_KEY, j.email || '');
     cachedEmail = j.email || null;
     return j;
   }
 
   // ── Redirect-based sign-in ─────────────────────────────────────────────
-  // The GIS popup flow proved unreliable (COOP/popup-relay breakage leaves
-  // the promise hanging with no callback). The classic implicit redirect
-  // flow has no popup at all: navigate to Google, come back with the token
-  // in the URL fragment. Requires this page's URL to be listed under
+  // A popup flow proved unreliable (COOP/popup-relay breakage leaves the
+  // promise hanging with no callback). The classic implicit redirect flow has
+  // no popup at all. Requires this page's URL to be listed under
   // "Authorized redirect URIs" on the OAuth client.
   function redirectUri() {
     // Always the canonical directory URL — strip index.html so every entry
@@ -136,17 +109,26 @@
     return location.origin + location.pathname.replace(/index\.html$/, '');
   }
 
-  function signInRedirect() {
+  // scope defaults to the read scope. returnHash, when given, is the hash the
+  // user should land back on — the whole point of an in-app scope upgrade is
+  // that it returns you to the view you left.
+  function signInRedirect(scope, returnHash) {
     const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    sessionStorage.setItem('portal.oauth_state', state);
+    sessionStorage.setItem(STATE_KEY, state);
+    if (returnHash) sessionStorage.setItem(RETURN_KEY, returnHash);
+    else sessionStorage.removeItem(RETURN_KEY);
     const params = new URLSearchParams({
       client_id: window.PORTAL_CONFIG.OAUTH_CLIENT_ID,
       redirect_uri: redirectUri(),
       response_type: 'token',
-      scope: window.PORTAL_CONFIG.OAUTH_SCOPE,
+      scope: scope || window.PORTAL_CONFIG.OAUTH_SCOPE,
+      // Carries previously granted scopes forward, so upgrading to write
+      // never silently drops the read scope.
       include_granted_scopes: 'true',
       state,
-      prompt: 'select_account',
+      // Only prompt for an account on a fresh sign-in. A scope upgrade for an
+      // already-signed-in user should not make them pick their account again.
+      prompt: returnHash ? 'consent' : 'select_account',
     });
     location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + params);
   }
@@ -158,8 +140,8 @@
     const h = location.hash || '';
     if (!h.includes('access_token=')) return false;
     const p = new URLSearchParams(h.replace(/^#/, ''));
-    const expected = sessionStorage.getItem('portal.oauth_state');
-    sessionStorage.removeItem('portal.oauth_state');
+    const expected = sessionStorage.getItem(STATE_KEY);
+    sessionStorage.removeItem(STATE_KEY);
     const ok = p.get('access_token') && (!expected || p.get('state') === expected);
     if (ok) {
       storeToken({
@@ -168,7 +150,11 @@
         scope: p.get('scope') || window.PORTAL_CONFIG.OAUTH_SCOPE,
       });
     }
-    history.replaceState(null, '', location.pathname + location.search);
+    // Restore the view the user was on before a scope upgrade bounced them
+    // through Google. Falls back to a clean URL for a plain sign-in.
+    const back = sessionStorage.getItem(RETURN_KEY);
+    sessionStorage.removeItem(RETURN_KEY);
+    history.replaceState(null, '', location.pathname + location.search + (ok && back ? back : ''));
     return !!ok;
   }
 
@@ -184,35 +170,37 @@
 
     consumeRedirectToken,
 
+    // Returns the stored, still-valid token or throws. Never initiates a
+    // sign-in: the caller decides whether to show the gate.
     async ensureToken() {
       const t = loadCachedToken();
       if (t) {
         cachedToken = t;
         return t;
       }
-      // No stored session → don't touch GIS here. A token request always
-      // opens a popup, and without a user gesture the browser blocks it —
-      // the caller should show the sign-in button instead.
       throw new Error('not signed in');
     },
 
     async signOut() {
       const tok = loadCachedToken();
       clearToken();
-      if (tok && window.google && window.google.accounts && window.google.accounts.oauth2) {
-        window.google.accounts.oauth2.revoke(tok.access_token, () => {});
-      }
+      if (!tok) return;
+      // Best-effort revocation. keepalive so it still goes out if the caller
+      // reloads immediately afterwards; failure here is not worth blocking on.
+      try {
+        await fetch('https://oauth2.googleapis.com/revoke?token=' +
+          encodeURIComponent(tok.access_token), { method: 'POST', keepalive: true });
+      } catch (_e) { /* already signed out locally — that's what matters */ }
     },
 
     getEmail() {
       if (cachedEmail) return cachedEmail;
-      return sessionStorage.getItem('portal.email');
+      return sessionStorage.getItem(EMAIL_KEY);
     },
 
-    // Resolve the signed-in email from an existing token WITHOUT opening a
-    // popup — for the silent auto-login path, where a fresh browser session
-    // has a valid token but no cached email. An interactive signIn() here
-    // would be popup-blocked (no user gesture) and dead-end the login.
+    // Resolve the signed-in email from an existing token — for the silent
+    // auto-login path, where a fresh browser session has a valid token but no
+    // cached email.
     async ensureEmail() {
       if (this.getEmail()) return this.getEmail();
       const t = cachedToken || loadCachedToken();
@@ -228,35 +216,28 @@
       if (t && Date.now() >= t.expires_at - 60_000) t = null;
       if (!t) t = loadCachedToken();
       if (t) { cachedToken = t; return t.access_token; }
-      // No valid token and no user gesture available here — bubble up so
-      // the UI can offer the sign-in button (which redirects).
+      // No valid token — bubble up so the UI can offer the sign-in button.
       throw new Error('unauthenticated');
     },
 
     // Drop the current token (memory + storage) so the next accessToken()
-    // call runs a silent GIS refresh. Called by the Sheets client on 401.
+    // call reports 'unauthenticated' and the UI can re-gate. Called by the
+    // Sheets client on 401.
     invalidateToken() {
       cachedToken = null;
       sessionStorage.removeItem(STORAGE_KEY);
     },
 
-    // Trigger a separate consent prompt that adds the read+write Sheets
-    // scope to the existing token. Members never need this; admin pages
-    // and write-actions call it before issuing a mutation. If the user
-    // already has the broader scope (e.g. cached from a previous session),
-    // this resolves silently.
-    async requestWriteAccess() {
+    // Upgrade to the read+write Sheets scope via the same redirect. This
+    // navigates away, so callers must gate BEFORE collecting input — see
+    // UI.writeGate in components.js — rather than calling this mid-save.
+    requestWriteAccess() {
       const writeScope = window.PORTAL_CONFIG.OAUTH_SCOPE_WRITE;
       if (!writeScope) throw new Error('OAUTH_SCOPE_WRITE not configured');
-      const existing = cachedToken || loadCachedToken();
-      if (tokenHasScope(existing, writeScope)) {
-        cachedToken = existing; return existing;
-      }
-      // Popup with a hard timeout — if the popup relay is broken in this
-      // browser, fail with guidance instead of hanging forever.
-      const timeout = new Promise((_, rej) => setTimeout(() =>
-        rej(new Error('write-access popup timed out — allow popups for this site and retry')), 25_000));
-      return Promise.race([requestToken({ silent: false, scope: writeScope }), timeout]);
+      if (this.hasWriteScope()) return Promise.resolve(cachedToken || loadCachedToken());
+      signInRedirect(writeScope, location.hash || '');
+      // Never resolves — the browser is navigating away.
+      return new Promise(() => {});
     },
 
     hasWriteScope() {

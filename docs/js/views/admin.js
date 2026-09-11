@@ -226,14 +226,10 @@
     const metaLine = el.querySelector('#meta-line');
     const statusEl = el.querySelector('#status');
 
-    // Admin needs read+write Sheets access — consent prompt on first visit,
-    // silent once the broader scope is cached.
-    try { await window.Auth.requestWriteAccess(); }
-    catch (e) {
-      root.innerHTML =
-        `<div class="flash error">Admin needs write access to the sheet. ${escapeHtml(e.message || String(e))} · <a href="#/admin" onclick="location.reload()">Try again</a></div>`;
-      return;
-    }
+    // Admin needs read+write Sheets access. Gate on entry rather than on save:
+    // granting it is a full-page redirect, so asking later would discard any
+    // edits already made on this screen.
+    if (!window.UI.writeGate(root, 'Editing ownership attribution')) return;
 
     // Fresh Dim-values index so we have UpdatedAt for the soft-guard.
     let dimIndex = await window.DimValues.readIndex();
