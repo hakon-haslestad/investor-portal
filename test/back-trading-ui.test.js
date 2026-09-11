@@ -58,7 +58,7 @@ const ROSTER = [{ code: 'HH', name: 'Hakon' }, { code: 'JC', name: 'Jonas' }, { 
 
 test('the trade facts render as one horizontal strip, not a grid of cards', () => {
   const html = mountAsk(ROSTER);
-  assert.match(html, /class="bt-facts"/, 'the strip is there');
+  assert.match(html, /class="game-facts"/, 'the strip is there');
   assert.ok(!html.includes('detail-grid'), 'the old card grid is gone');
   assert.ok(!html.includes('kpi-card'), 'and so are the KPI cards it held');
   for (const label of ['Entry', 'Exit', 'Realised', 'Held', 'Sold by']) {
@@ -68,39 +68,39 @@ test('the trade facts render as one horizontal strip, not a grid of cards', () =
 
 test('every player gets their own column, with both choices under their name', () => {
   const html = mountAsk(ROSTER);
-  const cols = html.match(/class="bt-bet [a-z]+" data-player=/g) || [];
+  const cols = html.match(/class="game-player [a-z]+" data-player=/g) || [];
   assert.equal(cols.length, 3, 'one column per player');
   for (const p of ROSTER) {
     assert.ok(html.includes(`data-player="${p.code}"`), `${p.code} has a column`);
-    assert.ok(html.includes(`<div class="bt-bet-who">${p.name}</div>`),
+    assert.ok(html.includes(`<div class="game-player-who">${p.name}</div>`),
       `${p.name} is the heading of their own column`);
   }
   // Two choices each, and the name comes BEFORE them in the markup.
   assert.equal((html.match(/data-bet="hold"/g) || []).length, 3);
   assert.equal((html.match(/data-bet="sell"/g) || []).length, 3);
-  assert.ok(html.indexOf('bt-bet-who') < html.indexOf('data-bet='),
+  assert.ok(html.indexOf('game-player-who') < html.indexOf('data-bet='),
     'the player name sits above their choice');
 });
 
 test('a column shows whether that player has called it yet', () => {
   const html = mountAsk(ROSTER);
-  assert.equal((html.match(/class="bt-bet waiting"/g) || []).length, 3,
+  assert.equal((html.match(/class="game-player waiting"/g) || []).length, 3,
     'nobody has called it at the start');
-  assert.ok(!html.includes('class="bt-bet in"'));
+  assert.ok(!html.includes('class="game-player in"'));
 });
 
 test('the choices are real buttons with labels, not bare pills', () => {
   const html = mountAsk(ROSTER);
-  assert.match(html, /class="bt-choice"[^>]*data-bet="hold"/);
-  assert.match(html, /<span class="bt-choice-label">Hold<\/span>/);
-  assert.match(html, /<span class="bt-choice-label">Sell<\/span>/);
+  assert.match(html, /class="game-choice"[^>]*data-bet="hold"/);
+  assert.match(html, /<span class="game-choice-label">Hold<\/span>/);
+  assert.match(html, /<span class="game-choice-label">Sell<\/span>/);
   assert.ok(!/data-bet="[a-z]+"[^>]*class="preset/.test(html), 'not reusing the filter-pill style');
 });
 
 test('a single player still gets a column rather than a degenerate layout', () => {
   const html = mountAsk([{ code: 'HH', name: 'Hakon' }]);
   assert.equal((html.match(/data-player=/g) || []).length, 1);
-  assert.match(html, /class="bt-facts"/);
+  assert.match(html, /class="game-facts"/);
 });
 
 test('reveal is gated until somebody has called it', () => {

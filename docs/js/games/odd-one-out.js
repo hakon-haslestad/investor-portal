@@ -19,11 +19,23 @@
     let best = 0;
     let correct = 0;
     let played = 0;
+    let rounds = 0;
+    let picks = new Map();          // this round: player code -> card index
+    const scores = new Map();       // whole session: player code -> correct calls
     // Hot-seat: one device passed around.
     let turn = 0;
     const roster = players && players.length ? players : [{ code: '', name: 'Player' }];
 
-    function currentPlayer() { return roster[turn % roster.length]; }
+    // Whoever is next to call it: the first player, from `turn`, who has not
+    // picked yet. `turn` advances each round so the same person does not
+    // always go first.
+    function currentPlayer() {
+      for (let k = 0; k < roster.length; k++) {
+        const p = roster[(turn + k) % roster.length];
+        if (!picks.has(p.code)) return p;
+      }
+      return roster[turn % roster.length];
+    }
 
     function cardFields(t, hide) {
       const h = new Set(hide);
@@ -41,6 +53,37 @@
         `<div class="ooo-field"><dt>${k}</dt><dd>${v}</dd></div>`).join('');
     }
 
+    // Facts on one line, the same strip Back Trading uses.
+    function factStrip(rows) {
+      return `<div class="game-facts">${rows.map(([label, value, cls]) => `
+        <div class="game-fact">
+          <dt>${escapeHtml(label)}</dt>
+          <dd class="${cls || ''}">${value}</dd>
+        </div>`).join('')}</div>`;
+    }
+
+    // Players across the page with their pick underneath. Cards are numbered,
+    // and a player's column shows the number they went for — so the room can
+    // see who has called it and who is still thinking.
+    function playerRow() {
+      const active = currentPlayer();
+      return `<div class="game-players">${roster.map((p) => {
+        const pick = picks.get(p.code);
+        const isTurn = !answered && p.code === active.code;
+        const right = answered && pick != null ? pick === round.answer : null;
+        const cls = ['game-player',
+          right === true ? 'correct' : right === false ? 'wrong' : (pick != null ? 'in' : 'waiting'),
+          isTurn ? 'active' : ''].filter(Boolean).join(' ');
+        return `<div class="${cls}">
+          <div class="game-player-who">${escapeHtml(p.name)}</div>
+          <div class="ooo-pick">${pick != null
+            ? `${pick + 1}${right === true ? ' ✓' : right === false ? ' ✗' : ''}`
+            : (isTurn ? '<span class="ooo-pick-turn">your turn</span>' : '—')}</div>
+          <div class="ooo-tally">${scores.get(p.code) || 0}</div>
+        </div>`;
+      }).join('')}</div>`;
+    }
+
     function render() {
       if (dead) return;
       if (!round) {
@@ -49,17 +92,25 @@
           'Every rule needs three stocks that share something and one that does not. Widen the period and try again.');
         return;
       }
-      const scoreLabel = soberMode ? 'points' : 'streak';
+      const waiting = roster.length - picks.size;
       el.innerHTML = `
         <div class="ooo">
-          <div class="ooo-bar">
-            <span class="ooo-turn">${roster.length > 1 ? `${escapeHtml(currentPlayer().name)}'s turn` : ''}</span>
-            <span class="ooo-score">🔥 ${scoreLabel} ${streak} · best ${best}</span>
-          </div>
-          <p class="ooo-prompt">Three of these belong together. Which one doesn't?</p>
+          ${factStrip([
+            ['Round', String(rounds + 1), ''],
+            ['Correct', `${correct}/${played}`, ''],
+            [soberMode ? 'Points' : 'Streak', String(streak), streak > 0 ? 'positive' : ''],
+            ['Best', String(best), ''],
+          ])}
+          ${playerRow()}
+          <p class="ooo-prompt">${answered
+            ? 'Three of these belonged together.'
+            : `Three of these belong together. Which one doesn't? ${roster.length > 1
+              ? `<strong>${escapeHtml(currentPlayer().name)}</strong> to pick${waiting > 1 ? ` · ${waiting} still to call` : ''}.`
+              : ''}`}</p>
           <div class="ooo-cards">
             ${round.cards.map((t, i) => `
               <button type="button" class="ooo-card" data-i="${i}" ${answered ? 'disabled' : ''}>
+                <span class="ooo-num">${i + 1}</span>
                 <span class="ooo-name">${escapeHtml(t.security)}</span>
                 <dl class="ooo-fields">${cardFields(t, round.hideFields)}</dl>
               </button>`).join('')}
@@ -69,34 +120,53 @@
       el.querySelectorAll('.ooo-card').forEach((btn) => {
         btn.addEventListener('click', () => answer(Number(btn.getAttribute('data-i'))));
       });
+      if (answered) renderVerdict();
     }
 
+    // One tap is one player's call. The board only reveals once everyone has
+    // had theirs, so nobody is answering with the answer already on screen.
     function answer(i) {
       if (answered || !round) return;
-      answered = true;
-      played += 1;
-      const right = i === round.answer;
-      if (right) { correct += 1; streak += 1; best = Math.max(best, streak); }
-      else streak = 0;
+      picks.set(currentPlayer().code, i);
+      if (picks.size < roster.length) { render(); return; }
 
+      answered = true;
+      rounds += 1;
+      for (const [code, pick] of picks) {
+        played += 1;
+        if (pick === round.answer) { correct += 1; scores.set(code, (scores.get(code) || 0) + 1); }
+      }
+      // The streak belongs to the table as a whole: a round counts when
+      // everyone got it.
+      const allRight = [...picks.values()].every((p) => p === round.answer);
+      if (allRight) { streak += 1; best = Math.max(best, streak); } else streak = 0;
+      render();
+    }
+
+    function renderVerdict() {
+      const mount = el.querySelector('#ooo-result');
+      if (!mount) return;
       el.querySelectorAll('.ooo-card').forEach((btn, idx) => {
         btn.disabled = true;
         if (idx === round.answer) btn.classList.add('is-answer');
-        if (idx === i && !right) btn.classList.add('is-wrong');
+        if (idx !== round.answer && [...picks.values()].includes(idx)) btn.classList.add('is-wrong');
       });
 
-      const who = roster.length > 1 ? `${escapeHtml(currentPlayer().name)} — ` : '';
+      const wrong = roster.filter((p) => picks.get(p.code) !== round.answer);
+      const rightOnes = roster.filter((p) => picks.get(p.code) === round.answer);
+      const allRight = wrong.length === 0;
       const drink = soberMode
-        ? (right ? '+1 point' : 'no point')
-        : (right ? 'nobody drinks' : 'drink 🍺');
-      el.querySelector('#ooo-result').innerHTML = `
-        <div class="game-result ${right ? 'win' : 'loss'} ooo-verdict">
-          <div class="verdict">${who}${right ? 'Correct 🎯' : 'Wrong 💀'}</div>
+        ? `${rightOnes.length} point${rightOnes.length === 1 ? '' : 's'} awarded`
+        : (allRight ? 'Nobody drinks 🎉' : `${wrong.map((p) => escapeHtml(p.name)).join(', ')} drink${wrong.length === 1 ? 's' : ''} 🍺`);
+
+      mount.innerHTML = `
+        <div class="game-result ${allRight ? 'win' : 'loss'} ooo-verdict">
+          <div class="verdict">${allRight ? 'All correct 🎯' : `${rightOnes.length}/${roster.length} got it`}</div>
           <div class="who-state">${escapeHtml(round.description)}</div>
           <div class="pnl">${drink}</div>
           <div style="margin-top:14px"><button class="btn game-spin" id="ooo-next">Next round</button></div>
         </div>`;
-      el.querySelector('#ooo-next').addEventListener('click', () => {
+      mount.querySelector('#ooo-next').addEventListener('click', () => {
         turn += 1;
         newRound();
       });
@@ -107,6 +177,7 @@
       round = window.OddOneOutRules.buildRound(trades, rng, lastRuleId);
       if (round) lastRuleId = round.ruleId;
       answered = false;
+      picks = new Map();
       render();
     }
 
@@ -122,8 +193,11 @@
             gameId: 'odd-one-out',
             competitionId: competitionId || '',
             players: roster.map((p) => p.name),
-            summary: `${correct}/${played} correct · best ${scoreWord(best)}`,
-            payload: { played, correct, best, sober: soberMode },
+            summary: `${rounds} round${rounds === 1 ? '' : 's'} · ${correct}/${played} correct · best ${scoreWord(best)}`,
+            payload: {
+              rounds, played, correct, best, sober: soberMode,
+              scores: Object.fromEntries(scores),
+            },
           });
         }
       },

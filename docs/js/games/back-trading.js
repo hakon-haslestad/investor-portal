@@ -180,8 +180,8 @@
     // Facts about the trade, read left to right as one line rather than as a
     // block of cards — they are context for the call, not the point of it.
     function factStrip(rows) {
-      return `<div class="bt-facts">${rows.map(([label, value, cls, sub]) => `
-        <div class="bt-fact">
+      return `<div class="game-facts">${rows.map(([label, value, cls, sub]) => `
+        <div class="game-fact">
           <dt>${escapeHtml(label)}</dt>
           <dd class="${cls || ''}">${value}</dd>
           ${sub ? `<small>${escapeHtml(sub)}</small>` : ''}
@@ -191,17 +191,17 @@
     // Players across the top, each one's call underneath them — so the room
     // reads as a row of people rather than a stack of form rows.
     function renderBets() {
-      return `<div class="bt-bets">${roster.map((p) => {
+      return `<div class="game-players">${roster.map((p) => {
         const bet = bets.get(p.code);
         const state = bet === undefined ? 'waiting' : 'in';
-        return `<div class="bt-bet ${state}" data-player="${escapeHtml(p.code)}">
-          <div class="bt-bet-who">${escapeHtml(p.name)}</div>
-          <div class="bt-bet-buttons">
-            <button type="button" class="${bet === true ? 'bt-choice active' : 'bt-choice'}" data-bet="hold" aria-pressed="${bet === true}">
-              <span class="bt-choice-icon">💎</span><span class="bt-choice-label">Hold</span>
+        return `<div class="game-player ${state}" data-player="${escapeHtml(p.code)}">
+          <div class="game-player-who">${escapeHtml(p.name)}</div>
+          <div class="game-player-choice">
+            <button type="button" class="${bet === true ? 'game-choice active' : 'game-choice'}" data-bet="hold" aria-pressed="${bet === true}">
+              <span class="game-choice-icon">💎</span><span class="game-choice-label">Hold</span>
             </button>
-            <button type="button" class="${bet === false ? 'bt-choice active' : 'bt-choice'}" data-bet="sell" aria-pressed="${bet === false}">
-              <span class="bt-choice-icon">✂️</span><span class="bt-choice-label">Sell</span>
+            <button type="button" class="${bet === false ? 'game-choice active' : 'game-choice'}" data-bet="sell" aria-pressed="${bet === false}">
+              <span class="game-choice-icon">✂️</span><span class="game-choice-label">Sell</span>
             </button>
           </div>
         </div>`;
@@ -236,9 +236,9 @@
           <p class="text-muted text-small">Nothing after the sell is shown yet. Players who sit out simply do not score.</p>
         </div>`;
       mountChart('#bt-chart', s, trade, false);
-      el.querySelectorAll('.bt-bet [data-bet]').forEach((btn) => {
+      el.querySelectorAll('.game-player [data-bet]').forEach((btn) => {
         btn.addEventListener('click', () => {
-          const code = btn.closest('.bt-bet').getAttribute('data-player');
+          const code = btn.closest('.game-player').getAttribute('data-player');
           bets.set(code, btn.getAttribute('data-bet') === 'hold');
           renderAsk(trade); // re-render so the toggle and the counter update
         });
