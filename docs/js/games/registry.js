@@ -79,6 +79,20 @@
       drinkingRule: 'Sold too early? The seller drinks. Guessed wrong? You drink.',
       component: window.GameBackTrading,
     },
+    {
+      id: 'horse-race',
+      name: 'Horse race',
+      icon: '🏇',
+      tagline: 'Pick a horse, replay a price window, last one drinks.',
+      rules: `<p>Everyone picks a ticker from the club's holdings. A past price window is then replayed as a race — position on the track is return since the window opened, so every horse starts level whatever it costs.</p>
+              <p>Odds come from how volatile the horse was <em>before</em> the window. They are decoration: they never affect the running.</p>
+              <p>Daily closes only, so the shortest race is five days. The finish is the real return — the wobble along the way is just for show.</p>`,
+      tags: ['party', 'recurring'],
+      players: '2+',
+      minTrades: 2,
+      drinkingRule: 'Last place drinks — or, in harder mode, drink once per horse that beat yours.',
+      component: window.GameHorseRace,
+    },
   ];
 
   window.Games = {

@@ -120,3 +120,33 @@ test('history survives unparseable storage instead of throwing', () => {
   w.GameShell.history.add({ gameId: 'a', competitionId: 'C1', players: [], summary: 'ok', payload: {} });
   assert.equal(w.GameShell.history.list('C1', 'a').length, 1);
 });
+
+test('renderRecent lists newest rounds and is empty when there are none', () => {
+  const { GameShell } = shellCtx();
+  assert.equal(GameShell.renderRecent('C1', 'horse-race'), '', 'nothing yet renders as nothing');
+  GameShell.history.add({ gameId: 'horse-race', competitionId: 'C1', players: ['HH'], summary: 'HH won', payload: {} });
+  GameShell.history.add({ gameId: 'horse-race', competitionId: 'C1', players: ['JC'], summary: 'JC won', payload: {} });
+  const html = GameShell.renderRecent('C1', 'horse-race');
+  assert.ok(html.includes('JC won'));
+  assert.ok(html.indexOf('JC won') < html.indexOf('HH won'), 'newest first');
+  assert.equal(GameShell.renderRecent('C1', 'odd-one-out'), '', 'scoped to the game');
+});
+
+test('renderRecent caps at the requested limit', () => {
+  const { GameShell } = shellCtx();
+  for (let i = 0; i < 12; i++) {
+    GameShell.history.add({ gameId: 'g', competitionId: 'C', players: [], summary: `round ${i}`, payload: {} });
+  }
+  const html = GameShell.renderRecent('C', 'g', 5);
+  assert.equal((html.match(/<li>/g) || []).length, 5);
+  assert.ok(html.includes('round 11'), 'the newest is included');
+  assert.ok(!html.includes('round 6'), 'older ones are not');
+});
+
+test('history escapes summaries, since they carry security names', () => {
+  const { GameShell } = shellCtx();
+  GameShell.history.add({ gameId: 'g', competitionId: 'C', players: [], summary: '<img src=x onerror=1>', payload: {} });
+  const html = GameShell.renderRecent('C', 'g');
+  assert.ok(!html.includes('<img'), 'markup in a summary is escaped');
+  assert.ok(html.includes('&lt;img'));
+});

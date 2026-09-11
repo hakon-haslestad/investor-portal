@@ -33,7 +33,7 @@
 
     function mountGame() {
       const summary = S.filterSummary(filters, pool, compById);
-      const recent = renderRecent(game, filters);
+      const recent = S.renderRecent(filters.competitionId, game.id);
       el.innerHTML = `
         <div class="hero">
           <h2>Games 🎲🍺 ${window.UI.infoIcon('the-game')}</h2>
@@ -52,11 +52,18 @@
         return;
       }
 
+      // Wrap the store so writing a result refreshes the shell's "Recent
+      // rounds" in place — otherwise it would only update on remount.
+      const liveHistory = {
+        list: (c, g, n) => S.history.list(c, g, n),
+        add: (r) => { S.history.add(r); refreshRecent(); },
+      };
+
       active = game.component.mount(board, {
         trades, players,
         soberMode: S.soberMode(),
         pool, rng: window.GameRng(window.GameRng.randomSeed()),
-        history: S.history,
+        history: liveHistory,
         competitionId: filters.competitionId,
       });
 
@@ -66,13 +73,13 @@
       });
     }
 
-    function renderRecent(g, f) {
-      const rows = S.history.list(f.competitionId, g.id, 5);
-      if (!rows.length) return '';
-      return `<ul class="recent-rounds">${rows.map((r) => {
-        const when = String(r.playedAt || '').slice(0, 16).replace('T', ' ');
-        return `<li><span class="text-muted text-small">${window.UI.esc(when)}</span> · ${window.UI.esc(r.summary || '')}</li>`;
-      }).join('')}</ul>`;
+    function refreshRecent() {
+      const wrap = el.querySelector('#recent-wrap');
+      const body = el.querySelector('#recent-body');
+      if (!wrap || !body || !game) return;
+      const html = S.renderRecent(filters.competitionId, game.id);
+      body.innerHTML = html;
+      wrap.hidden = !html;
     }
 
     function mountGrid() {

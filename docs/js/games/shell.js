@@ -241,12 +241,21 @@
         </div>
       </details>
       <div id="game-board"></div>
-      ${recent && recent.length ? `
-        <details class="rules-info game-recent">
-          <summary><span class="info-icon" aria-hidden="true">i</span> Recent rounds (${recent.length})</summary>
-          <div class="rules-body">${recent}</div>
-        </details>` : ''}
+      <details class="rules-info game-recent" id="recent-wrap"${recent ? '' : ' hidden'}>
+        <summary><span class="info-icon" aria-hidden="true">i</span> Recent rounds</summary>
+        <div class="rules-body" id="recent-body">${recent || ''}</div>
+      </details>
     `;
+  }
+
+  // The last few rounds of one game, for the shell's collapsed section.
+  function renderRecent(competitionId, gameId, limit = 5) {
+    const rows = history.list(competitionId, gameId, limit);
+    if (!rows.length) return '';
+    return `<ul class="recent-rounds">${rows.map((r) => {
+      const when = String(r.playedAt || '').slice(0, 16).replace('T', ' ');
+      return `<li><span class="text-muted text-small">${esc(when)}</span> · ${esc(r.summary || '')}</li>`;
+    }).join('')}</ul>`;
   }
 
   window.GameShell = {
@@ -256,6 +265,6 @@
     filtersFromQuery, hashFor, filterSummary,
     renderFilterBar, bindFilterBar,
     renderGrid, bindGrid,
-    renderShell,
+    renderShell, renderRecent,
   };
 })();
