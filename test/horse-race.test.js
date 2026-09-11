@@ -126,11 +126,15 @@ test('interpolation stays inside the series for out-of-range t', () => {
   assert.equal(e.interpolate([0.3], 0.5), 0.3);
 });
 
-test('the race runs 20 seconds for a 5-day window and 30 for longer', () => {
+test('a race lasts about a minute, a little longer for wider windows', () => {
   const e = E();
-  assert.equal(e.durationFor(5), 20000);
-  assert.equal(e.durationFor(20), 30000);
-  assert.equal(e.durationFor(60), 30000);
+  assert.equal(e.durationFor(5), 60000);
+  assert.equal(e.durationFor(20), 75000);
+  assert.equal(e.durationFor(60), 75000);
+  // Long enough to watch, not so long it outlasts the room's patience.
+  for (const d of [5, 20, 60]) {
+    assert.ok(e.durationFor(d) >= 60000 && e.durationFor(d) <= 90000, `window ${d}`);
+  }
 });
 
 // ── buildRace ──────────────────────────────────────────────────────────────

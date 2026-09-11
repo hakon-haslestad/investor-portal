@@ -14,7 +14,7 @@
     { id: 'comp', label: 'Competition to date', days: 60 },
   ];
   const MAX_HORSES = 8;
-  const LANE_H = 46;
+  const LANE_H = 54;
   const VIEW_W = 1000;
   const START_X = 90;
   const RIGHT_X = 930;
@@ -201,7 +201,7 @@
       race.lanes.forEach((l, i) => {
         const y = 30 + i * LANE_H;
         svg.appendChild(svgEl('rect', {
-          x: 0, y: y - 16, width: VIEW_W, height: LANE_H - 6,
+          x: 0, y: y - 24, width: VIEW_W, height: LANE_H - 6,
           fill: i % 2 ? 'rgba(255,255,255,0.02)' : 'transparent',
         }));
         const label = svgEl('text', { x: 6, y: y + 4, fill: '#8a92a6', 'font-size': '13' });
@@ -240,11 +240,23 @@
       const horses = race.lanes.map((l, i) => {
         const y = 30 + i * LANE_H;
         const g = svgEl('g', {});
-        const dot = svgEl('circle', { cx: START_X, cy: y, r: 11, fill: '#2D5BFF', stroke: '#0e0f13', 'stroke-width': '2' });
-        const txt = svgEl('text', { x: START_X, y: y - 16, fill: '#e7e9ee', 'font-size': '12', 'text-anchor': 'middle' });
-        g.appendChild(dot); g.appendChild(txt);
+        // A ring behind the runner, lit only for whoever is in front.
+        const halo = svgEl('circle', {
+          cx: START_X, cy: y, r: 17, fill: 'none',
+          stroke: 'transparent', 'stroke-width': '2',
+        });
+        // The runner itself. 🏇 faces right, which is the way the race runs.
+        const horse = svgEl('text', {
+          x: START_X, y: y + 9, 'font-size': '26', 'text-anchor': 'middle',
+        });
+        horse.textContent = '🏇';
+        const txt = svgEl('text', {
+          x: START_X, y: y - 14, fill: '#e7e9ee', 'font-size': '12',
+          'font-weight': '600', 'text-anchor': 'middle',
+        });
+        g.appendChild(halo); g.appendChild(horse); g.appendChild(txt);
         svg.appendChild(g);
-        return { lane: l, dot, txt, y, seed: 0.13 + i * 0.19 };
+        return { lane: l, halo, horse, txt, y, seed: 0.13 + i * 0.19 };
       });
 
       const say = el.querySelector('#hr-say');
@@ -259,14 +271,18 @@
         const maxPos = Math.max(1e-4, ...positions);
         const scale = (RIGHT_X - START_X) / maxPos;
         positions.forEach((pos, i) => {
-          const x = Math.max(4, Math.min(VIEW_W - 4, START_X + pos * scale));
-          horses[i].dot.setAttribute('cx', x.toFixed(1));
-          horses[i].txt.setAttribute('x', x.toFixed(1));
-          horses[i].txt.textContent = fmtPct(pos * 100, true);
-          horses[i].dot.setAttribute('fill', pos >= 0 ? '#3ee07f' : '#ff5b5b');
+          const x = Math.max(14, Math.min(VIEW_W - 14, START_X + pos * scale));
+          const hh = horses[i];
+          hh.halo.setAttribute('cx', x.toFixed(1));
+          hh.horse.setAttribute('x', x.toFixed(1));
+          hh.txt.setAttribute('x', x.toFixed(1));
+          hh.txt.textContent = fmtPct(pos * 100, true);
+          // The emoji cannot be recoloured, so the running total carries the
+          // green/red instead.
+          hh.txt.setAttribute('fill', pos >= 0 ? '#3ee07f' : '#ff7a7a');
         });
         const lead = positions.indexOf(Math.max(...positions));
-        horses.forEach((hh, i) => hh.dot.setAttribute('stroke', i === lead ? '#ffc94f' : '#0e0f13'));
+        horses.forEach((hh, i) => hh.halo.setAttribute('stroke', i === lead ? '#ffc94f' : 'transparent'));
         setTime(t);
       }
 
@@ -279,7 +295,7 @@
             return;
           }
         }
-        if (elapsed - lastFiller > 4000) {
+        if (elapsed - lastFiller > 6500) {
           lastFiller = elapsed;
           say.textContent = rng.pick(E().FILLER);
         }

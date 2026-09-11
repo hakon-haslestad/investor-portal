@@ -91,9 +91,11 @@
     'The crowd is on its feet.',
   ];
 
-  // Duration: 20s for the short window, 30s for anything longer.
+  // Duration: about a minute, so a race is something to watch and shout at
+  // rather than something that is over before drinks are poured. Longer
+  // windows get a little more time because they have more data to cross.
   function durationFor(windowDays) {
-    return windowDays <= 5 ? 20000 : 30000;
+    return windowDays <= 5 ? 60000 : 75000;
   }
 
   function easeInOutCubic(t) {
