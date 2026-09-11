@@ -317,25 +317,6 @@ td.links a:hover { color: var(--accent); }
   /* KPI cards: 2-up on phone, smaller text */
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
 
-  /* "By investor" table → stacked cards. Hide the header, turn each row into a
-     card, and label each cell from its data-label. */
-  .investor-table thead { display: none; }
-  .investor-table, .investor-table tbody, .investor-table tr, .investor-table td { display: block; width: 100%; }
-  .investor-table tr {
-    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-    margin-bottom: 10px; padding: 6px 12px;
-  }
-  .investor-table td {
-    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
-    text-align: right; border-bottom: 1px solid var(--border); padding: 8px 0;
-  }
-  .investor-table tr td:last-child { border-bottom: none; }
-  .investor-table td::before {
-    content: attr(data-label); color: var(--muted); font-size: 0.72rem;
-    text-transform: uppercase; letter-spacing: 1px; text-align: left;
-  }
-  .investor-table td:first-child { text-align: left; }
-  .investor-table td:first-child::before { content: ''; }
   .kpi-card { padding: 12px; }
   .kpi-card .label { font-size: 0.7rem; letter-spacing: 1px; }
   .kpi-card .value { font-size: 1.15rem; }
@@ -346,12 +327,6 @@ td.links a:hover { color: var(--accent); }
   .lb-card { padding: 12px 14px; }
   .lb-card h3 { font-size: 0.9rem; }
 
-  /* Tables: horizontal scroll when wider than the viewport. The container
-     itself stays put, the table scrolls inside it. */
-  .container table {
-    display: block; overflow-x: auto; -webkit-overflow-scrolling: touch;
-    max-width: 100%; white-space: nowrap;
-  }
   table th, table td { padding: 8px 10px; font-size: 0.85rem; }
 
   /* Range picker: wrap on its own row, keep date inputs at content width */
@@ -447,6 +422,68 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
   font-size: 0.88rem;
 }
 .write-gate .btn { flex: none; }
+
+/* ─── Responsive tables ──────────────────────────────────────────────────
+   The one mechanism every table uses. Columns declare a priority (UI.table's
+   `p`) and are hidden by CSS rather than dropped from the DOM, so the row
+   expander can recover them without a re-render. This is the only
+   mobile-first (min-width) section in the stylesheet — everything below it
+   is the legacy max-width cascade. */
+[data-p="2"], [data-p="3"] { display: none; }
+
+@media (min-width: 600px) {
+  [data-p="2"] { display: table-cell; }
+  /* Nothing left to reveal on a table whose widest column is p2. */
+  table[data-maxp="2"] .col-expand { display: none; }
+  table[data-maxp="2"] .row-detail { display: none; }
+}
+
+@media (min-width: 960px) {
+  [data-p="3"] { display: table-cell; }
+  table[data-maxp="3"] .col-expand { display: none; }
+  table[data-maxp="3"] .row-detail { display: none; }
+}
+
+/* Chevron column */
+th.col-expand, td.col-expand { width: 34px; padding-left: 6px; padding-right: 0; }
+.row-expand {
+  width: 30px; height: 30px; padding: 0; border-radius: 8px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.row-expand::before { content: '⌄'; font-size: 0.95rem; line-height: 1; transform: translateY(-2px); }
+.row-expand[aria-expanded="true"] { color: var(--text); border-color: var(--link); }
+.row-expand[aria-expanded="true"]::before { transform: translateY(1px) rotate(180deg); }
+.row-expand:hover { color: var(--text); border-color: var(--link); }
+
+/* The revealed columns, as label/value pairs */
+tr.row-detail > td { background: var(--panel-2); padding: 4px 12px 12px; }
+.row-detail-list { margin: 0; display: grid; grid-template-columns: 1fr; gap: 0; }
+.row-detail-list > div {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 14px;
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+}
+.row-detail-list > div:last-child { border-bottom: none; }
+.row-detail-list dt {
+  color: var(--muted); font-size: 0.7rem; text-transform: uppercase;
+  letter-spacing: 1px; flex: none;
+}
+.row-detail-list dd {
+  margin: 0; text-align: right; font-variant-numeric: tabular-nums;
+  white-space: normal; overflow-wrap: anywhere;
+}
+@media (min-width: 420px) { .row-detail-list { grid-template-columns: 1fr 1fr; column-gap: 28px; } }
+
+/* Scroll affordance: when a table still overflows (p2/p3 widths), fade the
+   right edge so it reads as scrollable rather than cut off. */
+.table-scroll { position: relative; }
+.table-scroll table { min-width: 100%; }
+
+/* Keep the identity column anchored while the rest scrolls sideways. */
+.table-scroll.sticky-first th:first-child,
+.table-scroll.sticky-first td:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--panel);
+}
 .price-freshness.stale { color: var(--accent-2); }
 
 @media (max-width: 720px) {

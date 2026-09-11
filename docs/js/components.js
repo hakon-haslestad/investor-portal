@@ -26,19 +26,126 @@
   }
 
   // ── Table ────────────────────────────────────────────────────────────────
-  // cols: [{label, className?}], rows: array of arrays of HTML strings.
-  // Wrap in .table-scroll so wide tables scroll inside the card, not the page.
+  // The one table primitive. Every table in the app goes through here.
+  //
+  // cols: [{label, className?, p?}]  rows: arrays of HTML strings, or
+  //       {cells, attrs?, after?} where `after` is extra markup (or a
+  //       fn(colspan)) inserted as a sibling row — used by the views that
+  //       expand a row into a chart.
+  //
+  // `p` is the column's PRIORITY, which is how tables fit a phone:
+  //   1 (default) always visible — identity plus the number that matters
+  //   2           from 600px up  — the normal desktop reading set
+  //   3           from 960px up  — completeness / audit columns
+  // Columns are hidden by CSS on [data-p], never removed from the DOM, so the
+  // expander below can recover them without the view re-rendering anything.
   function table(cols, rows, opts = {}) {
-    const head = cols.map((c) => `<th class="${c.className || ''}" scope="col">${esc(c.label)}</th>`).join('');
+    const pri = (c) => Number(c.p) || 1;
+    const maxP = cols.reduce((m, c) => Math.max(m, pri(c)), 1);
+    // Nothing to reveal means no chevron column at all.
+    const expandable = opts.expandable !== false && maxP > 1 && rows.length > 0;
+    const span = cols.length + (expandable ? 1 : 0);
+
+    const expandTh = expandable
+      ? '<th class="col-expand" scope="col"><span class="sr-only">Show hidden columns</span></th>' : '';
+    const head = expandTh + cols.map((c) =>
+      `<th class="${c.className || ''}" data-p="${pri(c)}" scope="col">${esc(c.label)}</th>`).join('');
+
     const body = rows.length
       ? rows.map((r) => {
           const attrs = r.attrs || '';
-          const cells = (r.cells || r).map((cell, i) =>
-            `<td class="${cols[i] && cols[i].className || ''}">${cell}</td>`).join('');
-          return `<tr ${attrs}>${cells}</tr>`;
+          const expandTd = expandable
+            ? '<td class="col-expand"><button type="button" class="row-expand" aria-expanded="false" aria-label="Show hidden columns"></button></td>' : '';
+          const cells = (r.cells || r).map((cell, i) => {
+            const c = cols[i] || {};
+            return `<td class="${c.className || ''}" data-p="${pri(c)}" data-label="${esc(c.label || '')}">${cell}</td>`;
+          }).join('');
+          const detail = expandable
+            ? `<tr class="row-detail" hidden><td colspan="${span}"></td></tr>` : '';
+          const after = typeof r.after === 'function' ? r.after(span) : (r.after || '');
+          return `<tr ${attrs}>${expandTd}${cells}</tr>${detail}${after}`;
         }).join('')
-      : `<tr><td colspan="${cols.length}" class="empty-cell">${esc(opts.empty || 'Nothing here yet.')}</td></tr>`;
-    return `<div class="table-scroll"><table>${opts.caption ? `<caption class="sr-only">${esc(opts.caption)}</caption>` : ''}<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+      : `<tr><td colspan="${span}" class="empty-cell">${esc(opts.empty || 'Nothing here yet.')}</td></tr>`;
+
+    // opts.foot: a totals row. Cells carry the same priority as their column
+    // so the summary hides and reveals in step with the data above it.
+    const foot = opts.foot
+      ? `<tfoot><tr class="summary-row">${expandable ? '<td class="col-expand"></td>' : ''}${
+          opts.foot.map((cell, i) => {
+            const c = cols[i] || {};
+            return `<td class="${c.className || ''}" data-p="${pri(c)}" data-label="${esc(c.label || '')}">${cell == null ? '' : cell}</td>`;
+          }).join('')}</tr></tfoot>`
+      : '';
+
+    const cls = ['table-scroll', opts.wrapClass].filter(Boolean).join(' ');
+    const tcls = [opts.className].filter(Boolean).join(' ');
+    return `<div class="${cls}"><table class="${tcls}" data-maxp="${maxP}">${opts.caption ? `<caption class="sr-only">${esc(opts.caption)}</caption>` : ''}<thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}</table></div>`;
+  }
+
+  // The row a view appended after its data row (a chart, a month drill-down).
+  // UI.table may insert its own .row-detail panel in between, so never reach
+  // for nextElementSibling directly — walk to the row you actually want.
+  function siblingRow(tr, className) {
+    let n = tr.nextElementSibling;
+    while (n && !n.classList.contains(className)) {
+      if (!n.classList.contains('row-detail')) return null;
+      n = n.nextElementSibling;
+    }
+    return n;
+  }
+
+  // Fill a row's detail panel from the cells the current viewport is hiding.
+  // Derived from the DOM rather than from the data, so there is exactly one
+  // source of truth for a cell's contents.
+  function fillRowDetail(tr) {
+    const detail = tr.nextElementSibling;
+    if (!detail || !detail.classList.contains('row-detail')) return 0;
+    const hidden = Array.from(tr.children).filter((td) =>
+      td.dataset.label && getComputedStyle(td).display === 'none');
+    detail.firstElementChild.innerHTML = hidden.length
+      ? `<dl class="row-detail-list">${hidden.map((td) =>
+          `<div><dt>${esc(td.dataset.label)}</dt><dd class="${td.className}">${td.innerHTML}</dd></div>`).join('')}</dl>`
+      : '<p class="text-muted text-small" style="margin:0">Nothing more to show at this width.</p>';
+    return hidden.length;
+  }
+
+  // One delegated handler for every expander in the view. Bound by the router
+  // after each render, so views get this for free.
+  //
+  // The chevron is its own button in its own cell — NOT a row handler —
+  // because three tables already own the row tap (Investors overview
+  // navigates, Portfolio holdings and Dashboard holdings expand a chart).
+  function bindRowExpanders(root) {
+    root.addEventListener('click', (e) => {
+      const btn = e.target.closest('.row-expand');
+      if (!btn || !root.contains(btn)) return;
+      e.preventDefault();
+      e.stopPropagation(); // never also trigger the row's own action
+      const tr = btn.closest('tr');
+      const detail = tr.nextElementSibling;
+      const open = btn.getAttribute('aria-expanded') === 'true';
+      if (!open) fillRowDetail(tr);
+      btn.setAttribute('aria-expanded', String(!open));
+      detail.hidden = open;
+    });
+
+    // Rotating the phone changes which columns are hidden. Re-derive open
+    // panels rather than leaving them showing stale columns.
+    let t = null;
+    const onResize = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        root.querySelectorAll('.row-expand[aria-expanded="true"]').forEach((btn) => {
+          const tr = btn.closest('tr');
+          if (fillRowDetail(tr) === 0) {
+            btn.setAttribute('aria-expanded', 'false');
+            tr.nextElementSibling.hidden = true;
+          }
+        });
+      }, 150);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }
 
   // ── Sub-tab bar ──────────────────────────────────────────────────────────
@@ -262,7 +369,7 @@
   }
 
   window.UI = {
-    esc, kpiGrid, section, table, subTabs,
+    esc, kpiGrid, section, table, subTabs, bindRowExpanders, siblingRow,
     rangePicker, bindRangePicker, RANGE_PRESETS,
     flash, emptyState, investorChip,
     infoIcon, enableInfoPopovers, fundamentalsTable, renderSecurityDrilldown,

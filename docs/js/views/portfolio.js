@@ -128,7 +128,8 @@
     // Row → toggle per-security price chart (rendered lazily, once).
     body.querySelectorAll('tr.row-link').forEach((tr) => {
       const toggle = () => {
-        const chartRow = tr.nextElementSibling;
+        const chartRow = window.UI.siblingRow(tr, 'chart-row');
+        if (!chartRow) return;
         const open = chartRow.hidden;
         chartRow.hidden = !open;
         tr.setAttribute('aria-expanded', String(open));
@@ -597,7 +598,8 @@
     function wireMonthRows(filtered) {
       body.querySelectorAll('tr.month-row').forEach((tr) => {
         const toggle = () => {
-          const detail = tr.nextElementSibling;
+          const detail = window.UI.siblingRow(tr, 'month-detail');
+          if (!detail) return;
           const open = detail.hidden;
           detail.hidden = !open;
           tr.setAttribute('aria-expanded', String(open));

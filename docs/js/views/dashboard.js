@@ -128,35 +128,37 @@
           <div class="kpi-card"><div class="label">Portfolio P/E</div><div class="value">${t.portfolioPe != null ? t.portfolioPe.toFixed(1) : '—'}</div><div class="sub">${t.earningsYieldPct != null ? `earnings yield ${t.earningsYieldPct.toFixed(1)}%` : ''}</div></div>
           ${t.book > 0 ? `<div class="kpi-card"><div class="label">Your book value</div><div class="value">${fmtNok(t.book)}</div><div class="sub">${t.pb != null ? `P/B ${t.pb.toFixed(2)}` : ''}</div></div>` : ''}
         </div>
-        <div class="table-scroll">
-          <table class="investor-table">
-            <thead><tr>
-              <th>Company</th><th class="text-right">Qty</th>
-              <th class="text-right">Earnings /yr</th><th class="text-right">Revenue /yr</th>
-              <th class="text-right">Book value</th><th class="text-right">P/E</th><th class="text-right">P/B</th><th class="text-right">P/S</th>
-              <th class="text-right">Fundamental @×${multiple}</th><th class="text-right">Market value</th><th class="text-right">Gap</th>
-            </tr></thead>
-            <tbody>
-              ${lt.rows.map((r) => `
-                <tr>
-                  <td data-label="Company"><strong>${escapeHtml(r.security)}</strong> <span class="text-muted text-small">${escapeHtml(String(r.period).replace('.0',''))}${r.annualized ? ' ≈×4' : ''}</span></td>
-                  <td class="text-right" data-label="Qty">${fmtQty(r.qty)}</td>
-                  <td class="text-right ${r.earningsNok != null ? pctClass(r.earningsNok) : ''}" data-label="Earnings /yr">${money(r.earningsNok)}</td>
-                  <td class="text-right" data-label="Revenue /yr">${money(r.revenueNok)}</td>
-                  <td class="text-right" data-label="Book value">${money(r.bookNok)}</td>
-                  <td class="text-right text-muted" data-label="P/E">${r.pe != null ? Number(r.pe).toFixed(1) : '—'}</td>
-                  <td class="text-right text-muted" data-label="P/B">${r.pb != null ? r.pb.toFixed(2) : '—'}</td>
-                  <td class="text-right text-muted" data-label="P/S">${r.ps != null ? r.ps.toFixed(2) : '—'}</td>
-                  <td class="text-right" data-label="Fundamental">${money(r.fundamentalValue)}</td>
-                  <td class="text-right" data-label="Market value">${r.approx ? '≈ ' : ''}${money(r.marketValueNok)}</td>
-                  <td class="text-right ${r.gapPct != null ? pctClass(-r.gapPct) : ''}" data-label="Gap">${r.gapPct != null ? `${r.gapPct >= 0 ? '+' : ''}${r.gapPct.toFixed(0)}%` : '—'}</td>
-                </tr>`).join('')}
-              ${lt.missing.length ? `
-                <tr class="dimmed-row"><td colspan="11" class="text-small text-muted">
-                  No fundamentals row yet: ${lt.missing.map((m) => escapeHtml(m.security)).join(', ')} — add them to Offisielle nøkkeltall to include.
-                </td></tr>` : ''}
-            </tbody>
-          </table>
+        ${window.UI.table([
+          { label: 'Company', p: 1 },
+          { label: 'Qty', className: 'text-right', p: 3 },
+          { label: 'Earnings /yr', className: 'text-right', p: 2 },
+          { label: 'Revenue /yr', className: 'text-right', p: 3 },
+          { label: 'Book value', className: 'text-right', p: 3 },
+          { label: 'P/E', className: 'text-right text-muted', p: 2 },
+          { label: 'P/B', className: 'text-right text-muted', p: 3 },
+          { label: 'P/S', className: 'text-right text-muted', p: 3 },
+          { label: `Fundamental @×${multiple}`, className: 'text-right', p: 2 },
+          { label: 'Market value', className: 'text-right', p: 1 },
+          { label: 'Gap', className: 'text-right', p: 1 },
+        ], lt.rows.map((r, i) => ({
+          // The "no fundamentals yet" note rides along after the last row.
+          after: (i === lt.rows.length - 1 && lt.missing.length)
+            ? (span) => `<tr class="dimmed-row"><td colspan="${span}" class="text-small text-muted">No fundamentals row yet: ${lt.missing.map((m) => escapeHtml(m.security)).join(', ')} — add them to Offisielle nøkkeltall to include.</td></tr>`
+            : '',
+          cells: [
+            `<strong>${escapeHtml(r.security)}</strong> <span class="text-muted text-small">${escapeHtml(String(r.period).replace('.0',''))}${r.annualized ? ' ≈×4' : ''}</span>`,
+            fmtQty(r.qty),
+            r.earningsNok != null ? money(r.earningsNok, pctClass(r.earningsNok)) : money(r.earningsNok),
+            money(r.revenueNok),
+            money(r.bookNok),
+            r.pe != null ? Number(r.pe).toFixed(1) : '—',
+            r.pb != null ? r.pb.toFixed(2) : '—',
+            r.ps != null ? r.ps.toFixed(2) : '—',
+            money(r.fundamentalValue),
+            `${r.approx ? '≈ ' : ''}${money(r.marketValueNok)}`,
+            r.gapPct != null ? `<span class="${pctClass(-r.gapPct)}">${r.gapPct >= 0 ? '+' : ''}${r.gapPct.toFixed(0)}%</span>` : '—',
+          ],
+        })), { className: 'investor-table', wrapClass: 'sticky-first', caption: 'Look-through fundamentals' })}
         </div>
       `;
     }
@@ -181,47 +183,54 @@
         ? `<td class="text-right text-muted" data-label="${label}">—</td>`
         : `<td class="text-right ${pctClass(v)}" data-label="${label}">${fmtPct(v)}</td>`;
 
+      const pctCellVal = (v) => v == null
+        ? '<span class="text-muted">—</span>'
+        : `<span class="${pctClass(v)}">${fmtPct(v)}</span>`;
+
       const rows = holds.map((h) => {
         const unpriced = h.priced === false;
         const wgt = totalVal > 0 && !unpriced ? ((h.marketValueNok || 0) / totalVal) * 100 : null;
-        return `
-          <tr class="row-link" tabindex="0" role="button" aria-expanded="false" data-fx-sec="${escapeHtml(h.security)}">
-            <td data-label="Security"><strong>${escapeHtml(h.security)}</strong> <span class="text-muted text-small">▸</span></td>
-            <td class="text-right" data-label="Qty">${fmtQty(h.qty)}</td>
-            <td class="text-right text-muted" data-label="Avg cost">${fmtNok(h.gav)}</td>
-            <td class="text-right" data-label="Price">${unpriced ? NO_PRICE : fmtNok(h.currentPrice)}</td>
-            <td class="text-right text-muted" data-label="Invested">${fmtNok((h.marketValueNok || 0) - (h.returnNok || 0))}</td>
-            <td class="text-right" data-label="Value">${unpriced ? NO_PRICE : fmtNok(h.marketValueNok)}</td>
-            <td class="text-right ${unpriced ? '' : pctClass(h.returnNok)}" data-label="Gain/loss">${unpriced ? NO_PRICE : fmtNok(h.returnNok)}</td>
-            <td class="text-right ${unpriced ? '' : pctClass(h.returnPct)}" data-label="Return">${unpriced ? NO_PRICE : fmtPct(h.returnPct)}</td>
-            ${pctCell(periodReturnFor(h.security, ytdStart), 'YTD')}
-            ${pctCell(periodReturnFor(h.security, y12Start), '12m')}
-            <td class="text-right text-muted" data-label="Weight">${wgt == null ? '—' : wgt.toFixed(1) + '%'}</td>
-          </tr>
-          <tr class="fx-detail" hidden><td colspan="11" data-fx-for="${escapeHtml(h.security)}"></td></tr>`;
-      }).join('');
+        return {
+          attrs: `class="row-link" tabindex="0" role="button" aria-expanded="false" data-fx-sec="${escapeHtml(h.security)}"`,
+          // Row tap opens the security drill-down; the chevron (a separate
+          // button) reveals the hidden columns. They must not collide.
+          after: (span) => `<tr class="fx-detail" hidden><td colspan="${span}" data-fx-for="${escapeHtml(h.security)}"></td></tr>`,
+          cells: [
+            `<strong>${escapeHtml(h.security)}</strong> <span class="text-muted text-small">▸</span>`,
+            fmtQty(h.qty),
+            fmtNok(h.gav),
+            unpriced ? NO_PRICE : fmtNok(h.currentPrice),
+            fmtNok((h.marketValueNok || 0) - (h.returnNok || 0)),
+            unpriced ? NO_PRICE : fmtNok(h.marketValueNok),
+            unpriced ? NO_PRICE : `<span class="${pctClass(h.returnNok)}">${fmtNok(h.returnNok)}</span>`,
+            unpriced ? NO_PRICE : `<span class="${pctClass(h.returnPct)}">${fmtPct(h.returnPct)}</span>`,
+            pctCellVal(periodReturnFor(h.security, ytdStart)),
+            pctCellVal(periodReturnFor(h.security, y12Start)),
+            wgt == null ? '—' : wgt.toFixed(1) + '%',
+          ],
+        };
+      });
       return `
         <div class="section-title">Current portfolio <span class="text-muted text-small">(${holds.length} positions${asOf}; YTD/12m are price return)</span> ${ii('holdings-table')}</div>
-        <div style="overflow-x:auto">
-          <table class="investor-table">
-            <thead><tr>
-              <th>Security</th><th class="text-right">Qty</th><th class="text-right">Avg cost</th>
-              <th class="text-right">Price</th><th class="text-right">Invested</th><th class="text-right">Value</th>
-              <th class="text-right">Gain/loss</th><th class="text-right">Return</th>
-              <th class="text-right">YTD</th><th class="text-right">12m</th><th class="text-right">Weight</th>
-            </tr></thead>
-            <tbody>
-              ${rows}
-              <tr class="summary-row">
-                <td data-label="">Total</td><td></td><td></td><td></td>
-                <td class="text-right" data-label="Invested">${fmtNok(totalVal - totalGain)}</td>
-                <td class="text-right" data-label="Value">${fmtNok(totalVal)}</td>
-                <td class="text-right ${pctClass(totalGain)}" data-label="Gain/loss">${fmtNok(totalGain)}</td>
-                <td></td><td></td><td></td><td></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        ${window.UI.table([
+          { label: 'Security', p: 1 },
+          { label: 'Qty', className: 'text-right', p: 2 },
+          { label: 'Avg cost', className: 'text-right text-muted', p: 3 },
+          { label: 'Price', className: 'text-right', p: 3 },
+          { label: 'Invested', className: 'text-right text-muted', p: 2 },
+          { label: 'Value', className: 'text-right', p: 1 },
+          { label: 'Gain/loss', className: 'text-right', p: 2 },
+          { label: 'Return', className: 'text-right', p: 1 },
+          { label: 'YTD', className: 'text-right', p: 3 },
+          { label: '12m', className: 'text-right', p: 3 },
+          { label: 'Weight', className: 'text-right text-muted', p: 3 },
+        ], rows, {
+          className: 'investor-table',
+          wrapClass: 'sticky-first',
+          caption: 'Current portfolio holdings',
+          foot: ['Total', '', '', '', fmtNok(totalVal - totalGain), fmtNok(totalVal),
+                 `<span class="${pctClass(totalGain)}">${fmtNok(totalGain)}</span>`, '', '', '', ''],
+        })}
       `;
     }
 
@@ -299,8 +308,8 @@
       // Current-portfolio rows with fundamentals expand on click.
       el.querySelectorAll('tr[data-fx-sec]').forEach((tr) => {
         const toggle = () => {
-          const detail = tr.nextElementSibling;
-          if (!detail || !detail.classList.contains('fx-detail')) return;
+          const detail = window.UI.siblingRow(tr, 'fx-detail');
+          if (!detail) return;
           const open = detail.hidden;
           detail.hidden = !open;
           tr.setAttribute('aria-expanded', String(open));
