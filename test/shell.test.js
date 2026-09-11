@@ -150,3 +150,71 @@ test('history escapes summaries, since they carry security names', () => {
   assert.ok(!html.includes('<img'), 'markup in a summary is escaped');
   assert.ok(html.includes('&lt;img'));
 });
+
+// ── Who is playing ─────────────────────────────────────────────────────────
+const ROSTER = [
+  { code: 'HH', name: 'Hakon' }, { code: 'JC', name: 'Jonas' }, { code: 'ØS', name: 'Øystein' },
+];
+
+test('no selection means everyone is playing', () => {
+  const { GameShell } = shellCtx();
+  const f = GameShell.filtersFromQuery({});
+  assert.deepEqual(f.players, []);
+  assert.deepEqual(GameShell.activePlayers(ROSTER, f).map((p) => p.code), ['HH', 'JC', 'ØS']);
+});
+
+test('a selection narrows the room, and survives the URL', () => {
+  const { GameShell } = shellCtx();
+  const f = GameShell.filtersFromQuery({ players: 'HH,ØS' });
+  assert.deepEqual(GameShell.activePlayers(ROSTER, f).map((p) => p.code), ['HH', 'ØS']);
+  const hash = GameShell.hashFor('odd-one-out', f);
+  assert.ok(hash.includes('players=HH'), hash);
+  const back = GameShell.filtersFromQuery(Object.fromEntries(new URLSearchParams(hash.split('?')[1])));
+  assert.deepEqual(GameShell.activePlayers(ROSTER, back).map((p) => p.code), ['HH', 'ØS']);
+});
+
+test('picking one player is how you play alone', () => {
+  const { GameShell } = shellCtx();
+  const solo = GameShell.activePlayers(ROSTER, GameShell.filtersFromQuery({ players: 'JC' }));
+  assert.equal(solo.length, 1);
+  assert.equal(solo[0].name, 'Jonas');
+});
+
+test('a stale link naming nobody on the roster falls back to everyone', () => {
+  const { GameShell } = shellCtx();
+  // A competition changed, or a member left: better the whole room than none.
+  const f = GameShell.filtersFromQuery({ players: 'ZZ,QQ' });
+  assert.deepEqual(GameShell.activePlayers(ROSTER, f).map((p) => p.code), ['HH', 'JC', 'ØS']);
+  assert.equal(GameShell.activePlayers(ROSTER, GameShell.filtersFromQuery({})).length, 3);
+});
+
+test('the picker is hidden when there is nobody to choose between', () => {
+  const { GameShell } = shellCtx();
+  const f = GameShell.filtersFromQuery({});
+  assert.ok(!GameShell.renderFilterBar(f, [], [{ code: 'HH', name: 'Hakon' }]).includes('player-pills'),
+    'one member is not a choice');
+  assert.ok(GameShell.renderFilterBar(f, [], ROSTER).includes('player-pills'));
+});
+
+test('a two-player game is gated when only one person is playing', () => {
+  const { GameShell } = shellCtx();
+  const games = [
+    { id: 'solo', name: 'Solo', icon: '🎲', tagline: 't', tags: ['party'], players: '1', minTrades: 1 },
+    { id: 'duo', name: 'Duo', icon: '🏇', tagline: 't', tags: ['party'], players: '2+', minTrades: 1 },
+  ];
+  const f = GameShell.filtersFromQuery({});
+  const alone = GameShell.renderGrid(games, [{}, {}], f, 1);
+  assert.ok(alone.includes('href="#/games/solo"'), 'the solo game is still playable');
+  assert.ok(!alone.includes('href="#/games/duo"'), 'the two-player game is not');
+  assert.match(alone, /Needs 2 players — 1 selected/);
+
+  const together = GameShell.renderGrid(games, [{}, {}], f, 3);
+  assert.ok(together.includes('href="#/games/duo"'), 'and is playable with a room');
+});
+
+test('the trade gate still applies independently of the player gate', () => {
+  const { GameShell } = shellCtx();
+  const games = [{ id: 'x', name: 'X', icon: '🎲', tagline: 't', tags: ['party'], players: '1', minTrades: 9 }];
+  const html = GameShell.renderGrid(games, [{}], GameShell.filtersFromQuery({}), 5);
+  assert.match(html, /Needs at least 9 trades/);
+});

@@ -128,3 +128,19 @@ test('every file in docs/js/games is loaded by index.html', () => {
     assert.ok(order.includes('games/' + f), `${f} is not loaded by index.html`);
   }
 });
+
+test('every game declares a player requirement it can actually honour', () => {
+  const w = appCtx();
+  // `players` is enforced now — the grid disables a game below it and the
+  // shell refuses to mount one — so it must mean "cannot be played with
+  // fewer", not "is more fun with more".
+  for (const g of w.Games.registry) {
+    assert.ok(['1', '2+', '3+'].includes(g.players), `${g.id}: ${g.players}`);
+  }
+  // Horse Race genuinely needs runners to race against each other.
+  assert.equal(w.Games.byId('horse-race').players, '2+');
+  // Everything else is playable on your own.
+  for (const id of ['spin-the-stock', 'guess-the-stock', 'odd-one-out', 'back-trading']) {
+    assert.equal(w.Games.byId(id).players, '1', `${id} should be playable alone`);
+  }
+});

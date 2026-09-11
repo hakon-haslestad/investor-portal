@@ -26,7 +26,10 @@
     // each game. Games that need MORE than the baseline narrow it further.
     const all = pool.buildPool(filters, compById);
     const { kept: trades, dropped } = pool.withPriceData(all);
-    const players = pool.playersFor(filters, compById);
+    // The full roster the competition (or the member list) defines, then
+    // narrowed to whoever the player picker says is actually in the room.
+    const roster = pool.playersFor(filters, compById);
+    const players = S.activePlayers(roster, filters);
     const gameId = (params[0] || '').trim();
     const game = gameId ? window.Games.byId(gameId) : null;
 
@@ -45,11 +48,20 @@
         <div class="hero">
           <h2>Games 🎲🍺 ${window.UI.infoIcon('the-game')}</h2>
         </div>
-        ${S.renderFilterBar(filters, competitions)}
+        ${S.renderFilterBar(filters, competitions, roster)}
         ${S.renderShell(game, filters, summary + droppedNote(), recent)}`;
-      S.bindFilterBar(el, filters, navigate, game.id, () => mountGame());
+      S.bindFilterBar(el, filters, navigate, game.id, () => mountGame(), { roster });
 
       const board = el.querySelector('#game-board');
+      const needed = game.players === '3+' ? 3 : game.players === '2+' ? 2 : 1;
+      if (players.length < needed) {
+        board.innerHTML = window.UI.emptyState(
+          `${game.name} needs ${needed} players`,
+          `${players.length} selected. Add players above, or pick a game that works solo.`);
+        const nr0 = el.querySelector('#new-round');
+        if (nr0) nr0.disabled = true;
+        return;
+      }
       if (trades.length < game.minTrades) {
         board.innerHTML = window.UI.emptyState(
           `Needs at least ${game.minTrades} trades in this period`,
@@ -99,11 +111,11 @@
       el.innerHTML = `
         <div class="hero">
           <h2>Games 🎲🍺 ${window.UI.infoIcon('the-game')}</h2>
-          <div class="when">${trades.length} stock${trades.length === 1 ? '' : 's'} in play${droppedNote()}</div>
+          <div class="when">${trades.length} stock${trades.length === 1 ? '' : 's'} in play${droppedNote()} · ${players.length} player${players.length === 1 ? '' : 's'}</div>
         </div>
-        ${S.renderFilterBar(filters, competitions)}
-        ${S.renderGrid(window.Games.registry, trades, filters)}`;
-      S.bindFilterBar(el, filters, navigate, null, () => mountGrid());
+        ${S.renderFilterBar(filters, competitions, roster)}
+        ${S.renderGrid(window.Games.registry, trades, filters, players.length)}`;
+      S.bindFilterBar(el, filters, navigate, null, () => mountGrid(), { roster });
       S.bindGrid(el, filters, navigate);
     }
 

@@ -237,6 +237,10 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
 
 .game-tags { margin-top: 12px; }
 
+/* Who is in the room. Deselect down to one to play a game on your own. */
+.player-pills { margin-top: 4px; }
+.player-pills .player-all { border-style: dashed; }
+
 /* Shell */
 .game-shell-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
 .game-shell-head h2 { margin: 0; font-size: 1.4rem; flex: 1; }

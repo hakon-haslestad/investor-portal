@@ -46,7 +46,9 @@
               <p>Whose is it? Did it go up or down? Say it out loud, then hit Reveal.</p>
               <p class="text-muted text-small">Honour system — nothing is scored.</p>`,
       tags: ['party'],
-      players: '2+',
+      // Playable alone — you still call it before the reveal, there is just
+      // nobody to be wrong in front of.
+      players: '1',
       minTrades: 1,
       drinkingRule: 'Everyone who called it wrong drinks.',
       component: window.GameSpinTheStock({ guess: true }),
@@ -75,7 +77,8 @@
               <p>Everyone calls it before the reveal — the verdict is whatever the price has done by the <em>latest</em> close we have.</p>
               <p>The strip shows the verdict at 5, 20, 60, 120 and 250 trading days too, so you can see it flip over time. Horizons with no data yet are left out rather than guessed, and trades with no prices after the sale are not offered at all.</p>`,
       tags: ['skill', 'recurring'],
-      players: '2+',
+      // One column is a perfectly good game of it.
+      players: '1',
       minTrades: 1,
       drinkingRule: 'Sold too early? The seller drinks. Called it wrong? You drink.',
       component: window.GameBackTrading,

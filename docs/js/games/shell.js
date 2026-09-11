@@ -79,6 +79,9 @@
       to: q.to || new Date().toISOString().slice(0, 10),
       competitionId: q.comp || '',
       tags: (q.tags || '').split(',').filter(Boolean),
+      // Empty means everyone. A subset is only ever a subset of the roster
+      // the competition (or the member list) already defines.
+      players: (q.players || '').split(',').filter(Boolean),
     };
   }
 
@@ -91,6 +94,7 @@
       if (filters.period === 'custom') { p.set('from', filters.from); p.set('to', filters.to); }
     }
     if (filters.tags && filters.tags.length) p.set('tags', filters.tags.join(','));
+    if (filters.players && filters.players.length) p.set('players', filters.players.join(','));
     const qs = p.toString();
     return `#/games${gameId ? '/' + gameId : ''}${qs ? '?' + qs : ''}`;
   }
@@ -109,7 +113,7 @@
     return `${label} · ${w.from} → ${w.to} · ${measure}`;
   }
 
-  function renderFilterBar(filters, competitions) {
+  function renderFilterBar(filters, competitions, roster) {
     const isComp = !!filters.competitionId;
     const compOpts = competitions.slice()
       .sort((a, b) => (b.competition.start_date || '').localeCompare(a.competition.start_date || ''))
@@ -135,12 +139,37 @@
           <input type="checkbox" id="sober-toggle" ${soberMode() ? 'checked' : ''} />
           Sober mode
         </label>
+      </div>
+      ${renderPlayerPicker(roster, filters)}`;
+  }
+
+  // Who is actually in the room. Defaults to everyone; deselecting down to one
+  // is how you play a game on your own.
+  function renderPlayerPicker(roster, filters) {
+    if (!roster || roster.length < 2) return '';
+    const playing = activePlayers(roster, filters);
+    const on = new Set(playing.map((p) => p.code));
+    return `
+      <div class="section-title" id="players-label">Playing</div>
+      <div class="type-pills player-pills" id="player-pills" role="group" aria-labelledby="players-label">
+        ${roster.map((p) => `<button type="button" data-player="${esc(p.code)}" class="${on.has(p.code) ? 'active' : ''}" aria-pressed="${on.has(p.code)}">${esc(p.name)}</button>`).join('')}
+        ${playing.length < roster.length ? '<button type="button" data-player="*" class="player-all">Everyone</button>' : ''}
       </div>`;
+  }
+
+  // The roster narrowed to whoever is playing. An empty or unrecognised
+  // selection means everyone, so a stale link can never leave a game with no
+  // players at all.
+  function activePlayers(roster, filters) {
+    const want = new Set(filters.players || []);
+    if (!want.size) return roster;
+    const picked = roster.filter((p) => want.has(p.code));
+    return picked.length ? picked : roster;
   }
 
   // Wire the filter bar. Every change navigates, so the view remounts and the
   // current round resets — which is the specified behaviour.
-  function bindFilterBar(el, filters, navigate, gameId, onSober) {
+  function bindFilterBar(el, filters, navigate, gameId, onSober, opts) {
     el.querySelectorAll('#period-picker [data-period]').forEach((btn) => {
       btn.addEventListener('click', () => {
         navigate(hashFor(gameId, { ...filters, period: btn.getAttribute('data-period'), competitionId: '' }));
@@ -158,6 +187,21 @@
     if (sel) sel.addEventListener('change', () => {
       navigate(hashFor(gameId, { ...filters, competitionId: sel.value }));
     });
+    el.querySelectorAll('#player-pills [data-player]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-player');
+        if (code === '*') { navigate(hashFor(gameId, { ...filters, players: [] })); return; }
+        const roster = (opts && opts.roster) || [];
+        const current = new Set(activePlayers(roster, filters).map((p) => p.code));
+        if (current.has(code)) current.delete(code); else current.add(code);
+        // Never leave nobody playing.
+        if (!current.size) return;
+        // All of them selected is the same as no filter at all.
+        const next = current.size === roster.length ? [] : [...current];
+        navigate(hashFor(gameId, { ...filters, players: next }));
+      });
+    });
+
     const sober = el.querySelector('#sober-toggle');
     if (sober) sober.addEventListener('change', () => {
       setSoberMode(sober.checked);
@@ -172,7 +216,7 @@
     { id: 'recurring', label: 'Recurring' },
   ];
 
-  function renderGrid(games, trades, filters) {
+  function renderGrid(games, trades, filters, playerCount) {
     const active = new Set(filters.tags || []);
     const shown = active.size
       ? games.filter((g) => g.tags.some((t) => active.has(t)))
@@ -188,8 +232,13 @@
     }
 
     const sober = soberMode();
+    // A game that needs a room cannot be played alone, so say so rather than
+    // letting someone open it and find one empty column.
+    const needed = (g) => (g.players === '3+' ? 3 : g.players === '2+' ? 2 : 1);
     const cards = shown.map((g) => {
-      const playable = trades.length >= g.minTrades;
+      const enoughTrades = trades.length >= g.minTrades;
+      const enoughPlayers = playerCount == null || playerCount >= needed(g);
+      const playable = enoughTrades && enoughPlayers;
       return `
         <div class="game-card${playable ? '' : ' disabled'}">
           <div class="game-card-icon" aria-hidden="true">${g.icon || '🎲'}</div>
@@ -202,7 +251,9 @@
           ${!sober && g.drinkingRule ? `<p class="game-card-drink">🍺 ${esc(g.drinkingRule)}</p>` : ''}
           ${playable
             ? `<a class="btn small" href="${hashFor(g.id, filters)}">Play</a>`
-            : `<p class="game-card-gate">Needs at least ${g.minTrades} trades in this period</p>`}
+            : `<p class="game-card-gate">${!enoughPlayers
+              ? `Needs ${needed(g)} players — ${playerCount} selected`
+              : `Needs at least ${g.minTrades} trades in this period`}</p>`}
         </div>`;
     }).join('');
 
@@ -263,7 +314,7 @@
     soberMode, setSoberMode,
     history,
     filtersFromQuery, hashFor, filterSummary,
-    renderFilterBar, bindFilterBar,
+    renderFilterBar, bindFilterBar, activePlayers,
     renderGrid, bindGrid,
     renderShell, renderRecent,
   };
