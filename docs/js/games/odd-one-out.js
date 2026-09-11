@@ -29,6 +29,12 @@
     // Whoever is next to call it: the first player, from `turn`, who has not
     // picked yet. `turn` advances each round so the same person does not
     // always go first.
+    // Playing alone is the original game: no player row, no turn prompt, no
+    // "1/1 got it" — just the cards and a verdict. The multi-player chrome
+    // exists to show whose call is whose, which is noise with nobody to tell
+    // apart.
+    const solo = roster.length === 1;
+
     function currentPlayer() {
       for (let k = 0; k < roster.length; k++) {
         const p = roster[(turn + k) % roster.length];
@@ -66,6 +72,7 @@
     // and a player's column shows the number they went for — so the room can
     // see who has called it and who is still thinking.
     function playerRow() {
+      if (solo) return '';
       const active = currentPlayer();
       return `<div class="game-players">${roster.map((p) => {
         const pick = picks.get(p.code);
@@ -95,7 +102,11 @@
       const waiting = roster.length - picks.size;
       el.innerHTML = `
         <div class="ooo">
-          ${factStrip([
+          ${factStrip(solo ? [
+            ['Correct', `${correct}/${played}`, ''],
+            [soberMode ? 'Points' : 'Streak', String(streak), streak > 0 ? 'positive' : ''],
+            ['Best', String(best), ''],
+          ] : [
             ['Round', String(rounds + 1), ''],
             ['Correct', `${correct}/${played}`, ''],
             [soberMode ? 'Points' : 'Streak', String(streak), streak > 0 ? 'positive' : ''],
@@ -156,12 +167,18 @@
       const rightOnes = roster.filter((p) => picks.get(p.code) === round.answer);
       const allRight = wrong.length === 0;
       const drink = soberMode
-        ? `${rightOnes.length} point${rightOnes.length === 1 ? '' : 's'} awarded`
-        : (allRight ? 'Nobody drinks 🎉' : `${wrong.map((p) => escapeHtml(p.name)).join(', ')} drink${wrong.length === 1 ? 's' : ''} 🍺`);
+        ? (solo
+          ? (allRight ? '+1 point' : 'no point')
+          : `${rightOnes.length} point${rightOnes.length === 1 ? '' : 's'} awarded`)
+        : (allRight
+          ? (solo ? 'Nobody drinks' : 'Nobody drinks 🎉')
+          : (solo ? 'Drink 🍺' : `${wrong.map((p) => escapeHtml(p.name)).join(', ')} drink${wrong.length === 1 ? 's' : ''} 🍺`));
 
       mount.innerHTML = `
         <div class="game-result ${allRight ? 'win' : 'loss'} ooo-verdict">
-          <div class="verdict">${allRight ? 'All correct 🎯' : `${rightOnes.length}/${roster.length} got it`}</div>
+          <div class="verdict">${solo
+            ? (allRight ? 'Correct 🎯' : 'Wrong 💀')
+            : (allRight ? 'All correct 🎯' : `${rightOnes.length}/${roster.length} got it`)}</div>
           <div class="who-state">${escapeHtml(round.description)}</div>
           <div class="pnl">${drink}</div>
           <div style="margin-top:14px"><button class="btn game-spin" id="ooo-next">Next round</button></div>

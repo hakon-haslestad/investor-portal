@@ -115,12 +115,31 @@ test('the board does not reveal until every player has called it', () => {
     'three calls in: the round resolves');
 });
 
-test('a solo player still gets a column and an immediate reveal', () => {
+test('playing alone keeps the original single-answer board', () => {
   const { el } = mountOoo([{ code: 'HH', name: 'Hakon' }]);
-  assert.equal((el.innerHTML.match(/class="ooo-pick"/g) || []).length, 1);
-  el.querySelectorAll('.ooo-card')[0]._fire();
-  // One player means one call is everyone's call.
+  // None of the multi-player chrome: there is nobody to tell apart.
+  assert.ok(!el.innerHTML.includes('game-players'), 'no player row');
+  assert.ok(!el.innerHTML.includes('ooo-pick'), 'no pick column');
+  assert.ok(!/your turn/.test(el.innerHTML), 'and no turn prompt');
+  assert.ok(!el.innerHTML.includes('to pick'), 'nor a "who is next" line');
+  // The strip stays — a streak is worth having on your own.
+  assert.match(el.innerHTML, /class="game-facts"/);
+  assert.ok(!el.innerHTML.includes('<dt>Round</dt>'), 'rounds matter to a table, not a solo run');
+});
+
+test('a solo answer reveals at once, and reads as right or wrong', () => {
+  const { el } = mountOoo([{ code: 'HH', name: 'Hakon' }]);
+  const cards = el.querySelectorAll('.ooo-card');
+  assert.equal(cards.length, 4);
+  cards[0]._fire();
+  // One call is the whole table's call, so it resolves immediately.
   assert.ok(!/your turn/.test(el.innerHTML), 'nobody is left to wait for');
+});
+
+test('the multi-player board keeps its fractional verdict', () => {
+  const { el } = mountOoo(ROSTER);
+  assert.match(el.innerHTML, /class="game-players"/);
+  assert.match(el.innerHTML, /<dt>Round<\/dt>/);
 });
 
 test('an empty pool says so rather than rendering a broken board', () => {
