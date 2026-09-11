@@ -7,11 +7,8 @@
 
   window.Views.dashboard = async function (el, ctx) {
     const { store } = ctx;
-    const { fmtNok, fmtPct, fmtQty, pctClass, PODIUM, escapeHtml } = window.Fmt;
+    const { fmtNok, fmtPct, fmtQty, pctClass, escapeHtml } = window.Fmt;
     const ii = window.UI.infoIcon;
-    const INVESTOR_COLORS = window.Ledger.INVESTOR_COLORS;
-    const INVESTOR_CODES = window.Ledger.INVESTOR_CODES;
-    const names = window.Copy.namesFromMembers(store.members);
 
     // The spreadsheet's own name, shown in the welcome heading. Best-effort.
     let sheetName = '';
@@ -179,10 +176,6 @@
       const ytdStart = `${now.getUTCFullYear()}-01-01`;
       const y12 = new Date(now); y12.setUTCFullYear(y12.getUTCFullYear() - 1);
       const y12Start = y12.toISOString().slice(0, 10);
-      const pctCell = (v, label) => v == null
-        ? `<td class="text-right text-muted" data-label="${label}">—</td>`
-        : `<td class="text-right ${pctClass(v)}" data-label="${label}">${fmtPct(v)}</td>`;
-
       const pctCellVal = (v) => v == null
         ? '<span class="text-muted">—</span>'
         : `<span class="${pctClass(v)}">${fmtPct(v)}</span>`;

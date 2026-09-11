@@ -36,7 +36,7 @@
   function renderOverview(el, ctx) {
     el.classList.add('wide'); // wide table — use the full viewport
     const { store } = ctx;
-    const { fmtNok, fmtPct, pctClass, escapeHtml } = window.Fmt;
+    const { fmtPct, pctClass, escapeHtml } = window.Fmt;
     const UI = window.UI;
     const names = window.Copy.namesFromMembers(store.members);
     const dash = window.Portfolio.buildDashboard(store);
