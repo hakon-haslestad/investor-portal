@@ -143,19 +143,6 @@
     let preset = 'ytd';
     try { preset = JSON.parse(localStorage.getItem('portal.investor.range') || '{}').preset || 'ytd'; } catch (_e) {}
     const win = window.Portfolio.computeWindow(store, preset);
-    // Money is condensed on a phone so the p1 columns fit 360px.
-    const money = window.Fmt.fmtNokFit;
-    const COLS = [
-      { label: 'Investor', p: 1 },
-      { label: 'Total value', className: 'text-right', p: 2 },
-      { label: 'Market value', className: 'text-right', p: 1 },
-      { label: 'Realized', className: 'text-right', p: 2 },
-      { label: 'Unrealized', className: 'text-right', p: 2 },
-      { label: 'Dividends', className: 'text-right', p: 3 },
-      { label: 'All-time return', className: 'text-right', p: 2 },
-      ...HORIZONS.map((h) => ({ label: `Δ${h.label}`, className: 'text-right', p: h.p })),
-    ];
-
     const usesMatrix = window.Portfolio.usePriceMatrix(store);
     const then = usesMatrix ? window.Portfolio.investorValueAt(store, code, win.from) : null;
     const wm = usesMatrix ? window.Portfolio.windowMetrics(store, win.from, win.to).perInvestor[code] : null;
