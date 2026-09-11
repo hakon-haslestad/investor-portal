@@ -62,7 +62,7 @@
     const today = todayStr || new Date().toISOString().slice(0, 10);
     const points = (series || []).filter((p) => p && p.date && Number.isFinite(p.price));
     const out = {
-      horizons: [], overall: null, overallDays: null,
+      horizons: [], overall: null, overallDays: null, latest: null, pointsAfter: 0,
       maxAfter: null, minAfter: null,
       missedMoney: null, moneySaved: null, oneYear: null,
       flags: [], coverageTo: null,
@@ -77,6 +77,7 @@
       return out;
     }
     out.coverageTo = after[after.length - 1].date;
+    out.pointsAfter = after.length;
 
     for (const days of HORIZONS) {
       const target = addDays(trade.exitDate, Math.round(days * CALENDAR_PER_TRADING_DAY));
@@ -96,22 +97,29 @@
       });
     }
 
+    // The most recent close we actually have after the exit. This is what the
+    // headline verdict uses: "has it gone up since you sold?" is the question
+    // players are really asking, and it works for every trade rather than only
+    // those old enough to have a 60-day horizon.
+    const last = after[after.length - 1];
+    out.latest = {
+      date: last.date,
+      close: last.price,
+      afterReturn: last.price / trade.exitPrice - 1,
+      verdict: verdictOf(last.price / trade.exitPrice - 1),
+      daysAfter: daysBetween(trade.exitDate, last.date),
+    };
+    out.overall = out.latest.verdict;
+    out.overallDays = out.latest.daysAfter;
+
     if (!out.horizons.length) {
+      // Still judgeable from the latest close, just with no horizon strip.
       out.flags.push('no-horizon-resolved');
-      return out;
     }
 
-    // Overall: the 60-day read when we have it, else the longest we do.
-    const sixty = out.horizons.find((h) => h.days === 60);
-    const chosen = sixty || out.horizons[out.horizons.length - 1];
-    out.overall = chosen.verdict;
-    out.overallDays = chosen.days;
-
-    // Best and worst the price got, over the span we actually have.
-    const longest = out.horizons[out.horizons.length - 1];
-    const window = after.filter((p) => p.date <= longest.date);
-    let hi = window[0], lo = window[0];
-    for (const p of window) {
+    // Best and worst the price got, across every close we have after the exit.
+    let hi = after[0], lo = after[0];
+    for (const p of after) {
       if (p.price > hi.price) hi = p;
       if (p.price < lo.price) lo = p;
     }
@@ -142,6 +150,15 @@
     return wouldHold ? overall === 'too-early' : overall === 'good-sell';
   }
 
+  // Is there enough post-exit data to judge this sell at all? The 5-day wait
+  // is necessary but not sufficient: a stock whose feed expired, or that was
+  // never priced, has no closes after the exit and cannot be judged however
+  // long ago it was sold. Those are excluded rather than shown unjudgeable.
+  const MIN_POINTS_AFTER = 2;
+  function isJudgeable(result) {
+    return !!(result && result.latest && result.pointsAfter >= MIN_POINTS_AFTER);
+  }
+
   // How many trading days until a trade becomes playable (needs 5 after exit).
   function daysUntilPlayable(exitDate, todayStr) {
     const today = todayStr || new Date().toISOString().slice(0, 10);
@@ -151,7 +168,8 @@
   }
 
   window.BackTradingVerdict = {
-    HORIZONS, verdictFor, verdictOf, scoreAnswer, daysUntilPlayable,
+    HORIZONS, verdictFor, verdictOf, scoreAnswer, daysUntilPlayable, isJudgeable,
+    MIN_POINTS_AFTER,
     VERDICT_LABEL, STALE_AFTER_DAYS, GIVE_UP_AFTER_DAYS, CALENDAR_PER_TRADING_DAY,
   };
 })();

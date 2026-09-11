@@ -12,17 +12,43 @@
 
     return {
       mount(el, props) {
-        const { trades, pool, rng, soberMode } = props;
+        const { trades: allTrades, pool, rng, soberMode } = props;
         let dead = false;
         // Draw without replacement until the pool is exhausted, then reset —
         // same behaviour the original had.
         const picked = new Set();
         let lastKey = null;
 
+        // Series are the expensive part, so resolve each stock once.
+        const seriesCache = new Map();
+        function seriesOf(entry) {
+          if (!seriesCache.has(entry.security)) {
+            seriesCache.set(entry.security, pool.priceSeriesForSecurity(
+              entry.security, (entry.investors || []).map((x) => x.code), entry.from, entry.to));
+          }
+          return seriesCache.get(entry.security);
+        }
+
+        // Guessing needs a chart to guess FROM. Drawing a stock with no price
+        // history and then apologising for it wastes a turn, so those are
+        // filtered out of the pool up front rather than after the spin.
+        const trades = guessFirst
+          ? allTrades.filter((t) => pool.chartable(seriesOf(t)))
+          : allTrades;
+        const skipped = allTrades.length - trades.length;
+
+        if (guessFirst && !trades.length) {
+          el.innerHTML = window.UI.emptyState(
+            'Nothing to guess from in this period',
+            'Guessing needs a price chart, and none of these stocks have enough history. Try a wider period.');
+          return { destroy() { dead = true; } };
+        }
+
         el.innerHTML = `
           <div style="margin:18px 0">
             <button class="btn game-spin" id="spin">🎲 ${guessFirst ? 'Deal a mystery stock' : 'Spin'}</button>
           </div>
+          ${skipped ? `<p class="text-muted text-small">${skipped} stock${skipped === 1 ? '' : 's'} left out — not enough price history to guess from.</p>` : ''}
           <div id="game-mount"></div>`;
 
         const mountEl = () => el.querySelector('#game-mount');
@@ -56,8 +82,7 @@
             ? (entry.win ? 'Winner 🎉' : 'Loser 📉')
             : (entry.win ? 'Hand out a shot 🥃' : 'Take a shot 🥃');
           const valueLabel = entry.sold ? 'Sold for' : "Today's value";
-          const series = pool.priceSeriesForSecurity(
-            entry.security, (entry.investors || []).map((x) => x.code), entry.from, entry.to);
+          const series = seriesOf(entry);
           const note = o.note ? `<div class="guess-note">${escapeHtml(o.note)}</div>` : '';
 
           mount.innerHTML = `
@@ -84,8 +109,7 @@
         function renderGuess(entry) {
           const mount = mountEl();
           if (dead || !mount) return;
-          const series = pool.priceSeriesForSecurity(
-            entry.security, (entry.investors || []).map((x) => x.code), entry.from, entry.to);
+          const series = seriesOf(entry);
           mount.innerHTML = `
             <div class="game-result guess">
               <div class="guess-prompt">Guess the stock 🤔</div>
@@ -121,9 +145,9 @@
             if (dead || !mountEl()) return;
             if (btn) btn.disabled = false;
             if (!guessFirst) { renderResult(final); return; }
-            const series = pool.priceSeriesForSecurity(
-              final.security, (final.investors || []).map((x) => x.code), final.from, final.to);
-            if (pool.chartable(series)) renderGuess(final);
+            // The pool was filtered to chartable stocks, so this always has a
+            // chart to show; the guard stays in case a series goes missing.
+            if (pool.chartable(seriesOf(final))) renderGuess(final);
             else renderResult(final, { note: "Not enough price history to guess — here's the answer." });
           };
 

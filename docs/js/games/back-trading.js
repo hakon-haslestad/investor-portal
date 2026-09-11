@@ -73,14 +73,33 @@
 
     const roster = players && players.length ? players : [{ code: '', name: 'Player' }];
     let onlyMine = false;
-    let turn = 0;
     let answers = [];   // [{player, wouldHold, correct}]
     let score = 0;
+    let bets = new Map();   // player code -> true (hold) | false (sell)
+
+    // verdictFor needs a price series, which is the expensive part, so each
+    // trade is resolved once and reused by the picker, the round and the
+    // aggregate.
+    const cache = new Map();
+    function resolve(trade) {
+      if (!cache.has(trade.id)) {
+        const series = seriesFor(pool, trade);
+        cache.set(trade.id, { series, result: V().verdictFor(trade, series.points, today) });
+      }
+      return cache.get(trade.id);
+    }
+
+    // A stock whose feed expired, or that was never priced, has no closes
+    // after the exit — there is nothing to judge the sell against, so it is
+    // left out rather than offered and then shrugged at.
+    const judgeable = playable.filter((t) => V().isJudgeable(resolve(t).result));
+    const unjudgeable = playable.length - judgeable.length;
 
     function filtered() {
-      if (!onlyMine) return playable;
+      const base = judgeable;
+      if (!onlyMine) return base;
       const me = roster[0] && roster[0].code;
-      return playable.filter((t) => t.ownerCodes.includes(me));
+      return base.filter((t) => t.ownerCodes.includes(me));
     }
 
     function pickTrade(id) {
@@ -93,10 +112,9 @@
     // ── Aggregate: the sell record per player ────────────────────────────
     function sellRecord() {
       const byPlayer = new Map();
-      for (const t of playable) {
-        const r = V().verdictFor(t, seriesFor(pool, t).points, today);
-        const sixty = r.horizons.find((h) => h.days === 60);
-        const verdict = sixty ? sixty.verdict : null;
+      for (const t of judgeable) {
+        const r = resolve(t).result;
+        const verdict = r.overall;
         if (!verdict) continue;
         for (const code of t.ownerCodes) {
           if (!byPlayer.has(code)) {
@@ -140,7 +158,7 @@
         : '<p class="text-muted text-small">Nobody has 5 closed trades in this period yet.</p>';
 
       return `
-        ${window.UI.section('Your sell record', { extra: '<span class="text-muted text-small">at the 60-day horizon</span>' })}
+        ${window.UI.section('Your sell record', { extra: '<span class="text-muted text-small">judged on the latest price available</span>' })}
         ${window.UI.table([
           { label: 'Player', p: 1 },
           { label: 'Closed', className: 'text-right', p: 2 },
@@ -157,7 +175,6 @@
     // ── Replay ───────────────────────────────────────────────────────────
     function renderAsk(trade) {
       const s = seriesFor(pool, trade, trade.exitDate); // nothing after the exit
-      const who = roster.length > 1 ? roster[turn % roster.length] : null;
       el.innerHTML = `
         ${renderPicker(trade)}
         <div class="bt-card">
@@ -172,16 +189,35 @@
             <div class="kpi-card"><div class="label">Sold by</div><div class="value">${escapeHtml(trade.ownerNames)}</div></div>
           </div>
           <div id="bt-chart"></div>
-          <p class="bt-ask">${who ? `<strong>${escapeHtml(who.name)}</strong> — w` : 'W'}ould you have held?</p>
-          <div class="bt-buttons">
-            <button class="btn" id="bt-hold">Hold 💎</button>
-            <button class="btn ghost" id="bt-sell">Sell was right ✂️</button>
+          <p class="bt-ask">Would you have held?</p>
+          <div class="bt-bets">
+            ${roster.map((p) => {
+              const bet = bets.get(p.code);
+              return `<div class="bt-bet" data-player="${escapeHtml(p.code)}">
+                <span class="bt-bet-who">${escapeHtml(p.name)}</span>
+                <span class="bt-bet-buttons">
+                  <button type="button" class="preset ${bet === true ? 'active' : ''}" data-bet="hold" aria-pressed="${bet === true}">Hold 💎</button>
+                  <button type="button" class="preset ${bet === false ? 'active' : ''}" data-bet="sell" aria-pressed="${bet === false}">Sell ✂️</button>
+                </span>
+              </div>`;
+            }).join('')}
           </div>
-          <p class="text-muted text-small">Nothing after the sell is shown yet.</p>
+          <div class="bt-buttons">
+            <button class="btn game-spin" id="bt-reveal" ${bets.size ? '' : 'disabled'}>
+              ${bets.size ? `Reveal 👀 (${bets.size}/${roster.length} in)` : 'Everyone place a call first'}
+            </button>
+          </div>
+          <p class="text-muted text-small">Nothing after the sell is shown yet. Players who sit out simply do not score.</p>
         </div>`;
       mountChart('#bt-chart', s, trade, false);
-      el.querySelector('#bt-hold').addEventListener('click', () => reveal(trade, true));
-      el.querySelector('#bt-sell').addEventListener('click', () => reveal(trade, false));
+      el.querySelectorAll('.bt-bet [data-bet]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const code = btn.closest('.bt-bet').getAttribute('data-player');
+          bets.set(code, btn.getAttribute('data-bet') === 'hold');
+          renderAsk(trade); // re-render so the toggle and the counter update
+        });
+      });
+      el.querySelector('#bt-reveal').addEventListener('click', () => reveal(trade));
       bindPicker();
     }
 
@@ -194,21 +230,28 @@
       }));
     }
 
-    function reveal(trade, wouldHold) {
-      const s = seriesFor(pool, trade);
-      const r = V().verdictFor(trade, s.points, today);
-      const right = r.overall ? V().scoreAnswer(wouldHold, r.overall) : null;
-      if (right) score += 1;
-      answers.push({ player: (roster[turn % roster.length] || {}).name, wouldHold, correct: right });
-      turn += 1;
+    function reveal(trade) {
+      const { series: s, result: r } = resolve(trade);
+      // Score every player who placed a call.
+      const calls = [...bets.entries()].map(([code, wouldHold]) => {
+        const p = roster.find((x) => x.code === code) || { code, name: code };
+        const correct = r.overall ? V().scoreAnswer(wouldHold, r.overall) : null;
+        if (correct) score += 1;
+        answers.push({ player: p.name, wouldHold, correct });
+        return { ...p, wouldHold, correct };
+      });
 
       if (history) {
         history.add({
           gameId: 'back-trading',
           competitionId: competitionId || '',
-          players: roster.map((p) => p.name),
-          summary: `${trade.security} sold ${trade.exitDate} — ${r.overall ? V().VERDICT_LABEL[r.overall] : 'no verdict'}`,
-          payload: { tradeId: trade.id, verdict: r.overall, horizons: r.horizons.map((h) => ({ days: h.days, verdict: h.verdict })) },
+          players: calls.map((c) => c.name),
+          summary: `${trade.security} sold ${trade.exitDate} — ${r.overall ? V().VERDICT_LABEL[r.overall] : 'no verdict'}${calls.length ? ` · ${calls.filter((c) => c.correct).length}/${calls.length} called it` : ''}`,
+          payload: {
+            tradeId: trade.id, verdict: r.overall,
+            calls: calls.map((c) => ({ player: c.name, wouldHold: c.wouldHold, correct: c.correct })),
+            horizons: r.horizons.map((h) => ({ days: h.days, verdict: h.verdict })),
+          },
         });
       }
 
@@ -226,18 +269,26 @@
         caveats.push('Some horizons resolved against an older close: sold stocks are only fetched weekly, so the exact day was not available.');
       }
       if (!r.oneYear) {
-        caveats.push('No one-year figure: post-exit prices are kept for about six months, so the 250-day horizon has no data yet.');
+        caveats.push('No one-year figure yet — the feed keeps post-exit prices for a limited window, so the 250-day horizon has no data.');
       }
 
-      const scoreLine = right == null
-        ? '<span class="text-muted">No verdict — not enough data after the sell.</span>'
-        : (soberMode
-          ? (right ? '+1 point' : 'no point')
-          : (right ? 'You called it 🎯' : 'Wrong — drink 🍺'));
+      const wrong = calls.filter((c) => c.correct === false);
+      // Tint the card only when the room agreed: all right, or all wrong.
+      const scored = calls.filter((c) => c.correct != null);
+      const allRight = !scored.length ? null
+        : scored.every((c) => c.correct) ? true
+          : scored.every((c) => !c.correct) ? false : null;
+      const scoreLine = calls.length
+        ? `<div class="bt-calls">${calls.map((c) => `
+            <span class="bt-call ${c.correct === true ? 'ok' : c.correct === false ? 'bad' : ''}">
+              ${escapeHtml(c.name)} said <strong>${c.wouldHold ? 'hold' : 'sell'}</strong>
+              ${c.correct === true ? '✓' : c.correct === false ? '✗' : ''}
+            </span>`).join('')}</div>`
+        : '<span class="text-muted">Nobody called it.</span>';
       // Running tally across the session, so a streak of good calls shows.
       const judged = answers.filter((a) => a.correct != null).length;
       const tally = judged
-        ? `<div class="bt-tally">${score}/${judged} called right this session</div>` : '';
+        ? `<div class="bt-tally">${score}/${judged} calls right this session</div>` : '';
 
       el.innerHTML = `
         ${renderPicker(trade)}
@@ -246,11 +297,14 @@
             <span class="bt-sec">${escapeHtml(trade.security)}</span>
             <span class="tag">sold ${escapeHtml(trade.exitDate)} by ${escapeHtml(trade.ownerNames)}</span>
           </div>
-          <div class="game-result ${right === true ? 'win' : right === false ? 'loss' : ''} bt-verdict">
+          <div class="game-result ${allRight === true ? 'win' : allRight === false ? 'loss' : ''} bt-verdict">
             <div class="verdict">${r.overall ? escapeHtml(V().VERDICT_LABEL[r.overall]) : 'No verdict'}</div>
-            <div class="who-state">${r.overallDays ? `judged at ${r.overallDays} trading days` : ''}</div>
+            <div class="who-state">${r.latest
+              ? `by the latest close we have — ${escapeHtml(r.latest.date)}, ${r.latest.daysAfter} days after the sale`
+              : ''}</div>
             <div class="pnl">${scoreLine}</div>
             ${tally}
+            ${drinkLine(r, trade, wrong)}
           </div>
           ${strip ? `<div class="bt-strip">${strip}</div>
             <p class="text-muted text-small">Each horizon is what the price did by then. Hover for the close it used.</p>` : ''}
@@ -275,6 +329,16 @@
       bindPicker();
     }
 
+    // Who drinks: the seller if they got out too early, plus anyone who
+    // called it wrong. Sober mode turns both into points.
+    function drinkLine(r, trade, wrong) {
+      if (soberMode) return '';
+      const bits = [];
+      if (r.overall === 'too-early') bits.push(`${escapeHtml(trade.ownerNames)} sold too early — drink 🍺`);
+      if (wrong.length) bits.push(`${wrong.map((c) => escapeHtml(c.name)).join(', ')} called it wrong — drink 🍺`);
+      return bits.length ? `<div class="bt-drink">${bits.join('<br>')}</div>` : '';
+    }
+
     function renderPicker(trade) {
       const list = filtered();
       const opts = list.slice(0, 200).map((t) =>
@@ -286,14 +350,15 @@
             <input type="checkbox" id="bt-mine" ${onlyMine ? 'checked' : ''} /> Only my trades
           </label>
           <button type="button" class="preset" id="bt-random">🎲 Random</button>
-        </div>`;
+        </div>
+        ${unjudgeable ? `<p class="text-muted text-small bt-excluded">${unjudgeable} closed trade${unjudgeable === 1 ? '' : 's'} left out — no price data after the sale to judge them by.</p>` : ''}`;
     }
 
     function bindPicker() {
       const sel = el.querySelector('#bt-pick');
       if (sel) sel.addEventListener('change', () => {
         const t = pickTrade(sel.value);
-        if (t) renderAsk(t);
+        if (t) { bets = new Map(); renderAsk(t); }
       });
       const mine = el.querySelector('#bt-mine');
       if (mine) mine.addEventListener('change', () => { onlyMine = mine.checked; newRound(); });
@@ -303,14 +368,15 @@
 
     function newRound() {
       if (dead) return;
+      bets = new Map();
       const t = pickTrade(null);
       if (!t) {
         const soonest = waiting.slice().sort((a, b) => a.daysUntilPlayable - b.daysUntilPlayable)[0];
-        el.innerHTML = window.UI.emptyState(
-          'No closed trades to replay here',
-          soonest
-            ? `The most recent sell is still too fresh — come back in ${soonest.daysUntilPlayable} days.`
-            : 'Widen the period, or turn off "only my trades".');
+        const why = [];
+        if (unjudgeable) why.push(`${unjudgeable} closed trade${unjudgeable === 1 ? '' : 's'} had no price data after the sale, so there is nothing to judge them against.`);
+        if (soonest) why.push(`The most recent sell is still too fresh — come back in ${soonest.daysUntilPlayable} days.`);
+        if (!why.length) why.push('Widen the period, or turn off "only my trades".');
+        el.innerHTML = window.UI.emptyState('No closed trades to replay here', why.join(' '));
         return;
       }
       renderAsk(t);

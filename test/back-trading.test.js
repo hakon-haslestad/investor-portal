@@ -29,8 +29,13 @@ test('a price that kept climbing reads as sold too early', () => {
   const series = dailySeries(exitDate, 400, (i) => 100 * (1 + i * 0.002));
   const r = v.verdictFor({ exitDate, exitPrice: 100, qty: 10 }, series, '2025-06-01');
   assert.equal(r.overall, 'too-early');
-  assert.equal(r.overallDays, 60, 'the 60-day horizon is preferred when present');
-  assert.deepEqual(r.horizons.map((h) => h.days), [5, 20, 60, 120, 250]);
+  // The headline verdict comes from the LATEST close we have, not a fixed
+  // horizon — "has it gone up since you sold?" is the question being asked.
+  assert.equal(r.overall, r.latest.verdict);
+  assert.equal(r.latest.date, series[series.length - 1].date);
+  assert.equal(r.overallDays, r.latest.daysAfter);
+  assert.deepEqual(r.horizons.map((h) => h.days), [5, 20, 60, 120, 250],
+    'the strip still shows every horizon that resolved');
   assert.ok(r.missedMoney > 0, 'there was money left on the table');
   assert.equal(r.moneySaved, 0);
   assert.ok(r.oneYear && r.oneYear.pct > 0);
@@ -54,7 +59,7 @@ test('horizons reaching into the future are skipped, not guessed', () => {
   const series = dailySeries(exitDate, 40, () => 105);
   const r = v.verdictFor({ exitDate, exitPrice: 100, qty: 1 }, series, addDays(exitDate, 40));
   assert.deepEqual(r.horizons.map((h) => h.days), [5, 20], 'only horizons that have happened');
-  assert.equal(r.overallDays, 20, 'falls back to the longest available');
+  assert.equal(r.overall, r.latest.verdict, 'still judged, from the latest close');
   assert.equal(r.oneYear, null);
 });
 
@@ -236,4 +241,56 @@ test('a sell inside the 5-day window reports the wait rather than being playable
 test('closedTrades survives an empty or malformed ledger', () => {
   assert.deepEqual(btCtx([]), []);
   assert.deepEqual(btCtx([{ type: 'SALG' }]), [], 'no date, no security, no crash');
+});
+
+// ── Judged on the latest available close ───────────────────────────────────
+test('a trade too young for any horizon is still judged from the latest close', () => {
+  const v = V();
+  const exitDate = '2024-01-01';
+  // Three days of data: no horizon resolves (the 5-day target is 7 days out).
+  const series = dailySeries(exitDate, 3, () => 120);
+  const r = v.verdictFor({ exitDate, exitPrice: 100, qty: 1 }, series, addDays(exitDate, 3));
+  assert.deepEqual(r.horizons, [], 'nothing reached a horizon yet');
+  assert.ok(r.latest, 'but there is a latest close');
+  assert.equal(r.overall, 'too-early', 'and that is enough to judge the call');
+  assert.equal(r.latest.daysAfter, 3);
+  assert.ok(r.flags.includes('no-horizon-resolved'), 'the thinness is still reported');
+});
+
+test('the latest close is the most recent one, not the last horizon', () => {
+  const v = V();
+  const exitDate = '2024-01-01';
+  // Up through the 60-day mark, then collapses well after it.
+  const series = dailySeries(exitDate, 300, (i) => (i < 200 ? 150 : 60));
+  const r = v.verdictFor({ exitDate, exitPrice: 100, qty: 1 }, series, '2025-06-01');
+  assert.equal(r.horizons.find((h) => h.days === 60).verdict, 'too-early');
+  assert.equal(r.latest.verdict, 'good-sell', 'by the latest close it had fallen');
+  assert.equal(r.overall, 'good-sell', 'the headline follows the latest close');
+});
+
+test('best and worst span every close after the exit, not just to a horizon', () => {
+  const v = V();
+  const exitDate = '2024-01-01';
+  // The peak lands beyond the last resolvable horizon.
+  const series = dailySeries(exitDate, 300, (i) => (i === 290 ? 400 : 100));
+  const r = v.verdictFor({ exitDate, exitPrice: 100, qty: 1 }, series, '2025-06-01');
+  assert.equal(r.maxAfter.date, addDays(exitDate, 290), 'the late peak counts');
+  assert.ok(Math.abs(r.maxAfter.value - 3) < 1e-9);
+});
+
+test('isJudgeable excludes trades with no usable post-exit prices', () => {
+  const v = V();
+  const exitDate = '2024-01-01';
+  const none = v.verdictFor({ exitDate, exitPrice: 100, qty: 1 }, [], '2025-01-01');
+  assert.equal(v.isJudgeable(none), false, 'no data at all');
+
+  const one = v.verdictFor({ exitDate, exitPrice: 100, qty: 1 }, dailySeries(exitDate, 1, () => 110), '2025-01-01');
+  assert.equal(v.isJudgeable(one), false, 'a single close is not a trend');
+
+  const enough = v.verdictFor({ exitDate, exitPrice: 100, qty: 1 }, dailySeries(exitDate, 30, () => 110), '2025-01-01');
+  assert.equal(v.isJudgeable(enough), true);
+
+  const noPrice = v.verdictFor({ exitDate, exitPrice: 0, qty: 1 }, dailySeries(exitDate, 30, () => 110), '2025-01-01');
+  assert.equal(v.isJudgeable(noPrice), false, 'no exit price, nothing to compare to');
+  assert.equal(v.isJudgeable(null), false);
 });

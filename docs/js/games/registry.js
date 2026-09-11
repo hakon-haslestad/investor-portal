@@ -72,11 +72,12 @@
       tagline: 'Was selling the right call? Replay the decision and find out.',
       rules: `<p>A closed trade is shown as it looked on the day it was sold — entry, exit, and the chart up to that point. Nothing after.</p>
               <p>Say whether you would have held. Then the rest of the chart appears, with the verdict: <strong>good sell</strong> if the price fell, <strong>sold too early</strong> if it ran, <strong>neutral</strong> in between.</p>
-              <p>The strip shows the verdict at 5, 20, 60, 120 and 250 trading days, so you can see it flip over time. Horizons with no data yet are left out rather than guessed.</p>`,
+              <p>Everyone calls it before the reveal — the verdict is whatever the price has done by the <em>latest</em> close we have.</p>
+              <p>The strip shows the verdict at 5, 20, 60, 120 and 250 trading days too, so you can see it flip over time. Horizons with no data yet are left out rather than guessed, and trades with no prices after the sale are not offered at all.</p>`,
       tags: ['skill', 'recurring'],
-      players: '1',
+      players: '2+',
       minTrades: 1,
-      drinkingRule: 'Sold too early? The seller drinks. Guessed wrong? You drink.',
+      drinkingRule: 'Sold too early? The seller drinks. Called it wrong? You drink.',
       component: window.GameBackTrading,
     },
     {
