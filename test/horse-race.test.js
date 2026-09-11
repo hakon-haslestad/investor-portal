@@ -166,3 +166,35 @@ test('the finishing order is the real returns, best first', () => {
   assert.ok(Math.abs(race.ranking[0].finalPos - 0.30) < 1e-12);
   assert.ok(race.ranking[2].finalPos < 0, 'a loser finishes behind the start line');
 });
+
+test('every lane exposes a date per position — what the timeline reads', () => {
+  const e = E();
+  const race = e.buildRace([
+    { ticker: 'AAA', points: pts(100, 105, 110) },
+    { ticker: 'BBB', points: pts(50, 52, 49) },
+  ]);
+  assert.ok(race.ok);
+  for (const l of race.lanes) {
+    assert.equal(l.dates.length, l.positions.length, `${l.ticker}: one date per position`);
+    assert.ok(l.dates[0] < l.dates[l.dates.length - 1], 'dates run forwards');
+  }
+  // The timeline slices lane 0 to `steps`, so that must be in range.
+  assert.ok(race.steps <= race.lanes[0].dates.length);
+  assert.equal(race.lanes[0].dates.slice(0, race.steps).length, race.steps);
+});
+
+test('a short lane sets the race length, so the timeline cannot overrun', () => {
+  const e = E();
+  const race = e.buildRace([
+    { ticker: 'AAA', points: pts(100, 105, 110, 115) },
+    { ticker: 'BBB', points: pts(50, 52) },
+  ]);
+  assert.equal(race.steps, 2, 'the shortest lane decides');
+  const timelineDates = race.lanes[0].dates.slice(0, race.steps);
+  assert.equal(timelineDates.length, 2);
+  // The playhead maps t in [0,1] onto these — both ends must be addressable.
+  for (const t of [0, 0.5, 1]) {
+    const i = Math.round(t * (timelineDates.length - 1));
+    assert.ok(timelineDates[i], `t=${t} resolves to a date`);
+  }
+});

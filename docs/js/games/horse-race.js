@@ -164,11 +164,32 @@
 
     function renderTrack(race) {
       const h = race.lanes.length * LANE_H + 50;
+      // The dates actually raced over. Lanes are indexed by step, not by date,
+      // so the animation already assumes the closes line up across horses —
+      // they come from one shared StockPrices date index. The timeline shows
+      // lane 0's dates on that same basis, trimmed to the shortest lane.
+      const dates = race.lanes[0].dates.slice(0, race.steps);
+      const ticks = dates.map((d, i) => {
+        const pct = dates.length > 1 ? (i / (dates.length - 1)) * 100 : 0;
+        return `<span class="hr-tl-tick" style="left:${pct.toFixed(2)}%" title="${escapeHtml(d)}"></span>`;
+      }).join('');
       el.innerHTML = `
         <div class="hr-race">
           <div class="hr-commentary" id="hr-say" role="status" aria-live="polite">They're under starter's orders…</div>
           <div class="hr-track-wrap">
             <svg id="hr-svg" viewBox="0 0 ${VIEW_W} ${h}" role="img" aria-label="Race track"></svg>
+          </div>
+          <div class="hr-timeline">
+            <div class="hr-tl-track">
+              <div class="hr-tl-fill" id="hr-tl-fill"></div>
+              ${ticks}
+              <div class="hr-tl-head" id="hr-tl-head"></div>
+            </div>
+            <div class="hr-tl-labels">
+              <span class="hr-tl-end">${escapeHtml(dates[0])}</span>
+              <span class="hr-tl-now" id="hr-tl-now">${escapeHtml(dates[0])}</span>
+              <span class="hr-tl-end">${escapeHtml(dates[dates.length - 1])}</span>
+            </div>
           </div>
           <div class="hr-controls">
             <button class="btn ghost small" id="hr-pause">Pause</button>
@@ -192,11 +213,30 @@
         x1: START_X, x2: START_X, y1: 10, y2: h - 10,
         stroke: '#3a3a3a', 'stroke-width': '2', 'stroke-dasharray': '4 4',
       }));
-      return svg;
+      return {
+        svg, dates,
+        fill: el.querySelector('#hr-tl-fill'),
+        head: el.querySelector('#hr-tl-head'),
+        now: el.querySelector('#hr-tl-now'),
+      };
     }
 
     function runRace(race, days) {
-      const svg = renderTrack(race);
+      const track = renderTrack(race);
+      const svg = track.svg;
+
+      // Keep the timeline in step with the horses: fill, playhead and the
+      // date readout all follow the same t the animation uses.
+      function setTime(t) {
+        const pct = Math.max(0, Math.min(1, t)) * 100;
+        if (track.fill) track.fill.style.width = pct.toFixed(2) + '%';
+        if (track.head) track.head.style.left = pct.toFixed(2) + '%';
+        if (track.now) {
+          const i = Math.round(Math.max(0, Math.min(1, t)) * (track.dates.length - 1));
+          track.now.textContent = track.dates[i] || '';
+        }
+      }
+
       const horses = race.lanes.map((l, i) => {
         const y = 30 + i * LANE_H;
         const g = svgEl('g', {});
@@ -227,6 +267,7 @@
         });
         const lead = positions.indexOf(Math.max(...positions));
         horses.forEach((hh, i) => hh.dot.setAttribute('stroke', i === lead ? '#ffc94f' : '#0e0f13'));
+        setTime(t);
       }
 
       function fireEvents(step, elapsed) {

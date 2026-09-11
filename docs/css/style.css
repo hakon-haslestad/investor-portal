@@ -362,6 +362,40 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
 .hr-track-wrap svg { width: 100%; height: auto; display: block; }
 .hr-controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 
+/* Race timeline: where in the price window the race currently is. Ticks mark
+   the actual closes, so with a 5-day race you can see the five data points
+   the horses are interpolating between. */
+.hr-timeline { margin-top: 10px; }
+.hr-tl-track {
+  position: relative; height: 10px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--border);
+}
+.hr-tl-fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  border-radius: 999px; background: linear-gradient(90deg, rgba(62,224,127,0.45), var(--accent));
+}
+.hr-tl-tick {
+  position: absolute; top: 50%; width: 2px; height: 10px;
+  transform: translate(-1px, -50%); background: var(--border);
+}
+.hr-tl-head {
+  position: absolute; top: 50%; left: 0; width: 14px; height: 14px;
+  transform: translate(-7px, -50%); border-radius: 999px;
+  background: var(--accent-2); border: 2px solid var(--bg);
+  box-shadow: 0 0 0 2px rgba(255, 201, 79, 0.25);
+}
+.hr-tl-labels {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-top: 6px; font-size: 0.75rem; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.hr-tl-now { color: var(--text); font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* The playhead jumps straight to the end with the rest of the race. */
+  .hr-tl-fill, .hr-tl-head { transition: none; }
+}
+
 .hr-result { margin-top: 18px; }
 .hr-podium { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
 .hr-podium-slot {
