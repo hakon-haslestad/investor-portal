@@ -116,3 +116,78 @@ test('an empty pool never throws', () => {
   assert.deepEqual(pool.buildPool({ period: 'all' }, new Map()), []);
   assert.deepEqual(pool.buildPool({ competitionId: 'missing' }, new Map()), []);
 });
+
+// ── The baseline exclusion every game inherits ──────────────────────────────
+function poolWithSeries(seriesBySecurity) {
+  const w = context([], {
+    Copy: { namesFromMembers: () => ({ HH: 'Hakon' }) },
+    Ledger: { INVESTOR_CODES: ['HH'], classify: () => 'BUY', splitForSecurity: () => [{ code: 'HH', weight: 1 }] },
+    Portfolio: {
+      canonicalName: (s) => String(s || '').toLowerCase().trim(),
+      buildDashboard: () => ({ perInvestor: {} }),
+      previousHoldings: () => [],
+      usePriceMatrix: () => true,
+    },
+    CompetitionEngine: { scoreCompetition: () => ({ ranks: [] }) },
+    TimeSeries: {
+      buildSecurityPriceSeries: (store, sec) => (seriesBySecurity[sec] || []),
+    },
+  });
+  load(w, 'games/pool.js');
+  return w.GamePool.createContext({
+    members: [], transactions: [], attributionMap: {},
+    prices: { hasData: true, dates: [], series: new Map() },
+    registry: { forName: () => ({}) },
+  });
+}
+
+const entry = (security) => ({ security, investors: [{ code: 'HH', name: 'Hakon' }], from: '2024-01-01', to: '2024-12-31' });
+
+test('a stock with no price history is excluded; one with a series is kept', () => {
+  const pool = poolWithSeries({
+    Alpha: [{ date: '2024-01-01', price: 10 }, { date: '2024-06-01', price: 12 }],
+    Beta: [],
+    Gamma: [{ date: '2024-01-01', price: 5 }], // a single close is not history
+  });
+  assert.equal(pool.hasPriceData(entry('Alpha')), true);
+  assert.equal(pool.hasPriceData(entry('Beta')), false);
+  assert.equal(pool.hasPriceData(entry('Gamma')), false, 'one point cannot make a line');
+});
+
+test('withPriceData splits rather than silently shrinking, so the count can be shown', () => {
+  const pool = poolWithSeries({
+    Alpha: [{ date: '2024-01-01', price: 10 }, { date: '2024-06-01', price: 12 }],
+    Beta: [],
+    Gamma: [],
+  });
+  const { kept, dropped } = pool.withPriceData([entry('Alpha'), entry('Beta'), entry('Gamma')]);
+  assert.deepEqual(kept.map((e) => e.security), ['Alpha']);
+  assert.deepEqual(dropped.map((e) => e.security), ['Beta', 'Gamma']);
+  assert.equal(kept.length + dropped.length, 3, 'nothing is lost, only sorted');
+});
+
+test('an empty pool splits cleanly instead of throwing', () => {
+  const pool = poolWithSeries({});
+  const { kept, dropped } = pool.withPriceData([]);
+  assert.deepEqual(kept, []);
+  assert.deepEqual(dropped, []);
+});
+
+test('price series are cached, so the filter does not re-walk the ledger per game', () => {
+  let calls = 0;
+  const w = context([], {
+    Copy: { namesFromMembers: () => ({}) },
+    Ledger: { INVESTOR_CODES: ['HH'], classify: () => 'BUY', splitForSecurity: () => [] },
+    Portfolio: { canonicalName: (s) => s, buildDashboard: () => ({ perInvestor: {} }), previousHoldings: () => [], usePriceMatrix: () => true },
+    CompetitionEngine: { scoreCompetition: () => ({ ranks: [] }) },
+    TimeSeries: {
+      buildSecurityPriceSeries: () => { calls += 1; return [{ date: '2024-01-01', price: 1 }, { date: '2024-02-01', price: 2 }]; },
+    },
+  });
+  load(w, 'games/pool.js');
+  const pool = w.GamePool.createContext({ members: [], transactions: [], attributionMap: {}, prices: { hasData: true }, registry: null });
+  pool.hasPriceData(entry('Alpha'));
+  pool.hasPriceData(entry('Alpha'));
+  pool.priceSeriesForSecurity('Alpha', ['HH'], '2024-01-01', '2024-12-31');
+  assert.equal(calls, 1, 'the same series is built once, not once per asker');
+});

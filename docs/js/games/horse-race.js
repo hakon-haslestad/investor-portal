@@ -74,7 +74,16 @@
       const { from, to } = windowRange();
       // Odds come from the window BEFORE the race, so they cannot encode its
       // outcome. Cosmetic either way — they never affect the running.
-      const withOdds = runners.map((r) => ({
+      // A horse with no closes in THIS window cannot run, whatever history it
+      // has elsewhere. Filter the paddock rather than letting someone pick a
+      // horse and then bouncing them back here when the race refuses to start.
+      const eligible = runners.filter((r) => pointsFor(r.name, from, to).length >= 2);
+      const noData = runners.length - eligible.length;
+      // Drop any pick this window has just made ineligible.
+      for (const [code, ticker] of [...picks]) {
+        if (!eligible.some((r) => r.ticker === ticker)) picks.delete(code);
+      }
+      const withOdds = eligible.map((r) => ({
         ...r,
         odds: E().oddsFor(E().volatility(pointsFor(r.name, addDays(from, -60), from))),
       }));
@@ -86,10 +95,12 @@
         <div class="range-picker">
           ${WINDOWS.map((w) => `<button class="preset ${windowId === w.id ? 'active' : ''}" data-window="${w.id}" aria-pressed="${windowId === w.id}">${w.label}</button>`).join('')}
         </div>
-        <p class="text-muted text-small">Daily closes only — there is no intraday data, so the shortest race is five days.</p>
+        <p class="text-muted text-small">Daily closes only — there is no intraday data, so the shortest race is five days.${noData ? ` ${noData} stock${noData === 1 ? '' : 's'} cannot run this window: no prices for it.` : ''}</p>
 
         <div class="section-title">Pick your horse</div>
-        ${roster.length ? `<div class="hr-picks">
+        ${!eligible.length ? window.UI.emptyState('No horses can run this window',
+          'None of these stocks have prices over that range. Try a longer window.') : ''}
+        ${roster.length && eligible.length ? `<div class="hr-picks">
           ${roster.map((p) => `
             <label class="hr-pick">
               <span class="hr-pick-who">${escapeHtml(p.name)}</span>

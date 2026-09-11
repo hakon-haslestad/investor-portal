@@ -21,7 +21,11 @@
     if (filters.competitionId && !compById.has(filters.competitionId)) filters.competitionId = '';
 
     const pool = window.GamePool.createContext(store);
-    const trades = pool.buildPool(filters, compById);
+    // Every game gets the same baseline: a stock with no price history cannot
+    // be charted, raced or judged, so it is dropped once here rather than in
+    // each game. Games that need MORE than the baseline narrow it further.
+    const all = pool.buildPool(filters, compById);
+    const { kept: trades, dropped } = pool.withPriceData(all);
     const players = pool.playersFor(filters, compById);
     const gameId = (params[0] || '').trim();
     const game = gameId ? window.Games.byId(gameId) : null;
@@ -39,7 +43,7 @@
           <h2>Games 🎲🍺 ${window.UI.infoIcon('the-game')}</h2>
         </div>
         ${S.renderFilterBar(filters, competitions)}
-        ${S.renderShell(game, filters, summary, recent)}`;
+        ${S.renderShell(game, filters, summary + droppedNote(), recent)}`;
       S.bindFilterBar(el, filters, navigate, game.id, () => mountGame());
 
       const board = el.querySelector('#game-board');
@@ -73,6 +77,12 @@
       });
     }
 
+    // Named so the count is explained rather than just being a smaller number.
+    function droppedNote() {
+      if (!dropped.length) return '';
+      return ` · ${dropped.length} left out, no price history`;
+    }
+
     function refreshRecent() {
       const wrap = el.querySelector('#recent-wrap');
       const body = el.querySelector('#recent-body');
@@ -86,7 +96,7 @@
       el.innerHTML = `
         <div class="hero">
           <h2>Games 🎲🍺 ${window.UI.infoIcon('the-game')}</h2>
-          <div class="when">${trades.length} stock${trades.length === 1 ? '' : 's'} in this selection</div>
+          <div class="when">${trades.length} stock${trades.length === 1 ? '' : 's'} in play${droppedNote()}</div>
         </div>
         ${S.renderFilterBar(filters, competitions)}
         ${S.renderGrid(window.Games.registry, trades, filters)}`;

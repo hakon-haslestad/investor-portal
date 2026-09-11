@@ -249,7 +249,16 @@
       return tx.price * fx;
     }
 
+    const seriesCache = new Map();
     function priceSeriesForSecurity(security, code, from, to) {
+      const key = `${canon(security)}|${Array.isArray(code) ? code.join(',') : code}|${from}|${to}`;
+      if (seriesCache.has(key)) return seriesCache.get(key);
+      const out = buildPriceSeries(security, code, from, to);
+      seriesCache.set(key, out);
+      return out;
+    }
+
+    function buildPriceSeries(security, code, from, to) {
       const c = canon(security);
       const codes = new Set(Array.isArray(code) ? code : [code]);
       const markers = [];
@@ -298,6 +307,25 @@
       return `${(days / 365).toFixed(1)} yr`;
     }
 
+    // MIN_POINTS is the floor for a stock to appear in any game at all.
+    // Individual games tighten it further — guessing needs a chart worth
+    // showing (chartable), Back Trading needs closes AFTER the exit.
+    const MIN_POINTS = 2;
+    function hasPriceData(entry) {
+      const s = priceSeriesForSecurity(
+        entry.security, (entry.investors || []).map((o) => o.code), entry.from, entry.to);
+      return s.points.length >= MIN_POINTS;
+    }
+
+    // Split a pool into what is playable and what had too little data, so the
+    // caller can say how many were dropped instead of silently shrinking.
+    function withPriceData(entries) {
+      const kept = [];
+      const dropped = [];
+      for (const e of entries) (hasPriceData(e) ? kept : dropped).push(e);
+      return { kept, dropped };
+    }
+
     function chartable(series) {
       return series.points.length >= 2 &&
         daysBetween(series.points[0].date, series.points[series.points.length - 1].date) >= 30;
@@ -322,6 +350,7 @@
     return {
       computeWindow, activityDates, overlapsWindow, buildPool, refinePool,
       priceSeriesForSecurity, holdingText, chartable, playersFor,
+      hasPriceData, withPriceData, MIN_POINTS,
       exchangeFor, tickerFor, daysBetween, names, CODES, canon, measureFor, store,
     };
   }
