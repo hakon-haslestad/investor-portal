@@ -74,9 +74,8 @@
     const roster = players && players.length ? players : [{ code: '', name: 'Player' }];
     let onlyMine = false;
     let turn = 0;
-    let current = null;
     let answers = [];   // [{player, wouldHold, correct}]
-    let score = 0, rounds = 0;
+    let score = 0;
 
     function filtered() {
       if (!onlyMine) return playable;
@@ -198,7 +197,6 @@
     function reveal(trade, wouldHold) {
       const s = seriesFor(pool, trade);
       const r = V().verdictFor(trade, s.points, today);
-      rounds += 1;
       const right = r.overall ? V().scoreAnswer(wouldHold, r.overall) : null;
       if (right) score += 1;
       answers.push({ player: (roster[turn % roster.length] || {}).name, wouldHold, correct: right });
@@ -236,6 +234,10 @@
         : (soberMode
           ? (right ? '+1 point' : 'no point')
           : (right ? 'You called it 🎯' : 'Wrong — drink 🍺'));
+      // Running tally across the session, so a streak of good calls shows.
+      const judged = answers.filter((a) => a.correct != null).length;
+      const tally = judged
+        ? `<div class="bt-tally">${score}/${judged} called right this session</div>` : '';
 
       el.innerHTML = `
         ${renderPicker(trade)}
@@ -248,6 +250,7 @@
             <div class="verdict">${r.overall ? escapeHtml(V().VERDICT_LABEL[r.overall]) : 'No verdict'}</div>
             <div class="who-state">${r.overallDays ? `judged at ${r.overallDays} trading days` : ''}</div>
             <div class="pnl">${scoreLine}</div>
+            ${tally}
           </div>
           ${strip ? `<div class="bt-strip">${strip}</div>
             <p class="text-muted text-small">Each horizon is what the price did by then. Hover for the close it used.</p>` : ''}
@@ -290,7 +293,7 @@
       const sel = el.querySelector('#bt-pick');
       if (sel) sel.addEventListener('change', () => {
         const t = pickTrade(sel.value);
-        if (t) { current = t; renderAsk(t); }
+        if (t) renderAsk(t);
       });
       const mine = el.querySelector('#bt-mine');
       if (mine) mine.addEventListener('change', () => { onlyMine = mine.checked; newRound(); });
@@ -301,7 +304,6 @@
     function newRound() {
       if (dead) return;
       const t = pickTrade(null);
-      current = t;
       if (!t) {
         const soonest = waiting.slice().sort((a, b) => a.daysUntilPlayable - b.daysUntilPlayable)[0];
         el.innerHTML = window.UI.emptyState(

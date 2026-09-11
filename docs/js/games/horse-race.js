@@ -197,7 +197,6 @@
 
     function runRace(race, days) {
       const svg = renderTrack(race);
-      const h = race.lanes.length * LANE_H + 50;
       const horses = race.lanes.map((l, i) => {
         const y = 30 + i * LANE_H;
         const g = svgEl('g', {});
