@@ -68,6 +68,33 @@
     window.Router.start({ store, me });
   }
 
+  // A phone that already joined a room plays on its room pass alone — no
+  // Google token, no sheet download. The OAuth token lives about an hour with
+  // no refresh, and the tab can be evicted at any time; without this a player
+  // is thrown back to the sign-in screen mid-game and loses the room.
+  //
+  // The pass proves nothing except "this device joined that room as that
+  // member", so this path can only ever reach the play board.
+  async function bootPlayerIfResumable() {
+    if (!/^#\/play\b/.test(location.hash || '')) return false;
+    if (!window.GameRoom || !window.GameRoom.configured()) return false;
+    if (!window.GameRoom.savedSession()) return false;
+    let room = null;
+    try { room = await window.GameRoom.resume(); } catch (_e) { return false; }
+    if (!room) return false;
+    gate().hidden = true;
+    shell().hidden = false;
+    document.getElementById('top-nav').innerHTML = '';
+    document.getElementById('nav-who').innerHTML =
+      `${window.UI.esc(room.member)} · <a href="#" id="nav-leave">Leave</a>`;
+    document.getElementById('nav-leave').addEventListener('click', (e) => {
+      e.preventDefault();
+      room.close(); room.forget(); location.hash = '#/play'; location.reload();
+    });
+    window.Views.playResumed(document.getElementById('view'), room);
+    return true;
+  }
+
   async function boot() {
     if (!window.PORTAL_CONFIG || window.PORTAL_CONFIG.OAUTH_CLIENT_ID.startsWith('__REPLACE')) {
       showGate('<div class="flash error"><strong>Setup needed:</strong> edit <code>js/config.js</code> with your OAuth Client ID.</div>');
@@ -84,6 +111,8 @@
     // router ever sees the hash.
     const consumed = window.Auth.consumeRedirectToken();
     trace(consumed ? 'OAuth redirect token consumed ✓' : 'no OAuth fragment in URL');
+    // Before anything that needs a token or the sheet.
+    if (await bootPlayerIfResumable()) return;
     // Auto-login from the stored session; email via the userinfo endpoint.
     try {
       await window.Auth.ensureToken();

@@ -10,15 +10,78 @@
 (function () {
   const esc = (s) => window.UI.esc(s);
 
+  // Mount the board on an already-joined room. Used by the normal route and
+  // by the resume path in app.js, which runs before any sign-in — a phone
+  // whose Google token has expired can still play out the room it joined.
+  function attach(el, room, onLeave) {
+    let mine = null;
+    let lastRound = -1;
+
+    function renderEnded() {
+      el.innerHTML = `
+        <div class="play-shell play-ended">
+          <h2>That's the game 🎉</h2>
+          <p class="text-muted">The host closed the room. Look up at the screen for the result.</p>
+          <a class="btn ghost" href="#/play" id="play-again">Join another room</a>
+        </div>`;
+      const again = el.querySelector('#play-again');
+      if (again && onLeave) again.addEventListener('click', onLeave);
+    }
+
+    function renderBoard(state) {
+      if (state.closed) { renderEnded(); return; }
+      const labels = Array.isArray(state.choices)
+        ? state.choices
+        : [...Array(Number(state.choices) || 4)].map((_, i) => String(i + 1));
+      const locked = state.answered;
+      el.innerHTML = `
+        <div class="play-shell">
+          <div class="play-head">
+            <span class="play-you">${esc(room.member)}</span>
+            <span class="play-room">room ${esc(room.code)}</span>
+          </div>
+          ${state.error ? `<div class="flash error play-error">${esc(state.error === 'taken' ? 'Someone beat you to that one — pick another.' : state.error)}</div>` : ''}
+          <p class="play-prompt">${locked
+            ? 'Locked in — look up at the screen.'
+            : esc(state.prompt || 'Your call. The question is on the big screen.')}</p>
+          <div class="play-buttons n${labels.length} ${locked ? 'locked' : ''}">
+            ${labels.map((label, i) => `
+              <button type="button" class="play-btn${state.mine === i ? ' chosen' : ''}" data-v="${i}" ${locked ? 'disabled' : ''}>${esc(label)}</button>
+            `).join('')}
+          </div>
+        </div>`;
+      el.querySelectorAll('.play-btn').forEach((b) => {
+        b.addEventListener('click', async () => {
+          const v = Number(b.getAttribute('data-v'));
+          el.querySelectorAll('.play-btn').forEach((x) => { x.disabled = true; });
+          b.classList.add('chosen');
+          try {
+            const r = await room.answer(v);
+            if (r.ok) { mine = v; renderBoard({ ...state, answered: true, mine: v }); }
+            else renderBoard({ ...state, answered: false, mine: null, error: r.error });
+          } catch (_e) {
+            renderBoard({ ...state, answered: false, mine: null });
+          }
+        });
+      });
+    }
+
+    const off = room.onChange((s) => {
+      if (s.roundId !== lastRound) { lastRound = s.roundId; mine = null; }
+      renderBoard({ ...s, mine, choices: s.choices });
+    });
+    return () => { off(); room.close(); };
+  }
+
+  // Entry point for the resume path: no ctx, no router, no store.
+  window.Views.playResumed = function (el, room) {
+    attach(el, room, () => { room.forget(); });
+  };
+
   window.Views.play = async function (el, ctx) {
     const { query, navigate } = ctx;
     let room = null;
-    let off = null;
-    // Which button this phone chose, kept across polls until the round
-    // changes — the highlight is the only feedback you get once locked.
-    let mine = null;
-    let lastRound = -1;
-    const setMine = (v) => { mine = v; };
+    let detach = null;
 
     function renderJoin(code, error) {
       el.innerHTML = `
@@ -42,60 +105,6 @@
       if (!code) input.focus();
     }
 
-    function renderEnded() {
-      el.innerHTML = `
-        <div class="play-shell play-ended">
-          <h2>That's the game 🎉</h2>
-          <p class="text-muted">The host closed the room. Look up at the screen for the result.</p>
-          <a class="btn ghost" href="#/play">Join another room</a>
-        </div>`;
-    }
-
-    function renderBoard(state) {
-      // The host stopped: say so rather than leaving dead buttons on screen.
-      if (state.closed) { renderEnded(); return; }
-      // A number means plain 1..n; an array means the game gave the buttons
-      // names. Either way these are game words, never club data.
-      const labels = Array.isArray(state.choices)
-        ? state.choices
-        : [...Array(Number(state.choices) || 4)].map((_, i) => String(i + 1));
-      const locked = state.answered;
-      el.innerHTML = `
-        <div class="play-shell">
-          <div class="play-head">
-            <span class="play-you">${esc(room.member)}</span>
-            <span class="play-room">room ${esc(room.code)}</span>
-          </div>
-          ${state.error ? `<div class="flash error play-error">${esc(state.error === 'taken' ? 'Someone beat you to that one — pick another.' : state.error)}</div>` : ''}
-          <p class="play-prompt">${locked
-            ? 'Locked in — look up at the screen.'
-            : esc(state.prompt || 'Your call. The question is on the big screen.')}</p>
-          <div class="play-buttons n${labels.length} ${locked ? 'locked' : ''}">
-            ${labels.map((label, i) => `
-              <button type="button" class="play-btn${state.mine === i ? ' chosen' : ''}" data-v="${i}" ${locked ? 'disabled' : ''}>${esc(label)}</button>
-            `).join('')}
-          </div>
-          <p class="text-muted text-small play-foot">Nothing is shown here on purpose — everyone watches the same screen.</p>
-        </div>`;
-      el.querySelectorAll('.play-btn').forEach((b) => {
-        b.addEventListener('click', async () => {
-          const v = Number(b.getAttribute('data-v'));
-          el.querySelectorAll('.play-btn').forEach((x) => { x.disabled = true; });
-          b.classList.add('chosen');
-          try {
-            const r = await room.answer(v);
-            // Remember it. Without this the next poll re-renders from a null
-            // and the highlight vanishes a second after you tapped.
-            if (r.ok) { setMine(v); renderBoard({ ...state, answered: true, mine: v }); }
-            else renderBoard({ ...state, answered: false, mine: null, error: r.error });
-          } catch (_e) {
-            // A failed send must not leave the buttons dead.
-            renderBoard({ ...state, answered: false, mine: null });
-          }
-        });
-      });
-    }
-
     async function join(code) {
       el.innerHTML = '<div class="play-shell"><p>Joining…</p></div>';
       try {
@@ -107,13 +116,9 @@
         renderJoin(code, msg);
         return;
       }
-      if (room.closed) { renderEnded(); return; }
       navigate(`#/play?code=${code}`);
-      off = room.onChange((s) => {
-        // A new question clears what you picked; within a round it sticks.
-        if (s.roundId !== lastRound) { lastRound = s.roundId; mine = null; }
-        renderBoard({ ...s, mine, choices: s.choices });
-      });
+      // One board, shared with the resume path — a second copy would drift.
+      detach = attach(el, room, () => { if (room.forget) room.forget(); });
     }
 
     if (!window.GameRoom || !window.GameRoom.configured()) {
@@ -126,6 +131,6 @@
     const code = (query.code || '').toUpperCase();
     if (code) join(code); else renderJoin('');
 
-    return () => { if (off) off(); if (room) room.close(); };
+    return () => { if (detach) detach(); };
   };
 })();

@@ -250,3 +250,82 @@ test('only the host can switch games or close the room', () => {
   assert.equal(post(g2, { action: 'close', token: 't', code }).error, 'not the host');
   assert.equal(post(g2, { action: 'game', token: 't', code, gameId: 'y' }).error, 'not the host');
 });
+
+// ── Room passes: staying in the game after the Google token dies ──────────
+test('joining hands back a pass', () => {
+  const g = gs({ tokenInfo: goodToken('hh@x.no') });
+  const { code } = post(g, { action: 'create', token: 't', gameId: 'x', roster: ['HH', 'JC'] });
+  const j = post(g, { action: 'join', token: 't', code });
+  assert.equal(j.ok, true);
+  assert.match(j.pass, /^[A-Z2-9]{24}$/, 'long enough not to be guessed');
+  assert.equal(j.member, 'HH');
+});
+
+test('a pass answers without any Google token at all', () => {
+  // This is the whole point: the OAuth token lasts about an hour with no
+  // refresh, so a phone must not need one to keep playing.
+  const g = gs({ tokenInfo: goodToken('hh@x.no') });
+  const { code } = post(g, { action: 'create', token: 't', gameId: 'x', roster: ['HH'] });
+  const { pass } = post(g, { action: 'join', token: 't', code });
+  post(g, { action: 'round', token: 't', code, roundId: 1, prompt: 'q', choices: 4 });
+
+  const dead = gs({ tokenInfo: null });          // token expired, nothing valid
+  dead._cache.set(`room:${code}`, g._cache.get(`room:${code}`));
+  const r = post(dead, { action: 'answer', code, roundId: 1, value: 2, pass });
+  assert.equal(r.ok, true, 'still able to answer');
+  assert.deepEqual(get(dead, { code }).answers, { HH: 2 });
+});
+
+test('a made-up pass is refused', () => {
+  const g = gs({ tokenInfo: goodToken('hh@x.no') });
+  const { code } = post(g, { action: 'create', token: 't', gameId: 'x', roster: ['HH'] });
+  post(g, { action: 'join', token: 't', code });
+  post(g, { action: 'round', token: 't', code, roundId: 1, prompt: 'q', choices: 4 });
+  const r = post(g, { action: 'answer', code, roundId: 1, value: 0, pass: 'NOTAREALPASSNOTAREAL' });
+  assert.equal(r.ok, false);
+  assert.equal(r.error, 'bad pass');
+});
+
+test('a pass cannot host — it only answers', () => {
+  const g = gs({ tokenInfo: goodToken('hh@x.no') });
+  const { code } = post(g, { action: 'create', token: 't', gameId: 'x', roster: ['HH'] });
+  const { pass } = post(g, { action: 'join', token: 't', code });
+  const dead = gs({ tokenInfo: null });
+  dead._cache.set(`room:${code}`, g._cache.get(`room:${code}`));
+  // Creating, switching game and closing all still demand a real token.
+  for (const action of ['round', 'game', 'close', 'create']) {
+    const r = post(dead, { action, code, pass, roundId: 9, gameId: 'y', roster: ['HH'] });
+    assert.equal(r.ok, false, `${action} must not accept a pass`);
+    assert.equal(r.error, 'not signed in');
+  }
+});
+
+test('rejoining returns the same pass, so a second device cannot lock out the first', () => {
+  const g = gs({ tokenInfo: goodToken('hh@x.no') });
+  const { code } = post(g, { action: 'create', token: 't', gameId: 'x', roster: ['HH'] });
+  const a = post(g, { action: 'join', token: 't', code }).pass;
+  const b = post(g, { action: 'join', token: 't', code }).pass;
+  assert.equal(a, b);
+});
+
+test('passes are never exposed by the open GET', () => {
+  const g = gs({ tokenInfo: goodToken('hh@x.no') });
+  const { code } = post(g, { action: 'create', token: 't', gameId: 'x', roster: ['HH'] });
+  const { pass } = post(g, { action: 'join', token: 't', code });
+  // GET needs no token, so anything it returns is public. A leaked pass would
+  // let a stranger answer as that member.
+  const body = JSON.stringify(get(g, { code }));
+  assert.ok(!body.includes(pass), 'the pass is not in the public response');
+  assert.ok(!/"p"/.test(body), 'nor the pass map');
+});
+
+test('a pass from one room does not work in another', () => {
+  const g = gs({ tokenInfo: goodToken('hh@x.no') });
+  const a = post(g, { action: 'create', token: 't', gameId: 'x', roster: ['HH'] }).code;
+  const b = post(g, { action: 'create', token: 't', gameId: 'x', roster: ['HH'] }).code;
+  const { pass } = post(g, { action: 'join', token: 't', code: a });
+  post(g, { action: 'round', token: 't', code: b, roundId: 1, prompt: 'q', choices: 2 });
+  const r = post(g, { action: 'answer', code: b, roundId: 1, value: 0, pass });
+  assert.equal(r.ok, false);
+  assert.equal(r.error, 'bad pass');
+});

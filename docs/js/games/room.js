@@ -20,12 +20,16 @@
   // Apps Script web apps do not answer CORS preflight, so the request has to
   // stay "simple": text/plain with a JSON string body. application/json here
   // fails in a way that looks like a network error, which is a miserable hour.
+  // A pass stands in for a Google token when answering. Everything else needs
+  // a real token, so the host actions cannot be driven by a pass.
   async function post(payload) {
-    const token = await window.Auth.accessToken();
+    let auth = {};
+    if (payload.pass) auth = { pass: payload.pass };
+    else auth = { token: await window.Auth.accessToken() };
     const r = await fetch(url(), {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ ...payload, token }),
+      body: JSON.stringify({ ...payload, ...auth }),
       redirect: 'follow',
     });
     if (!r.ok) throw new Error(`rooms ${r.status}`);
@@ -124,9 +128,36 @@
   }
 
   // ── Player: the phone ─────────────────────────────────────────────────
+  const SESSION_KEY = 'portal.games.room';
+  function saveSession(s) {
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (_e) { /* private mode */ }
+  }
+  function loadSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (_e) { return null; }
+  }
+  function clearSession() {
+    try { localStorage.removeItem(SESSION_KEY); } catch (_e) { /* nothing to do */ }
+  }
+
+  // Rejoin from a stored pass, with no Google round trip at all. This is what
+  // keeps a phone in the game after its OAuth token has expired or the
+  // browser has thrown the tab away.
+  async function resume() {
+    const s = loadSession();
+    if (!s || !s.code || !s.pass) return null;
+    const data = await get(s.code);
+    if (!data.ok || data.closed) { clearSession(); return null; }
+    return attachPlayer(s.code, { member: s.member, pass: s.pass, roundId: data.roundId, gameId: data.gameId });
+  }
+
   async function joinRoom(code) {
     const res = await post({ action: 'join', code });
     if (!res.ok) throw new Error(res.error || 'could not join');
+    if (res.pass) saveSession({ code, member: res.member, pass: res.pass });
+    return attachPlayer(code, res);
+  }
+
+  function attachPlayer(code, res) {
 
     const listeners = new Set();
     let last = { roundId: res.roundId, answered: false };
@@ -158,11 +189,13 @@
       closed: !!res.closed,
       onChange(cb) { listeners.add(cb); cb(last); return () => listeners.delete(cb); },
       async answer(value) {
-        const r = await post({ action: 'answer', code, roundId: last.roundId, value });
+        // Pass first: it outlives the Google token, which is the whole point.
+        const r = await post({ action: 'answer', code, roundId: last.roundId, value, pass: res.pass });
         if (r.ok) { last.answered = true; listeners.forEach((cb) => cb({ ...last })); }
         return r;
       },
       close() { if (poll) poll.stop(); listeners.clear(); },
+      forget() { clearSession(); },
     };
   }
 
@@ -170,6 +203,9 @@
     configured,
     openHost,
     joinRoom,
+    resume,
+    savedSession: loadSession,
+    clearSession,
     current: () => hosted,
     closeCurrent() { if (hosted) hosted.close(); },
     // exposed for tests

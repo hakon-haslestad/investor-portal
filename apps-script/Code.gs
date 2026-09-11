@@ -939,6 +939,22 @@ function memberCodeForEmail_(email) {
   return null;
 }
 
+// A room pass: proof that this device already signed in as this member and
+// joined this room. Answers carry it INSTEAD of a Google token.
+//
+// Why: the portal's OAuth token lives about an hour and there is no refresh
+// token in an implicit flow, so a phone stops being able to answer partway
+// through an evening — and loses it entirely if the browser evicts the tab.
+// The pass is scoped to one room, expires with it, and grants exactly one
+// thing: answering as that member, there. It unlocks no portal data.
+function newPass_() {
+  var out = '';
+  for (var i = 0; i < 24; i++) {
+    out += ROOM_ALPHABET.charAt(Math.floor(Math.random() * ROOM_ALPHABET.length));
+  }
+  return out;
+}
+
 function newRoomCode_() {
   var cache = CacheService.getScriptCache();
   for (var attempt = 0; attempt < 12; attempt++) {
@@ -974,6 +990,8 @@ function doGet(e) {
     prompt: room.prompt || '',
     choices: room.choices || 0,
   });
+  // NOTE: room.p (the passes) is deliberately absent from this response.
+  // GET is unauthenticated, so anything returned here is public.
 }
 
 // ── POST: create / join / answer / round ───────────────────────────────────
@@ -985,10 +1003,25 @@ function doPost(e) {
     return jsonOut_({ ok: false, error: 'bad json' });
   }
 
-  var email = emailForToken_(body.token);
-  if (!email) return jsonOut_({ ok: false, error: 'not signed in' });
-  var member = memberCodeForEmail_(email);
-  if (!member) return jsonOut_({ ok: false, error: 'not a member' });
+  // A phone answering presents its room pass instead of a Google token. The
+  // pass was issued at join, which DID require a verified Google sign-in, so
+  // membership is still proven — just not re-proven on every tap. Everything
+  // else (creating a room, switching game, closing) still demands a token.
+  var member = null;
+  if (body.action === 'answer' && body.pass) {
+    var passRoom = readRoom_(body.code);
+    if (!passRoom) return jsonOut_({ ok: false, error: 'no such room' });
+    var holders = passRoom.p || {};
+    for (var code in holders) {
+      if (holders[code] === body.pass) { member = code; break; }
+    }
+    if (!member) return jsonOut_({ ok: false, error: 'bad pass' });
+  } else {
+    var email = emailForToken_(body.token);
+    if (!email) return jsonOut_({ ok: false, error: 'not signed in' });
+    member = memberCodeForEmail_(email);
+    if (!member) return jsonOut_({ ok: false, error: 'not a member' });
+  }
 
   if (body.action === 'create') {
     var code = newRoomCode_();
@@ -1019,9 +1052,16 @@ function doPost(e) {
     if (body.action === 'join') {
       room.j = room.j || [];
       if (room.j.indexOf(member) < 0) room.j.push(member);
+      room.p = room.p || {};
+      // One pass per member, reused if they rejoin from the same or another
+      // device — rejoining must not lock out the phone already playing.
+      if (!room.p[member]) room.p[member] = newPass_();
       room.v = (room.v || 0) + 1;
       writeRoom_(body.code, room);
-      return jsonOut_({ ok: true, member: member, roundId: room.q, gameId: room.g, closed: !!room.closed });
+      return jsonOut_({
+        ok: true, member: member, pass: room.p[member],
+        roundId: room.q, gameId: room.g, closed: !!room.closed,
+      });
     }
 
     // Once the host has stopped, nothing more can be played into this room.
