@@ -51,6 +51,20 @@
       drinkingRule: 'Everyone who called it wrong drinks.',
       component: window.GameSpinTheStock({ guess: true }),
     },
+    {
+      id: 'odd-one-out',
+      name: 'Odd one out',
+      icon: '🧩',
+      tagline: 'Three of these belong together. Spot the one that does not.',
+      rules: `<p>Four stocks from the club's real trades. Three share something — the same buyer, the same week, all winners, the same exchange — and one doesn't.</p>
+              <p>Tap the odd one. Whatever would give the answer away is masked, so if the rule is "same buyer" the names are hidden.</p>
+              <p>Get it right and your streak grows; get it wrong and it resets.</p>`,
+      tags: ['skill', 'party'],
+      players: '1',
+      minTrades: 8,
+      drinkingRule: 'Wrong guess drinks.',
+      component: window.GameOddOneOut,
+    },
   ];
 
   window.Games = {
