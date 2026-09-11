@@ -202,3 +202,63 @@ test('a short lane sets the race length, so the timeline cannot overrun', () => 
     assert.ok(timelineDates[i], `t=${t} resolves to a date`);
   }
 });
+
+// ── Positions passthrough (the deck's competition race) ────────────────────
+test('a runner can supply positions directly instead of prices', () => {
+  const e = E();
+  const race = e.buildRace([
+    { label: 'HH', sublabel: 'Hakon', positions: [0, 0.05, 0.12], dates: ['d1', 'd2', 'd3'] },
+    { label: 'JC', sublabel: 'Jonas', positions: [0, 0.02, -0.03], dates: ['d1', 'd2', 'd3'] },
+  ]);
+  assert.ok(race.ok);
+  assert.deepEqual(race.lanes.map((l) => l.label), ['HH', 'JC']);
+  // Positions pass through untouched — no normalise, no rebasing.
+  assert.deepEqual(race.lanes[0].positions, [0, 0.05, 0.12]);
+  assert.deepEqual(race.lanes[0].dates, ['d1', 'd2', 'd3']);
+  assert.ok(Math.abs(race.lanes[0].finalPos - 0.12) < 1e-12);
+  assert.deepEqual(race.ranking.map((l) => l.label), ['HH', 'JC']);
+});
+
+test('supplied positions are NOT rebased, unlike prices', () => {
+  const e = E();
+  // A lane that does not start at zero must stay where it was put: the deck
+  // anchors its own series, and silently re-zeroing would move every horse.
+  const race = e.buildRace([
+    { label: 'A', positions: [0.10, 0.20], dates: ['d1', 'd2'] },
+    { label: 'B', positions: [0, 0.05], dates: ['d1', 'd2'] },
+  ]);
+  assert.equal(race.lanes[0].positions[0], 0.10, 'kept, not rebased to 0');
+  assert.equal(race.lanes[0].finalPos, 0.20);
+});
+
+test('positions take precedence over points when a runner has both', () => {
+  const e = E();
+  const race = e.buildRace([
+    { label: 'A', positions: [0, 0.5], dates: ['d1', 'd2'], points: pts(100, 999) },
+    { label: 'B', positions: [0, 0.1], dates: ['d1', 'd2'] },
+  ]);
+  assert.equal(race.lanes[0].finalPos, 0.5, 'the explicit positions win');
+});
+
+test('a single position is not a race, and falls back like missing prices', () => {
+  const e = E();
+  const race = e.buildRace([
+    { label: 'A', positions: [0.1], dates: ['d1'] },
+    { label: 'B', positions: [0, 0.2], dates: ['d1', 'd2'] },
+    { label: 'C', positions: [0, 0.3], dates: ['d1', 'd2'] },
+  ]);
+  assert.ok(race.ok);
+  assert.deepEqual(race.lanes.map((l) => l.label), ['B', 'C'], 'the one-point runner is excluded');
+  assert.equal(race.excluded.length, 1);
+});
+
+test('game lanes keep their ticker labels through the same path', () => {
+  const e = E();
+  const race = e.buildRace([
+    { ticker: 'AAA', player: 'HH', points: pts(100, 110) },
+    { ticker: 'BBB', player: 'JC', points: pts(100, 90) },
+  ]);
+  assert.equal(race.lanes[0].label, 'AAA', 'label falls back to ticker');
+  assert.equal(race.lanes[0].sublabel, 'HH', 'sublabel falls back to player');
+  assert.equal(race.lanes[0].ticker, 'AAA', 'and ticker is still there for the game');
+});

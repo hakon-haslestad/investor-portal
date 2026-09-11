@@ -123,14 +123,30 @@
 
   // Build the race from picked horses. Horses without usable data are
   // reported so the caller can exclude them BEFORE the race, never mid-race.
+  // A runner supplies EITHER raw closes (`points`, normalised here) OR
+  // positions that are already returns (`positions` + `dates`). The deck's
+  // competition race is the second case: its numbers come out of the scoring
+  // engine as return fractions, and encoding them back into fake prices just
+  // so normalise() could undo it would be a trap for the next reader.
+  function laneFrom(h) {
+    if (Array.isArray(h.positions) && h.positions.length >= 2) {
+      const dates = h.dates || h.positions.map((_, i) => String(i));
+      return h.positions.map((pos, i) => ({ date: dates[i], pos }));
+    }
+    return normalise(h.points);
+  }
+
   function buildRace(horses) {
     const lanes = [];
     const excluded = [];
     for (const h of horses || []) {
-      const norm = normalise(h.points);
+      const norm = laneFrom(h);
       if (!norm) { excluded.push({ ...h, reason: 'no price data for this window' }); continue; }
       lanes.push({
         ticker: h.ticker, name: h.name, player: h.player,
+        // Deck lanes are labelled by investor; game lanes by ticker.
+        label: h.label || h.ticker, sublabel: h.sublabel || h.player,
+        colour: h.colour,
         odds: h.odds,
         positions: norm.map((p) => p.pos),
         dates: norm.map((p) => p.date),
@@ -147,7 +163,7 @@
   }
 
   window.HorseRaceEngine = {
-    normalise, volatility, oddsFor, commentary, rankAt, buildRace,
+    normalise, volatility, oddsFor, commentary, rankAt, buildRace, laneFrom,
     durationFor, easeInOutCubic, interpolate,
     FILLER, BREAKAWAY_PP, PHOTO_FINISH_PP, ODDS_MIN, ODDS_MAX,
   };
