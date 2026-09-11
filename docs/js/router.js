@@ -12,7 +12,7 @@
     { match: 'portfolio',    label: 'Portfolio',    view: 'portfolio' },
     { match: 'investors',    label: 'Investors',    view: 'investors' },
     { match: 'competitions', label: 'Competitions', view: 'competitions' },
-    { match: 'game',         label: 'The Game',     view: 'game' },
+    { match: 'games',        label: 'Games',        view: 'games' },
     { match: 'accounting',   label: 'Accounting',   view: 'accounting', badge: 'beta' },
     { match: 'admin',        label: 'Admin',        view: 'admin', adminOnly: true },
   ];
@@ -48,6 +48,8 @@
   async function dispatch() {
     const { segs, query } = parseHash();
     if (!segs.length) { location.replace(DEFAULT); return; }
+    // #/game was the old single-game route; keep shared links working.
+    if (segs[0] === 'game') { location.replace('#/games' + (segs[1] ? '/' + segs[1] : '')); return; }
     const route = ROUTES.find((r) => r.match === segs[0]);
     if (!route) { location.replace(DEFAULT); return; }
     if (route.adminOnly && ctxBase.me.role !== 'admin') { location.replace(DEFAULT); return; }

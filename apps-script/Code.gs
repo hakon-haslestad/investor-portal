@@ -16,7 +16,7 @@
  *   backfill()     — one-time: historical closes per ticker from its first
  *                    transaction date. Idempotent; never overwrites cells.
  *   dailyFetch()   — the trigger entry point. Held stocks daily; sold stocks
- *                    weekly until 6 months after the sale, then stop.
+ *                    daily until SOLD_TAIL_DAYS after the sale, then stop.
  *   setupTrigger() — one-time: install the daily 18:00 (Oslo) trigger.
  *
  * Only static values are ever written to StockPrices — GOOGLEFINANCE
@@ -37,8 +37,18 @@ var TABS = {
 var SEC_HEADERS = ['ticker', 'name', 'aliases', 'isin', 'currency', 'exchange', 'source', 'status', 'soldDate', 'notes', 'lastChecked'];
 
 // How long to keep fetching a sold stock, and how often.
-var SOLD_TAIL_DAYS = 183; // ~6 months
-var SOLD_FETCH_EVERY_DAYS = 7;
+//
+// This is what the portal's Back Trading game reads: it judges a sell at 5,
+// 20, 60, 120 and 250 TRADING days after the exit, which needs about 350
+// calendar days of closes afterwards. The old 183-day/weekly setting could
+// not answer the 120- or 250-day horizons at all, and made even the 5-day one
+// land on a close up to a week stale.
+//
+// Raising the tail is retroactive: backfill() refetches each non-expired
+// security from its first transaction date, so re-running it after this change
+// pulls in the post-exit history that was never captured.
+var SOLD_TAIL_DAYS = 400; // ~13 months — one year of horizons plus slack
+var SOLD_FETCH_EVERY_DAYS = 1; // daily, so a horizon lands on its actual date
 
 // Suggested mappings for securities we already know. Keyed by lowercased
 // Nordnet display name. GOOGLEFINANCE has no Oslo Børs coverage, so .OL
@@ -543,6 +553,7 @@ function fetchListFor_(ss, securities, today) {
     if (!s.ticker || s.status === 'expired' || s.status === 'ignore') return;
     if (s.status === 'sold') {
       var last = lastByCol[s.ticker];
+      // SOLD_FETCH_EVERY_DAYS is 1, so this only skips a same-day re-run.
       if (last && daysBetween_(last, today) < SOLD_FETCH_EVERY_DAYS) return;
       if (s.soldDate && daysBetween_(s.soldDate, today) > SOLD_TAIL_DAYS) return;
     }
