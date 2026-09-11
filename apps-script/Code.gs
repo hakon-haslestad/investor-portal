@@ -838,3 +838,221 @@ function daysBetween_(isoA, isoB) {
 }
 
 function round4_(n) { return Math.round(n * 10000) / 10000; }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GAME ROOMS — the web-app half of the script
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Lets the club play the portal's games across devices: a shared screen hosts,
+// everyone answers on their own phone. This is the only part of the script
+// that serves HTTP, and it is deliberately kept away from the spreadsheet —
+// rooms live in CacheService and expire by themselves.
+//
+// DEPLOY: Deploy → New deployment → Web app → Execute as: me →
+//         Access: anyone. Paste the /exec URL into docs/js/config.js as
+//         ROOMS_URL. Editing this file needs a NEW VERSION to take effect.
+//
+// SECURITY. The deployment is "anyone" because a phone cannot authenticate to
+// Apps Script without authorising the script itself, which no one would do at
+// a party. It is not, however, an anonymous write surface:
+//
+//   * every POST carries the caller's Google OAuth access token, which is
+//     verified against Google's tokeninfo endpoint — a forged email is not
+//     possible, only a real Google sign-in produces a usable token;
+//   * the token's `aud` must be OUR OAuth client, so a token minted for some
+//     other app cannot be replayed here;
+//   * the email must already be on the room's roster, which the host built
+//     from the Members tab.
+//
+// And nothing worth stealing is stored. A room holds investor codes and small
+// integers — the stock names, prices and P/L never leave the shared screen.
+// The cache contents of a live room look like:
+//   { g:'odd-one-out', r:['HH','JC'], j:['HH'], q:3, a:{HH:2}, v:7 }
+
+// Must match OAUTH_CLIENT_ID in docs/js/config.js. This is what stops a token
+// minted for some other Google app being replayed against this endpoint, so
+// leaving it blank disables the check — do not.
+var OAUTH_CLIENT_ID = '872440185175-io8gmos8q04sq7jdt99ubeb16hbopv47.apps.googleusercontent.com';
+
+var ROOM_TTL_SECONDS = 2 * 60 * 60;  // a party, not a tournament
+// No O/0/I/1 — these get read aloud across a room.
+var ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+var ROOM_CODE_LEN = 4;
+
+function roomKey_(code) { return 'room:' + String(code).toUpperCase(); }
+
+function jsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function readRoom_(code) {
+  var raw = CacheService.getScriptCache().get(roomKey_(code));
+  return raw ? JSON.parse(raw) : null;
+}
+
+function writeRoom_(code, room) {
+  CacheService.getScriptCache().put(roomKey_(code), JSON.stringify(room), ROOM_TTL_SECONDS);
+}
+
+// Resolve an access token to an email, or null. Google is the only thing that
+// can produce a token that passes this, which is what makes an "anyone"
+// deployment safe to write to.
+function emailForToken_(token) {
+  if (!token) return null;
+  try {
+    var res = UrlFetchApp.fetch(
+      'https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(token),
+      { muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) return null;
+    var info = JSON.parse(res.getContentText());
+    // Without the audience check, a token issued to ANY Google app would be
+    // accepted here — that is the whole difference between "signed in" and
+    // "signed in to this".
+    if (OAUTH_CLIENT_ID && info.aud !== OAUTH_CLIENT_ID) return null;
+    if (!info.email) return null;
+    if (info.email_verified === 'false') return null;
+    return String(info.email).toLowerCase();
+  } catch (e) {
+    return null;
+  }
+}
+
+// Which investor code this email is, according to the Members tab. The room's
+// roster is codes, so this is how a phone becomes a player.
+function memberCodeForEmail_(email) {
+  if (!email) return null;
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Members');
+  if (!sh) return null;
+  var rows = sh.getDataRange().getValues();
+  if (!rows.length) return null;
+  var head = rows[0].map(function (h) { return String(h).toLowerCase().trim(); });
+  var iEmail = head.indexOf('email');
+  var iCode = head.indexOf('investorcode');
+  if (iCode < 0) iCode = head.indexOf('investor_code');
+  if (iEmail < 0 || iCode < 0) return null;
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][iEmail]).toLowerCase().trim() === email) {
+      return String(rows[i][iCode]).trim();
+    }
+  }
+  return null;
+}
+
+function newRoomCode_() {
+  var cache = CacheService.getScriptCache();
+  for (var attempt = 0; attempt < 12; attempt++) {
+    var code = '';
+    for (var i = 0; i < ROOM_CODE_LEN; i++) {
+      code += ROOM_ALPHABET.charAt(Math.floor(Math.random() * ROOM_ALPHABET.length));
+    }
+    if (!cache.get(roomKey_(code))) return code;
+  }
+  return null;
+}
+
+// ── GET: the shared screen polling for answers ─────────────────────────────
+// Read-only and unauthenticated: knowing a 4-character code gets you a list of
+// initials and integers, which is why this does not need a token.
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  if (!p.code) return jsonOut_({ ok: false, error: 'no code' });
+  var room = readRoom_(p.code);
+  if (!room) return jsonOut_({ ok: false, error: 'no such room' });
+  return jsonOut_({
+    ok: true,
+    gameId: room.g,
+    roster: room.r,
+    joined: room.j || [],
+    roundId: room.q,
+    answers: room.a || {},
+    rev: room.v || 0,
+    // What the phone should put on its buttons. A number means "1..n"; an
+    // array means use these labels. Game vocabulary only — never a security
+    // name or a figure, which is why this endpoint needs no token.
+    prompt: room.prompt || '',
+    choices: room.choices || 0,
+  });
+}
+
+// ── POST: create / join / answer / round ───────────────────────────────────
+function doPost(e) {
+  var body;
+  try {
+    body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+  } catch (err) {
+    return jsonOut_({ ok: false, error: 'bad json' });
+  }
+
+  var email = emailForToken_(body.token);
+  if (!email) return jsonOut_({ ok: false, error: 'not signed in' });
+  var member = memberCodeForEmail_(email);
+  if (!member) return jsonOut_({ ok: false, error: 'not a member' });
+
+  if (body.action === 'create') {
+    var code = newRoomCode_();
+    if (!code) return jsonOut_({ ok: false, error: 'no free code' });
+    writeRoom_(code, {
+      g: String(body.gameId || ''),
+      r: (body.roster || []).map(String),
+      j: [], q: 0, a: {}, v: 1, host: member,
+    });
+    return jsonOut_({ ok: true, code: code, member: member });
+  }
+
+  if (!body.code) return jsonOut_({ ok: false, error: 'no code' });
+
+  // Everything below mutates a room, and answers genuinely do arrive at the
+  // same moment, so serialise them.
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (err) {
+    return jsonOut_({ ok: false, error: 'busy' });
+  }
+  try {
+    var room = readRoom_(body.code);
+    if (!room) return jsonOut_({ ok: false, error: 'no such room' });
+    if (room.r.indexOf(member) < 0) return jsonOut_({ ok: false, error: 'not in this room' });
+
+    if (body.action === 'join') {
+      room.j = room.j || [];
+      if (room.j.indexOf(member) < 0) room.j.push(member);
+      room.v = (room.v || 0) + 1;
+      writeRoom_(body.code, room);
+      return jsonOut_({ ok: true, member: member, roundId: room.q, gameId: room.g });
+    }
+
+    if (body.action === 'answer') {
+      // An answer for a round that has moved on is dropped rather than
+      // applied to the current one — a slow phone must not answer a question
+      // it never saw.
+      if (Number(body.roundId) !== Number(room.q)) {
+        return jsonOut_({ ok: false, error: 'stale round', roundId: room.q });
+      }
+      room.a = room.a || {};
+      room.a[member] = body.value;
+      room.v = (room.v || 0) + 1;
+      writeRoom_(body.code, room);
+      return jsonOut_({ ok: true, member: member });
+    }
+
+    if (body.action === 'round') {
+      if (room.host && room.host !== member) {
+        return jsonOut_({ ok: false, error: 'not the host' });
+      }
+      room.q = Number(body.roundId) || 0;
+      room.a = {};
+      room.prompt = String(body.prompt || '');
+      // Either a count or a list of labels; stored as given.
+      room.choices = Array.isArray(body.choices) ? body.choices.map(String) : (Number(body.choices) || 0);
+      room.v = (room.v || 0) + 1;
+      writeRoom_(body.code, room);
+      return jsonOut_({ ok: true, roundId: room.q });
+    }
+
+    return jsonOut_({ ok: false, error: 'unknown action' });
+  } finally {
+    lock.releaseLock();
+  }
+}

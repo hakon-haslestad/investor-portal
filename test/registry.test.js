@@ -144,3 +144,40 @@ test('every game declares a player requirement it can actually honour', () => {
     assert.equal(w.Games.byId(id).players, '1', `${id} should be playable alone`);
   }
 });
+
+test('only games that collect an answer per player can be hosted on phones', () => {
+  const w = appCtx();
+  // `hosted` drives the "Play on phones" button. A game that scores nothing
+  // has nothing for a phone to send, so offering it would be a dead end.
+  assert.equal(w.Games.byId('odd-one-out').hosted, true);
+  assert.equal(w.Games.byId('back-trading').hosted, true);
+  for (const id of ['spin-the-stock', 'guess-the-stock', 'horse-race']) {
+    assert.ok(!w.Games.byId(id).hosted, `${id} is not hosted yet`);
+  }
+});
+
+test('cross-device play is wired into the page and the CSP', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'docs', 'index.html'), 'utf8');
+  // Apps Script answers from script.google.com and redirects its response to
+  // googleusercontent — both origins are needed or the fetch dies mid-flight.
+  const csp = /content="([^"]*connect-src[^"]*)"/.exec(html)[1];
+  assert.ok(csp.includes('https://script.google.com'), 'connect-src allows the web app');
+  assert.ok(csp.includes('https://script.googleusercontent.com'), 'and its redirect target');
+  assert.ok(html.includes('js/games/room.js'), 'the room client is loaded');
+  assert.ok(html.includes('js/views/play.js'), 'the phone view is loaded');
+  // The deck does not host, so its CSP stays narrow.
+  const deck = fs.readFileSync(path.join(__dirname, '..', 'docs', 'presentation.html'), 'utf8');
+  assert.ok(!/script\.google\.com/.test(deck), 'the deck gains no new origins');
+});
+
+test('the play route exists and stays out of the nav bar', () => {
+  const router = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'router.js'), 'utf8');
+  assert.match(router, /match: 'play'[^}]*view: 'play'[^}]*hidden: true/);
+  const app = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'app.js'), 'utf8');
+  assert.match(app, /filter\(\(r\) => !r\.hidden\)/, 'buildNav honours hidden, or Play shows in the nav');
+});
+
+test('the rooms endpoint is opt-in — an empty URL leaves everything single-device', () => {
+  const cfg = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'config.js'), 'utf8');
+  assert.match(cfg, /ROOMS_URL: ''/, 'ships unset, so nothing calls out until it is deployed');
+});

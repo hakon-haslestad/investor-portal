@@ -10,6 +10,8 @@
 //   tags        ('party' | 'skill' | 'recurring')[]
 //   players     '1' | '2+' | '3+'
 //   minTrades   minimum trades in the filtered set to be playable
+//   hosted      true when the game collects one answer per player, so it can
+//               be played across devices (see games/room.js)
 //   drinkingRule  shown only when sober mode is off
 //   component   { mount(el, props) -> { newRound?, destroy? } }
 //
@@ -64,6 +66,7 @@
       tags: ['skill', 'party'],
       players: '1',
       minTrades: 8,
+      hosted: true,
       drinkingRule: 'Wrong guess drinks.',
       component: window.GameOddOneOut,
     },
@@ -80,6 +83,7 @@
       // One column is a perfectly good game of it.
       players: '1',
       minTrades: 1,
+      hosted: true,
       drinkingRule: 'Sold too early? The seller drinks. Called it wrong? You drink.',
       component: window.GameBackTrading,
     },

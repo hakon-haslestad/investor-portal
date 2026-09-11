@@ -29,6 +29,7 @@
 
   function buildNav(me) {
     const links = window.Router.ROUTES
+      .filter((r) => !r.hidden)
       .filter((r) => !r.adminOnly || me.role === 'admin')
       .map((r) => `<a href="#/${r.match}" data-route="${r.match}">${r.label}${r.badge ? `<sup class="nav-badge">${r.badge}</sup>` : ''}</a>`)
       .join('');

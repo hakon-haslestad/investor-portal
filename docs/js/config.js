@@ -23,6 +23,12 @@ window.PORTAL_CONFIG = {
   OAUTH_SCOPE: 'openid email https://www.googleapis.com/auth/spreadsheets.readonly',
   OAUTH_SCOPE_WRITE: 'openid email https://www.googleapis.com/auth/spreadsheets',
 
+  // Apps Script web-app URL for cross-device play (phones answering onto a
+  // shared screen). Deploy the script in apps-script/Code.gs as a web app —
+  // Execute as: me, Access: anyone — and paste its /exec URL here. Leave it
+  // empty and the games simply stay single-device; nothing else breaks.
+  ROOMS_URL: '',
+
   // Sheet tab names.
   TABS: {
     transactions: 'Rådata fra nordnet',

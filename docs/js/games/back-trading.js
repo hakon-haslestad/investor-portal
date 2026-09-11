@@ -68,7 +68,7 @@
   }
 
   function mount(el, props) {
-    const { players, soberMode, rng, pool, history, competitionId } = props;
+    const { players, soberMode, rng, pool, history, competitionId, room } = props;
     let dead = false;
     const today = new Date().toISOString().slice(0, 10);
     const all = closedTrades(pool, today);
@@ -208,7 +208,29 @@
       }).join('')}</div>`;
     }
 
+    let currentTrade = null;
+    const offRemote = room ? room.onChange((state) => {
+      if (dead || !currentTrade) return;
+      let changed = false;
+      for (const [code, value] of Object.entries(state.answers || {})) {
+        if (!roster.some((p) => p.code === code)) continue;
+        const n = Number(value);
+        if (n !== 0 && n !== 1) continue;
+        // 0 = hold, 1 = sell. The phone sends a button index, not a word.
+        const hold = n === 0;
+        if (bets.get(code) === hold) continue;
+        bets.set(code, hold);
+        changed = true;
+      }
+      if (changed) renderAsk(currentTrade);
+    }) : null;
+
     function renderAsk(trade) {
+      currentTrade = trade;
+      if (room && trade && trade.id !== renderAsk._announced) {
+        renderAsk._announced = trade.id;
+        room.setRound('Would you have held?', ['Hold 💎', 'Sell ✂️']);
+      }
       const s = seriesFor(pool, trade, trade.exitDate); // nothing after the exit
       el.innerHTML = `
         ${renderPicker(trade)}
@@ -409,7 +431,7 @@
 
     return {
       newRound,
-      destroy() { dead = true; },
+      destroy() { dead = true; if (offRemote) offRemote(); },
       // exposed for tests
       _closedTrades: () => all,
     };
