@@ -7,7 +7,7 @@
 
 (function () {
   window.Views.games = async function (el, ctx) {
-    const { store, query, params, navigate } = ctx;
+    const { store, me, query, params, navigate } = ctx;
     const S = window.GameShell;
 
     let competitions = [];
@@ -49,8 +49,10 @@
           <h2>Games 🎲🍺 ${window.UI.infoIcon('the-game')}</h2>
         </div>
         ${S.renderFilterBar(filters, competitions, roster)}
+        ${renderHostBanner(game)}
         ${S.renderShell(game, filters, summary + droppedNote(), recent)}`;
       S.bindFilterBar(el, filters, navigate, game.id, () => mountGame(), { roster });
+      bindHostBanner(game);
 
       const board = el.querySelector('#game-board');
       const needed = game.players === '3+' ? 3 : game.players === '2+' ? 2 : 1;
@@ -78,13 +80,29 @@
         add: (r) => { S.history.add(r); refreshRecent(); },
       };
 
+      // A live room is held at module scope in GameRoom, NOT here: every
+      // filter change remounts this view, and a room owned by the view would
+      // die the first time someone touched a filter.
+      const room = hostedRoomFor(game);
+
       active = game.component.mount(board, {
-        trades, players,
+        trades, players, me,
         soberMode: S.soberMode(),
         pool, rng: window.GameRng(window.GameRng.randomSeed()),
         history: liveHistory,
         competitionId: filters.competitionId,
+        room,
       });
+
+      // Repaint the seat chips as phones join and answer.
+      if (room) {
+        const off = room.onChange(() => {
+          const banner = el.querySelector('#host-banner');
+          if (!banner) { off(); return; }
+          banner.outerHTML = renderHostBanner(game);
+          bindHostBanner(game);
+        });
+      }
 
       const nr = el.querySelector('#new-round');
       if (nr) nr.addEventListener('click', () => {
@@ -96,6 +114,64 @@
     function droppedNote() {
       if (!dropped.length) return '';
       return ` · ${dropped.length} left out, no price history`;
+    }
+
+    // A game can be hosted only if it collects an answer per player and the
+    // web app is configured. Spin and Guess score nothing, so there is
+    // nothing for a phone to send.
+    function canHost(g) {
+      return !!(g && g.hosted && window.GameRoom && window.GameRoom.configured());
+    }
+
+    // The room that is already open for this game, if any. Re-attaching here
+    // rather than re-creating is what lets hosting survive a filter change.
+    function hostedRoomFor(g) {
+      const r = window.GameRoom && window.GameRoom.current();
+      return r && r.gameId === g.id ? r : null;
+    }
+
+    async function startHosting(g) {
+      const banner = el.querySelector('#host-banner');
+      if (banner) banner.innerHTML = '<span class="text-muted">Opening a room…</span>';
+      try {
+        await window.GameRoom.openHost({ gameId: g.id, roster: players });
+        mountGame();   // remount so the game picks the room up through props
+      } catch (e) {
+        if (banner) banner.innerHTML = `<span class="flash error">Could not open a room: ${window.UI.esc(e.message || e)}</span>`;
+      }
+    }
+
+    function renderHostBanner(g) {
+      if (!canHost(g)) return '';
+      const room = hostedRoomFor(g);
+      if (!room) {
+        return `<div id="host-banner" class="host-bar">
+          <button type="button" class="btn small" id="host-start">📱 Play on phones</button>
+          <span class="text-muted text-small">Everyone answers on their own phone; this screen shows the questions.</span>
+        </div>`;
+      }
+      const joinUrl = `${location.origin}${location.pathname}#/play?code=${room.code}`;
+      const st = room.state || { joined: [], answers: {} };
+      return `<div id="host-banner" class="host-bar hosting">
+        <div class="host-code"><span class="host-code-label">Room</span><strong>${window.UI.esc(room.code)}</strong></div>
+        <div class="host-join">${window.UI.esc(joinUrl)}</div>
+        <div class="host-seats">${players.map((p) => {
+          const joined = (st.joined || []).includes(p.code);
+          const answered = Object.prototype.hasOwnProperty.call(st.answers || {}, p.code);
+          return `<span class="host-seat ${answered ? 'answered' : joined ? 'joined' : ''}">${window.UI.esc(p.code)}</span>`;
+        }).join('')}</div>
+        <button type="button" class="btn ghost small" id="host-stop">Stop</button>
+      </div>`;
+    }
+
+    function bindHostBanner(g) {
+      const start = el.querySelector('#host-start');
+      if (start) start.addEventListener('click', () => startHosting(g));
+      const stop = el.querySelector('#host-stop');
+      if (stop) stop.addEventListener('click', () => {
+        window.GameRoom.closeCurrent();
+        mountGame();
+      });
     }
 
     function refreshRecent() {

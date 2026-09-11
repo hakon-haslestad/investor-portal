@@ -13,6 +13,9 @@
     { match: 'investors',    label: 'Investors',    view: 'investors' },
     { match: 'competitions', label: 'Competitions', view: 'competitions' },
     { match: 'games',        label: 'Games',        view: 'games' },
+    // Reachable by link/QR from a hosted game; no nav entry — you get here
+    // from the code on the big screen, not by browsing.
+    { match: 'play',         label: 'Play',         view: 'play', hidden: true },
     { match: 'accounting',   label: 'Accounting',   view: 'accounting', badge: 'beta' },
     { match: 'admin',        label: 'Admin',        view: 'admin', adminOnly: true },
   ];

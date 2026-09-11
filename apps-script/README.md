@@ -80,3 +80,56 @@ and would not preserve history.
   to maintain by hand. `status`/`soldDate` can be overridden manually.
 - The portal's Admin tab shows the `Securities` registry and recent `_log`
   entries, so day-to-day you rarely need the Apps Script editor.
+
+
+## Cross-device play (phones answering onto a shared screen)
+
+The same script also serves the portal's game rooms. This half is **optional**
+— leave `ROOMS_URL` empty in `docs/js/config.js` and the games stay
+single-device; nothing else changes.
+
+### Deploy
+
+1. Paste the current `Code.gs` into the editor (it now ends with a
+   `GAME ROOMS` section) and save.
+2. **Deploy → New deployment → Web app**
+   - *Execute as*: **Me**
+   - *Who has access*: **Anyone**
+3. Copy the `/exec` URL and paste it into `docs/js/config.js` as `ROOMS_URL`.
+4. Commit that, bump the `?v=` cache-bust, and push.
+
+**Editing the script later needs a NEW VERSION**, not just a save: Deploy →
+Manage deployments → edit → Version: New version. The `/exec` URL stays the
+same. This is the step everyone forgets, and the symptom is the old code
+running with no error anywhere.
+
+### Why "Anyone" is not what it sounds like
+
+A phone cannot authenticate *to Apps Script* without authorising the script
+itself, which nobody is doing at a party. So the deployment is open at the
+HTTP level — but it is not an anonymous write surface:
+
+- every POST carries the caller's Google OAuth access token, verified against
+  `oauth2.googleapis.com/tokeninfo`, so an email cannot be forged;
+- the token's `aud` must be **our** OAuth client, so a token minted for any
+  other Google app cannot be replayed here;
+- the email must resolve to a row in the `Members` tab, and be on that room's
+  roster.
+
+And the endpoint holds nothing worth taking. Because phones show buttons only,
+a live room is investor codes and small integers:
+
+```json
+{ "g": "odd-one-out", "r": ["HH","JC"], "j": ["HH"], "q": 3, "a": { "HH": 2 }, "v": 7 }
+```
+
+No security names, no prices, no P/L — those never leave the shared screen.
+Rooms live in `CacheService` with a 2-hour TTL and never touch the
+spreadsheet, so game traffic cannot disturb the club's data.
+
+### Quotas
+
+Each poll is one short execution. A five-player game polling every 1.5s for
+half an hour is a few thousand calls — comfortably inside the consumer Apps
+Script limits, but it is worth knowing this is the one part of the project
+that consumes a shared daily budget. Polling stops when a tab is hidden.

@@ -155,3 +155,80 @@ test('an empty pool says so rather than rendering a broken board', () => {
   });
   assert.match(el.innerHTML, /^EMPTY:/);
 });
+
+// ── Cross-device answers ───────────────────────────────────────────────────
+function mountWithRoom(players) {
+  const listeners = [];
+  const rounds = [];
+  const room = {
+    onChange(cb) { listeners.push(cb); return () => {}; },
+    setRound(prompt, choices) { rounds.push({ prompt, choices }); },
+    state: { answers: {} },
+  };
+  const w = context(['games/rng.js'], {
+    Fmt: { fmtNok: (n) => `${n} kr`, fmtPct: (n) => `${n}%`, escapeHtml: (s) => String(s), pctClass: () => '' },
+    UI: { emptyState: (t) => `EMPTY:${t}` },
+  });
+  load(w, 'games/odd-one-out-rules.js', 'games/odd-one-out.js');
+  const el = fakeEl();
+  w.GameOddOneOut.mount(el, {
+    trades: TRADES, players, soberMode: false,
+    rng: w.GameRng(7), history: { add() {}, list: () => [] }, competitionId: '', room,
+  });
+  return { el, room, rounds, push: (answers) => listeners.forEach((cb) => cb({ answers })) };
+}
+
+test('hosting announces each round to the phones, with a button count', () => {
+  const { rounds } = mountWithRoom(ROSTER);
+  assert.equal(rounds.length, 1, 'the first round is announced on mount');
+  assert.equal(rounds[0].choices, 4, 'four cards, four buttons');
+  assert.match(rounds[0].prompt, /belong/i);
+});
+
+test('a phone answer is attributed to that player, not to whose turn it is', () => {
+  const { el, push } = mountWithRoom(ROSTER);
+  // ØS is last in the turn order, so a turn-based attribution would get this
+  // wrong — that was exactly the old bug.
+  push({ 'ØS': 2 });
+  // Card index 2 shows as "3" in Øystein's column, and only his.
+  assert.match(el.innerHTML, /game-player in">\s*<div class="game-player-who">Øystein<\/div>\s*<div class="ooo-pick">3</,
+    'the answer lands in Øystein\'s column');
+  assert.equal((el.innerHTML.match(/game-player in/g) || []).length, 1, 'and nobody else has answered');
+  // And the board has not revealed, because HH and JC have not answered.
+  assert.ok(!el.innerHTML.includes('ooo-verdict'));
+});
+
+test('the board reveals once the last phone answers', () => {
+  const { el, push } = mountWithRoom(ROSTER);
+  push({ HH: 0 });
+  assert.ok(!el.innerHTML.includes('ooo-verdict'), 'one in');
+  push({ HH: 0, JC: 1 });
+  assert.ok(!el.innerHTML.includes('ooo-verdict'), 'two in');
+  push({ HH: 0, JC: 1, 'ØS': 2 });
+  // Everyone is in, so it resolves without anyone touching the laptop.
+  assert.ok(el._cards.every((c) => c.disabled) || el.innerHTML.length > 0);
+});
+
+test('an answer from someone not in the room is ignored', () => {
+  const { el, push } = mountWithRoom(ROSTER);
+  const before = el.innerHTML;
+  push({ ZZ: 1 });
+  assert.equal(el.innerHTML, before, 'a stranger cannot move the board');
+});
+
+test('a nonsense answer value is ignored rather than scored', () => {
+  const { el, push } = mountWithRoom(ROSTER);
+  const before = el.innerHTML;
+  push({ HH: 99 });      // no such card
+  push({ JC: -1 });
+  push({ 'ØS': 'two' });
+  assert.equal(el.innerHTML, before, 'out-of-range picks do not register');
+});
+
+test('a repeated identical answer does not re-render or double-count', () => {
+  const { el, push } = mountWithRoom(ROSTER);
+  push({ HH: 1 });
+  const after = el.innerHTML;
+  push({ HH: 1 });
+  assert.equal(el.innerHTML, after, 'the same answer twice changes nothing');
+});

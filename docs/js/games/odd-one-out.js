@@ -10,7 +10,9 @@
   const MASK = '<span class="ooo-hidden" title="hidden this round">▓▓▓</span>';
 
   function mount(el, props) {
-    const { trades, players, soberMode, rng, history, competitionId } = props;
+    const { trades, players, soberMode, rng, history, competitionId, room } = props;
+    // When hosting, phones answer into the same picks map a local tap writes.
+    const offRemote = room ? room.onChange(onRemote) : null;
     let dead = false;
     let round = null;
     let lastRuleId = null;
@@ -136,11 +138,22 @@
 
     // One tap is one player's call. The board only reveals once everyone has
     // had theirs, so nobody is answering with the answer already on screen.
-    function answer(i) {
+    // `code` says WHOSE answer this is. A local tap has no opinion, so it
+    // falls back to the turn pointer; a phone knows exactly who it is, which
+    // is the whole point of playing across devices.
+    function answer(i, code) {
       if (answered || !round) return;
-      picks.set(currentPlayer().code, i);
+      const who = code || currentPlayer().code;
+      if (!roster.some((p) => p.code === who)) return;   // not in this room
+      picks.set(who, i);
       if (picks.size < roster.length) { render(); return; }
+      resolveRound();
+    }
 
+    // Everyone is in. Score it. Reached from a local tap or from the last
+    // phone answering, which must behave identically.
+    function resolveRound() {
+      if (answered || !round) return;
       answered = true;
       rounds += 1;
       for (const [code, pick] of picks) {
@@ -195,6 +208,30 @@
       if (round) lastRuleId = round.ruleId;
       answered = false;
       picks = new Map();
+      // Tell the phones there is a new question and how many buttons to show.
+      // This also clears last round's answers server-side, so a slow phone
+      // cannot answer a question it never saw.
+      if (room && round) room.setRound("Which one doesn't belong?", round.cards.length);
+      render();
+    }
+
+    // A phone answered. Identical to a local tap except that we are told who.
+    function onRemote(state) {
+      if (dead || !round || answered) return;
+      let changed = false;
+      for (const [code, value] of Object.entries(state.answers || {})) {
+        // The server gates on the room roster, but check here too: a code
+        // this board does not know would inflate picks.size and could reveal
+        // the answer before the actual players had called it.
+        if (!roster.some((p) => p.code === code)) continue;
+        const i = Number(value);
+        if (!Number.isInteger(i) || i < 0 || i >= round.cards.length) continue;
+        if (picks.get(code) === i) continue;
+        picks.set(code, i);
+        changed = true;
+      }
+      if (!changed) return;
+      if (picks.size >= roster.length) { resolveRound(); return; }
       render();
     }
 
@@ -204,6 +241,7 @@
       newRound,
       destroy() {
         dead = true;
+        if (offRemote) offRemote();
         // One result per session, per the brief.
         if (played > 0 && history) {
           history.add({

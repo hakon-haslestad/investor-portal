@@ -60,7 +60,11 @@ Google's free tier.
    [apps-script/README.md](./apps-script/README.md) — creates and seeds
    the `Securities` + `StockPrices` tabs, backfills history, and
    installs the daily trigger.
-8. **Accounting** (optional): create a second Google Sheet for the
+8. **Phone play** (optional): deploy the Apps Script as a web app and
+   paste its `/exec` URL into `ROOMS_URL` in `docs/js/config.js` — see
+   [apps-script/README.md](./apps-script/README.md). Without it the games
+   work exactly as before, on one screen.
+9. **Accounting** (optional): create a second Google Sheet for the
    konsolidert bookkeeping workbook and paste its ID into
    `ACCOUNTING_SHEET_ID` in `docs/js/config.js`. Viewer share is enough.
 
