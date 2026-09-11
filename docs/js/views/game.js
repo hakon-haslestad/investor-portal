@@ -98,9 +98,12 @@
 
       // Repaint the seat chips as phones join and answer.
       if (room) {
-        const off = room.onChange(() => {
+        // onChange calls back IMMEDIATELY, so `off` must exist before it runs —
+        // a const assigned from onChange() is still in its dead zone there.
+        let off = null;
+        off = room.onChange(() => {
           const banner = el.querySelector('#host-banner');
-          if (!banner) { off(); return; }
+          if (!banner) { if (off) off(); return; }
           banner.outerHTML = renderHostBanner(game);
           bindHostBanner(game);
         });
@@ -226,9 +229,10 @@
       // Repaint the seats as phones join, without rebuilding the grid.
       const gridRoom = currentRoom();
       if (gridRoom) {
-        const off = gridRoom.onChange(() => {
+        let off = null;
+        off = gridRoom.onChange(() => {
           const banner = el.querySelector('#host-banner');
-          if (!banner) { off(); return; }
+          if (!banner) { if (off) off(); return; }
           banner.outerHTML = renderHostBanner(null);
           bindHostBanner(null);
         });

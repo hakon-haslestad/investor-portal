@@ -160,10 +160,14 @@ test('an empty pool says so rather than rendering a broken board', () => {
 function mountWithRoom(players) {
   const listeners = [];
   const rounds = [];
+  const state = { answers: {} };
   const room = {
-    onChange(cb) { listeners.push(cb); return () => {}; },
+    // Matches the real GameRoom: onChange calls back IMMEDIATELY. The stub
+    // used not to, which is exactly why a temporal-dead-zone crash on mount
+    // passed every test and then failed on the first real game.
+    onChange(cb) { listeners.push(cb); cb(state); return () => {}; },
     setRound(prompt, choices) { rounds.push({ prompt, choices }); },
-    state: { answers: {} },
+    state,
   };
   const w = context(['games/rng.js'], {
     Fmt: { fmtNok: (n) => `${n} kr`, fmtPct: (n) => `${n}%`, escapeHtml: (s) => String(s), pctClass: () => '' },
@@ -177,6 +181,15 @@ function mountWithRoom(players) {
   });
   return { el, room, rounds, push: (answers) => listeners.forEach((cb) => cb({ answers })) };
 }
+
+test('a hosted game mounts without touching state that does not exist yet', () => {
+  // onChange fires during mount, so the subscriber runs before the rest of
+  // the closure is initialised unless it is wired up in the right order.
+  // This is the crash that reached production: "Cannot access 'dead' before
+  // initialization".
+  assert.doesNotThrow(() => mountWithRoom(ROSTER));
+  assert.doesNotThrow(() => mountWithRoom([{ code: 'HH', name: 'Hakon' }]));
+});
 
 test('hosting announces each round to the phones, with a button count', () => {
   const { rounds } = mountWithRoom(ROSTER);

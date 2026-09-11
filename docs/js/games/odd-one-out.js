@@ -11,8 +11,6 @@
 
   function mount(el, props) {
     const { trades, players, soberMode, rng, history, competitionId, room } = props;
-    // When hosting, phones answer into the same picks map a local tap writes.
-    const offRemote = room ? room.onChange(onRemote) : null;
     let dead = false;
     let round = null;
     let lastRuleId = null;
@@ -27,6 +25,12 @@
     // Hot-seat: one device passed around.
     let turn = 0;
     const roster = players && players.length ? players : [{ code: '', name: 'Player' }];
+
+    // When hosting, phones answer into the same picks map a local tap writes.
+    // Subscribed HERE, not at the top: onChange fires its callback
+    // immediately, and onRemote reads dead/round/picks/roster — all of which
+    // are still in their temporal dead zone further up.
+    const offRemote = room ? room.onChange(onRemote) : null;
 
     // Whoever is next to call it: the first player, from `turn`, who has not
     // picked yet. `turn` advances each round so the same person does not
