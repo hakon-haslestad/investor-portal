@@ -1,8 +1,8 @@
 // Spin the stock — the original game. Draws a random real position, runs the
 // slot-machine animation, then reveals whose it was and what it did.
 //
-// `guess: true` is the same draw with the name masked and the chart shown
-// first, so the room can call it before the reveal.
+// Screen-only by design: there is nothing to answer. Guess the Stock is the
+// same draw with a question attached, and lives in its own file.
 
 (function () {
   const { fmtNok, fmtPct, escapeHtml, pctClass } = window.Fmt;

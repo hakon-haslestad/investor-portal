@@ -14,6 +14,7 @@
 //               be played across devices (see games/room.js)
 //   drinkingRule  shown only when sober mode is off
 //   component   { mount(el, props) -> { newRound?, destroy? } }
+//   wide        true to give the game the full viewport (.container.wide)
 //
 // GameProps (what component.mount receives):
 //   trades      already filtered by period + competition
@@ -23,6 +24,9 @@
 //   rng         seedable RNG — games must never call Math.random
 //   history     GameShell.history, scoped by the caller
 //   competitionId
+//   me          the signed-in member row, or null
+//   room        the live GameRoom when one is open, else null — games reach
+//               it through GameRounds rather than directly
 
 (function () {
   const registry = [
@@ -43,17 +47,16 @@
       id: 'guess-the-stock',
       name: 'Guess the stock',
       icon: '🤔',
-      tagline: 'Same draw, name hidden. Call it before the reveal.',
-      rules: `<p>A random position is dealt face-down: you get the price chart and nothing else.</p>
-              <p>Whose is it? Did it go up or down? Say it out loud, then hit Reveal.</p>
-              <p class="text-muted text-small">Honour system — nothing is scored.</p>`,
-      tags: ['party'],
-      // Playable alone — you still call it before the reveal, there is just
-      // nobody to be wrong in front of.
+      tagline: 'Five candidates, one chart. Which stock is it?',
+      rules: `<p>A position is dealt face-down — you get the price chart and five candidate names, numbered.</p>
+              <p>Pick the one you think it is. On phones you tap the number; the names stay on the big screen.</p>
+              <p>The wrong answers are other real holdings, so none of them are obviously padding.</p>`,
+      tags: ['party', 'skill'],
       players: '1',
-      minTrades: 1,
-      drinkingRule: 'Everyone who called it wrong drinks.',
-      component: window.GameSpinTheStock({ guess: true }),
+      minTrades: 5,
+      hosted: true,
+      drinkingRule: 'Everyone who guessed wrong drinks.',
+      component: window.GameGuessTheStock,
     },
     {
       id: 'odd-one-out',
@@ -96,8 +99,11 @@
               <p>Odds come from how volatile the horse was <em>before</em> the window. They are decoration: they never affect the running.</p>
               <p>Daily closes only, so the shortest race is five days. The finish is the real return — the wobble along the way is just for show.</p>`,
       tags: ['party', 'recurring'],
-      players: '2+',
+      // Alone, the rest of the field is drawn for you — so one player is a
+      // race, not an empty track.
+      players: '1',
       minTrades: 2,
+      hosted: true,
       // The track wants the whole screen — see .container.wide.
       wide: true,
       drinkingRule: 'Last place drinks — or, in harder mode, drink once per horse that beat yours.',

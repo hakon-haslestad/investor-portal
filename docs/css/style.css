@@ -1065,19 +1065,71 @@ tr.row-detail > td { background: var(--panel-2); padding: 4px 12px 12px; }
   font-size: 2rem; letter-spacing: 10px; text-align: center; text-transform: uppercase;
   padding: 14px; margin: 10px 0;
 }
-.play-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-/* Two named choices read better stacked full width than side by side. */
-.play-buttons.two { grid-template-columns: 1fr; }
-.play-buttons.two .play-btn { font-size: 1.5rem; padding: 22px 0; min-height: 84px; }
+/* The buttons ARE the phone screen: they fill the space under the header so
+   you can hit one without looking down. The grid follows the option count
+   rather than being fixed at two columns, which used to leave five options
+   in a ragged 2+2+1. */
+.play-buttons {
+  display: grid; gap: 10px;
+  grid-template-columns: 1fr;
+  min-height: calc(100vh - 210px);
+}
+.play-buttons.n2 { grid-template-columns: 1fr; }
+.play-buttons.n3 { grid-template-columns: 1fr; }
+.play-buttons.n4 { grid-template-columns: 1fr 1fr; }
+.play-buttons.n5, .play-buttons.n6 { grid-template-columns: 1fr 1fr; }
+/* An odd last option takes the full width rather than sitting half-empty. */
+.play-buttons.n3 .play-btn:last-child,
+.play-buttons.n5 .play-btn:last-child { grid-column: 1 / -1; }
 .play-btn {
-  font-size: 2.4rem; font-weight: 800; padding: 30px 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 1.8rem; font-weight: 800; padding: 12px; cursor: pointer;
   background: var(--panel); color: var(--text);
   border: 2px solid var(--border); border-radius: var(--radius);
-  min-height: 104px;
+  min-height: 72px; line-height: 1.15; word-break: break-word;
 }
+.play-buttons.n2 .play-btn { font-size: 2.2rem; }
+.play-buttons.n5 .play-btn, .play-buttons.n6 .play-btn { font-size: 1.5rem; }
 .play-btn:active { transform: scale(0.98); }
-.play-btn.chosen { background: var(--accent); color: #051a0a; border-color: var(--accent); }
-.play-buttons.locked .play-btn { opacity: 0.55; }
+/* The chosen one stays lit and everything else recedes — at arm's length the
+   difference has to be obvious, not a shade of grey. */
+.play-btn.chosen {
+  background: var(--accent); color: #051a0a; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(62, 224, 127, 0.3);
+}
+.play-buttons.locked .play-btn { opacity: 0.35; }
+.play-buttons.locked .play-btn.chosen { opacity: 1; }
+.play-error { margin: 0 0 10px; }
+
+/* ─── Guess the stock ────────────────────────────────────────────────────
+   Five numbered candidates under the chart. The numbers matter: they are
+   what a phone taps, so they have to be legible from across the room. */
+.guess-options {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  gap: 10px; margin-top: 14px;
+}
+.guess-option {
+  display: flex; align-items: center; gap: 10px; text-align: left;
+  background: var(--panel); color: var(--text); cursor: pointer;
+  border: 2px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px; font: inherit; min-height: 56px;
+}
+.guess-option:hover:not(:disabled) { border-color: var(--link); }
+.guess-option:disabled { cursor: default; }
+.guess-num {
+  flex: none; width: 30px; height: 30px; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 0.95rem;
+}
+.guess-name { font-weight: 600; }
+.guess-option.is-answer { border-color: var(--accent); background: rgba(62, 224, 127, 0.10); }
+.guess-option.is-answer .guess-num { background: var(--accent); color: #051a0a; border-color: var(--accent); }
+.guess-option.is-wrong { border-color: var(--danger); background: rgba(255, 91, 91, 0.08); }
+
+@media (max-width: 720px) {
+  .guess-options { grid-template-columns: 1fr; }
+}
 .play-foot { margin-top: 18px; text-align: center; }
 .play-ended { text-align: center; padding-top: 40px; }
 .play-ended h2 { font-size: 1.8rem; }

@@ -20,17 +20,22 @@
     let correct = 0;
     let played = 0;
     let rounds = 0;
-    let picks = new Map();          // this round: player code -> card index
     const scores = new Map();       // whole session: player code -> correct calls
     // Hot-seat: one device passed around.
     let turn = 0;
     const roster = players && players.length ? players : [{ code: '', name: 'Player' }];
 
-    // When hosting, phones answer into the same picks map a local tap writes.
-    // Subscribed HERE, not at the top: onChange fires its callback
-    // immediately, and onRemote reads dead/round/picks/roster — all of which
-    // are still in their temporal dead zone further up.
-    const offRemote = room ? room.onChange(onRemote) : null;
+    // One answer map for taps and phones alike. Rounds owns the room
+    // subscription and only calls back on a real change, so this game cannot
+    // repeat the crash where a room callback fired before its state existed.
+    const rnd = window.GameRounds.create({
+      room, roster,
+      onChange: ({ changed }) => {
+        if (dead || answered || !changed) return;
+        if (rnd.complete) resolveRound(); else render();
+      },
+    });
+    const picks = rnd.picks;
 
     // Whoever is next to call it: the first player, from `turn`, who has not
     // picked yet. `turn` advances each round so the same person does not
@@ -148,9 +153,8 @@
     function answer(i, code) {
       if (answered || !round) return;
       const who = code || currentPlayer().code;
-      if (!roster.some((p) => p.code === who)) return;   // not in this room
-      picks.set(who, i);
-      if (picks.size < roster.length) { render(); return; }
+      if (!rnd.set(who, i)) return;                      // not in the room, or no such card
+      if (!rnd.complete) { render(); return; }
       resolveRound();
     }
 
@@ -211,31 +215,17 @@
       round = window.OddOneOutRules.buildRound(trades, rng, lastRuleId);
       if (round) lastRuleId = round.ruleId;
       answered = false;
-      picks = new Map();
+      rnd.reset();
       // Tell the phones there is a new question and how many buttons to show.
       // This also clears last round's answers server-side, so a slow phone
       // cannot answer a question it never saw.
-      if (room && round) room.setRound("Which one doesn't belong?", round.cards.length);
-      render();
-    }
-
-    // A phone answered. Identical to a local tap except that we are told who.
-    function onRemote(state) {
-      if (dead || !round || answered) return;
-      let changed = false;
-      for (const [code, value] of Object.entries(state.answers || {})) {
-        // The server gates on the room roster, but check here too: a code
-        // this board does not know would inflate picks.size and could reveal
-        // the answer before the actual players had called it.
-        if (!roster.some((p) => p.code === code)) continue;
-        const i = Number(value);
-        if (!Number.isInteger(i) || i < 0 || i >= round.cards.length) continue;
-        if (picks.get(code) === i) continue;
-        picks.set(code, i);
-        changed = true;
+      if (round) {
+        rnd.open({
+          prompt: "Which one doesn't belong?",
+          labels: round.cards.map((_, i) => String(i + 1)),
+          key: `${rounds}|${round.ruleId}|${round.cards.map((c) => c.security).join('|')}`,
+        });
       }
-      if (!changed) return;
-      if (picks.size >= roster.length) { resolveRound(); return; }
       render();
     }
 
@@ -245,7 +235,7 @@
       newRound,
       destroy() {
         dead = true;
-        if (offRemote) offRemote();
+        rnd.destroy();
         // One result per session, per the brief.
         if (played > 0 && history) {
           history.add({

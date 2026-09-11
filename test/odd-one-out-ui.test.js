@@ -60,7 +60,7 @@ function mountOoo(players) {
     },
     UI: { emptyState: (t) => `EMPTY:${t}` },
   });
-  load(w, 'games/odd-one-out-rules.js', 'games/odd-one-out.js');
+  load(w, 'games/round.js', 'games/odd-one-out-rules.js', 'games/odd-one-out.js');
   const el = fakeEl();
   const inst = w.GameOddOneOut.mount(el, {
     trades: TRADES, players, soberMode: false,
@@ -147,7 +147,7 @@ test('an empty pool says so rather than rendering a broken board', () => {
     Fmt: { fmtNok: String, fmtPct: String, escapeHtml: String, pctClass: () => '' },
     UI: { emptyState: (t) => `EMPTY:${t}` },
   });
-  load(w, 'games/odd-one-out-rules.js', 'games/odd-one-out.js');
+  load(w, 'games/round.js', 'games/odd-one-out-rules.js', 'games/odd-one-out.js');
   const el = fakeEl();
   w.GameOddOneOut.mount(el, {
     trades: [], players: ROSTER, soberMode: false,
@@ -167,13 +167,14 @@ function mountWithRoom(players) {
     // passed every test and then failed on the first real game.
     onChange(cb) { listeners.push(cb); cb(state); return () => {}; },
     setRound(prompt, choices) { rounds.push({ prompt, choices }); },
+    onChange(cb) { listeners.push(cb); cb(state); return () => {}; },
     state,
   };
   const w = context(['games/rng.js'], {
     Fmt: { fmtNok: (n) => `${n} kr`, fmtPct: (n) => `${n}%`, escapeHtml: (s) => String(s), pctClass: () => '' },
     UI: { emptyState: (t) => `EMPTY:${t}` },
   });
-  load(w, 'games/odd-one-out-rules.js', 'games/odd-one-out.js');
+  load(w, 'games/round.js', 'games/odd-one-out-rules.js', 'games/odd-one-out.js');
   const el = fakeEl();
   w.GameOddOneOut.mount(el, {
     trades: TRADES, players, soberMode: false,
@@ -194,7 +195,9 @@ test('a hosted game mounts without touching state that does not exist yet', () =
 test('hosting announces each round to the phones, with a button count', () => {
   const { rounds } = mountWithRoom(ROSTER);
   assert.equal(rounds.length, 1, 'the first round is announced on mount');
-  assert.equal(rounds[0].choices, 4, 'four cards, four buttons');
+  // Labels, not a bare count: every game now names its buttons so the phone
+  // board is built the same way whatever the game.
+  assert.deepEqual(rounds[0].choices, ['1', '2', '3', '4'], 'four cards, four buttons');
   assert.match(rounds[0].prompt, /belong/i);
 });
 
