@@ -14,6 +14,11 @@
     const { query, navigate } = ctx;
     let room = null;
     let off = null;
+    // Which button this phone chose, kept across polls until the round
+    // changes — the highlight is the only feedback you get once locked.
+    let mine = null;
+    let lastRound = -1;
+    const setMine = (v) => { mine = v; };
 
     function renderJoin(code, error) {
       el.innerHTML = `
@@ -61,10 +66,11 @@
             <span class="play-you">${esc(room.member)}</span>
             <span class="play-room">room ${esc(room.code)}</span>
           </div>
+          ${state.error ? `<div class="flash error play-error">${esc(state.error === 'taken' ? 'Someone beat you to that one — pick another.' : state.error)}</div>` : ''}
           <p class="play-prompt">${locked
-            ? 'Answer in — look up at the screen.'
+            ? 'Locked in — look up at the screen.'
             : esc(state.prompt || 'Your call. The question is on the big screen.')}</p>
-          <div class="play-buttons ${locked ? 'locked' : ''}${labels.length === 2 ? ' two' : ''}">
+          <div class="play-buttons n${labels.length} ${locked ? 'locked' : ''}">
             ${labels.map((label, i) => `
               <button type="button" class="play-btn${state.mine === i ? ' chosen' : ''}" data-v="${i}" ${locked ? 'disabled' : ''}>${esc(label)}</button>
             `).join('')}
@@ -78,7 +84,10 @@
           b.classList.add('chosen');
           try {
             const r = await room.answer(v);
-            if (!r.ok) renderBoard({ ...state, answered: false, mine: null, error: r.error });
+            // Remember it. Without this the next poll re-renders from a null
+            // and the highlight vanishes a second after you tapped.
+            if (r.ok) { setMine(v); renderBoard({ ...state, answered: true, mine: v }); }
+            else renderBoard({ ...state, answered: false, mine: null, error: r.error });
           } catch (_e) {
             // A failed send must not leave the buttons dead.
             renderBoard({ ...state, answered: false, mine: null });
@@ -100,9 +109,8 @@
       }
       if (room.closed) { renderEnded(); return; }
       navigate(`#/play?code=${code}`);
-      let mine = null;
-      let lastRound = -1;
       off = room.onChange((s) => {
+        // A new question clears what you picked; within a round it sticks.
         if (s.roundId !== lastRound) { lastRound = s.roundId; mine = null; }
         renderBoard({ ...s, mine, choices: s.choices });
       });

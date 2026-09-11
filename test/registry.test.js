@@ -137,11 +137,10 @@ test('every game declares a player requirement it can actually honour', () => {
   for (const g of w.Games.registry) {
     assert.ok(['1', '2+', '3+'].includes(g.players), `${g.id}: ${g.players}`);
   }
-  // Horse Race genuinely needs runners to race against each other.
-  assert.equal(w.Games.byId('horse-race').players, '2+');
-  // Everything else is playable on your own.
-  for (const id of ['spin-the-stock', 'guess-the-stock', 'odd-one-out', 'back-trading']) {
-    assert.equal(w.Games.byId(id).players, '1', `${id} should be playable alone`);
+  // Every game is playable by one person. Horse Race fills the rest of the
+  // field for a lone player rather than refusing to start.
+  for (const g of w.Games.registry) {
+    assert.equal(g.players, '1', `${g.id} should be playable alone`);
   }
 });
 
@@ -149,11 +148,12 @@ test('only games that collect an answer per player can be hosted on phones', () 
   const w = appCtx();
   // `hosted` drives the "Play on phones" button. A game that scores nothing
   // has nothing for a phone to send, so offering it would be a dead end.
-  assert.equal(w.Games.byId('odd-one-out').hosted, true);
-  assert.equal(w.Games.byId('back-trading').hosted, true);
-  for (const id of ['spin-the-stock', 'guess-the-stock', 'horse-race']) {
-    assert.ok(!w.Games.byId(id).hosted, `${id} is not hosted yet`);
+  for (const id of ['odd-one-out', 'back-trading', 'guess-the-stock', 'horse-race']) {
+    assert.equal(w.Games.byId(id).hosted, true, `${id} collects an answer per player`);
   }
+  // Spin reveals a stock and asks nothing — Guess is the same draw with a
+  // question, so hosting Spin would just duplicate it.
+  assert.ok(!w.Games.byId('spin-the-stock').hosted, 'spin has nothing for a phone to send');
 });
 
 test('cross-device play is wired into the page and the CSP', () => {

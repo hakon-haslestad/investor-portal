@@ -209,27 +209,28 @@
     }
 
     let currentTrade = null;
-    const offRemote = room ? room.onChange((state) => {
-      if (dead || !currentTrade) return;
-      let changed = false;
-      for (const [code, value] of Object.entries(state.answers || {})) {
-        if (!roster.some((p) => p.code === code)) continue;
-        const n = Number(value);
-        if (n !== 0 && n !== 1) continue;
-        // 0 = hold, 1 = sell. The phone sends a button index, not a word.
-        const hold = n === 0;
-        if (bets.get(code) === hold) continue;
-        bets.set(code, hold);
-        changed = true;
-      }
-      if (changed) renderAsk(currentTrade);
-    }) : null;
+    // Shared round: taps and phone answers arrive the same way. 0 = hold,
+    // 1 = sell — the phone sends a button index, not a word.
+    const rnd = window.GameRounds.create({
+      room, roster,
+      onChange: ({ changed }) => {
+        if (dead || !currentTrade || !changed) return;
+        syncBets();
+        renderAsk(currentTrade);
+      },
+    });
+    function syncBets() {
+      for (const [code, v] of rnd.picks) bets.set(code, v === 0);
+    }
 
     function renderAsk(trade) {
       currentTrade = trade;
-      if (room && trade && trade.id !== renderAsk._announced) {
-        renderAsk._announced = trade.id;
-        room.setRound('Would you have held?', ['Hold 💎', 'Sell ✂️']);
+      if (trade) {
+        rnd.open({
+          prompt: 'Would you have held?',
+          labels: ['Hold 💎', 'Sell ✂️'],
+          key: trade.id,
+        });
       }
       const s = seriesFor(pool, trade, trade.exitDate); // nothing after the exit
       el.innerHTML = `
@@ -261,7 +262,9 @@
       el.querySelectorAll('.game-player [data-bet]').forEach((btn) => {
         btn.addEventListener('click', () => {
           const code = btn.closest('.game-player').getAttribute('data-player');
-          bets.set(code, btn.getAttribute('data-bet') === 'hold');
+          const hold = btn.getAttribute('data-bet') === 'hold';
+          if (!rnd.set(code, hold ? 0 : 1)) return;
+          bets.set(code, hold);
           renderAsk(trade); // re-render so the toggle and the counter update
         });
       });
@@ -403,17 +406,18 @@
       const sel = el.querySelector('#bt-pick');
       if (sel) sel.addEventListener('change', () => {
         const t = pickTrade(sel.value);
-        if (t) { bets = new Map(); renderAsk(t); }
+        if (t) { bets = new Map(); rnd.reset(); renderAsk(t); }
       });
       const mine = el.querySelector('#bt-mine');
       if (mine) mine.addEventListener('change', () => { onlyMine = mine.checked; newRound(); });
-      const rnd = el.querySelector('#bt-random');
-      if (rnd) rnd.addEventListener('click', () => newRound());
+      const randomBtn = el.querySelector('#bt-random');
+      if (randomBtn) randomBtn.addEventListener('click', () => newRound());
     }
 
     function newRound() {
       if (dead) return;
       bets = new Map();
+      rnd.reset();
       const t = pickTrade(null);
       if (!t) {
         const soonest = waiting.slice().sort((a, b) => a.daysUntilPlayable - b.daysUntilPlayable)[0];
@@ -431,7 +435,7 @@
 
     return {
       newRound,
-      destroy() { dead = true; if (offRemote) offRemote(); },
+      destroy() { dead = true; rnd.destroy(); },
       // exposed for tests
       _closedTrades: () => all,
     };

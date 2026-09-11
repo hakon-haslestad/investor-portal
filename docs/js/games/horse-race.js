@@ -17,11 +17,13 @@
   const addDays = (iso, n) => new Date(Date.parse(iso) + n * DAY).toISOString().slice(0, 10);
 
   function mount(el, props) {
-    const { trades, players, soberMode, pool, rng, history, competitionId } = props;
+    const { trades, players, soberMode, pool, rng, history, competitionId, room } = props;
     let dead = false;
     let windowId = '5';
     let hardMode = false;
     const picks = new Map(); // playerCode -> ticker
+    let shortlist = [];      // the numbered options a phone picks by index
+    let refusedFor = null;   // who just lost a race for a horse
     const roster = (players && players.length ? players : []).slice(0, MAX_HORSES);
 
     // One runner per distinct ticker in the filtered trades.
@@ -34,6 +36,25 @@
       runners.push({ ticker, name: t.security });
     }
 
+    // Horses are exclusive: first claim wins and a later one is refused, so
+    // two phones tapping the same runner cannot both get it.
+    const rnd = window.GameRounds.create({
+      room, roster, exclusive: true,
+      onChange: ({ changed, refused }) => {
+        if (dead) return;
+        refusedFor = refused && refused.length ? refused[0] : null;
+        let moved = changed;
+        for (const [code, i] of rnd.picks) {
+          const r = shortlist[i];
+          if (!r) continue;
+          // The last option is "sitting out", which is an answer, not a horse.
+          if (r.sitOut) { if (picks.delete(code)) moved = true; continue; }
+          if (picks.get(code) !== r.ticker) { picks.set(code, r.ticker); moved = true; }
+        }
+        if (moved || refusedFor) renderSetup();
+      },
+    });
+
     function windowRange() {
       const w = WINDOWS.find((x) => x.id === windowId) || WINDOWS[0];
       const to = new Date().toISOString().slice(0, 10);
@@ -42,6 +63,11 @@
       }
       // Trading days -> calendar days; the series is filtered to real closes.
       return { from: addDays(to, -Math.round(w.days * 1.5) - 5), to, days: w.days };
+    }
+
+    // Runners with enough closes to actually run this window.
+    function eligibleFor(from, to) {
+      return runners.filter((r) => pointsFor(r.name, from, to).length >= 2);
     }
 
     function pointsFor(name, from, to) {
@@ -59,12 +85,22 @@
       // A horse with no closes in THIS window cannot run, whatever history it
       // has elsewhere. Filter the paddock rather than letting someone pick a
       // horse and then bouncing them back here when the race refuses to start.
-      const eligible = runners.filter((r) => pointsFor(r.name, from, to).length >= 2);
+      const eligible = eligibleFor(from, to);
       const noData = runners.length - eligible.length;
       // Drop any pick this window has just made ineligible.
       for (const [code, ticker] of [...picks]) {
         if (!eligible.some((r) => r.ticker === ticker)) picks.delete(code);
       }
+      // Phones pick by index into this list, so it must be stable for the
+      // window. Capped so the phone board stays usable.
+      shortlist = eligible.slice(0, MAX_HORSES).map((r) => ({ ticker: r.ticker, name: r.name }));
+      shortlist.push({ ticker: '', name: 'Sit this one out', sitOut: true });
+      rnd.open({
+        prompt: 'Pick your horse',
+        labels: shortlist.map((r) => r.ticker || 'Sit out'),
+        key: `${windowId}|${shortlist.map((r) => r.ticker).join('|')}`,
+      });
+
       const withOdds = eligible.map((r) => ({
         ...r,
         odds: E().oddsFor(E().volatility(pointsFor(r.name, addDays(from, -60), from))),
@@ -73,6 +109,7 @@
 
       el.innerHTML = `
         ${message ? `<div class="flash">${escapeHtml(message)}</div>` : ''}
+        ${refusedFor ? `<div class="flash">${escapeHtml((roster.find((p) => p.code === refusedFor) || {}).name || refusedFor)} was too slow — that horse is taken. Pick another.</div>` : ''}
         <div class="section-title">Race window</div>
         <div class="range-picker">
           ${WINDOWS.map((w) => `<button class="preset ${windowId === w.id ? 'active' : ''}" data-window="${w.id}" aria-pressed="${windowId === w.id}">${w.label}</button>`).join('')}
@@ -105,8 +142,8 @@
         </div>
 
         <div style="margin:16px 0">
-          <button class="btn game-spin" id="hr-start" ${picks.size < 2 ? 'disabled' : ''}>
-            🏇 ${picks.size < 2 ? 'Pick at least two horses' : 'Start the race'}
+          <button class="btn game-spin" id="hr-start" ${picks.size < 1 ? 'disabled' : ''}>
+            🏇 ${picks.size < 1 ? 'Pick a horse' : 'Start the race'}
           </button>
         </div>
         <p class="text-muted text-small">Window: ${escapeHtml(from)} → ${escapeHtml(to)}</p>`;
@@ -138,6 +175,19 @@
           odds: E().oddsFor(E().volatility(pointsFor(r.name, addDays(from, -60), from))),
           points: pointsFor(r.name, from, to),
         });
+      }
+      // Racing alone against nothing is not a race. Fill the field with
+      // runners the player did not pick, so there is something to beat.
+      if (horses.length === 1) {
+        const taken = new Set(horses.map((h) => h.ticker));
+        for (const r of rng.shuffle(eligibleFor(from, to)).slice(0, 3)) {
+          if (taken.has(r.ticker)) continue;
+          horses.push({
+            ticker: r.ticker, name: r.name, player: 'The field',
+            odds: E().oddsFor(E().volatility(pointsFor(r.name, addDays(from, -60), from))),
+            points: pointsFor(r.name, from, to),
+          });
+        }
       }
       const race = E().buildRace(horses);
       // Exclusions are reported BEFORE the race, never mid-race.
@@ -237,7 +287,7 @@
 
     return {
       newRound: () => renderSetup(),
-      destroy() { dead = true; if (view) { view.destroy(); view = null; } },
+      destroy() { dead = true; rnd.destroy(); if (view) { view.destroy(); view = null; } },
     };
   }
 

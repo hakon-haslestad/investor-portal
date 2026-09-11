@@ -31,7 +31,7 @@ function mountAsk(players) {
     },
     Ledger: { isRealizingSell: (t) => t === 'SALG', splitForSecurity: () => [{ code: 'HH' }] },
   });
-  load(w, 'games/back-trading.js');
+  load(w, 'games/round.js', 'games/back-trading.js');
   const el = fakeEl();
   // A long, healthy post-exit series so the trade is judgeable.
   const points = [...Array(200)].map((_, i) => ({
