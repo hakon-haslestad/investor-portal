@@ -298,6 +298,48 @@ label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; lett
   .ooo-cards { grid-template-columns: 1fr; }
 }
 
+/* ─── Back trading ───────────────────────────────────────────────────────
+   The horizon strip is the point of the game: it shows whether the verdict
+   flips over time, so it must stay readable and must admit when a close was
+   stale rather than exact. */
+.bt-picker { margin-bottom: 14px; }
+.bt-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px; box-shadow: var(--shadow);
+}
+.bt-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.bt-sec { font-size: 1.2rem; font-weight: 700; }
+.bt-ask { margin: 16px 0 10px; font-size: 1.05rem; }
+.bt-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+.bt-buttons .btn { min-height: 44px; }
+.bt-verdict { margin: 8px 0 14px; padding: 18px; }
+.bt-verdict .verdict { font-size: 1.5rem; }
+
+.bt-strip { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }
+.bt-h {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 12px; border-radius: 10px; min-width: 64px;
+  background: var(--panel-2); border: 1px solid var(--border);
+}
+.bt-h-days { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+.bt-h-pct { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+.bt-h.good-sell { border-color: var(--accent); color: var(--positive); }
+.bt-h.too-early { border-color: var(--danger); color: var(--negative); }
+.bt-h.neutral { color: var(--muted); }
+/* A horizon resolved against an older close — the weekly-fetch case. */
+.bt-h.stale { border-style: dashed; opacity: 0.8; }
+.bt-h.stale .bt-h-days::after { content: ' ~'; }
+
+.bt-caveat { margin: 8px 0 0; font-size: 0.82rem; color: var(--accent-2); }
+.bt-board { margin: 0; padding-left: 20px; }
+.bt-board li { margin: 6px 0; }
+
+@media (max-width: 720px) {
+  .bt-card { padding: 12px; }
+  .bt-buttons .btn { flex: 1; }
+  .bt-h { min-width: 56px; padding: 6px 8px; }
+}
+
 @media (max-width: 720px) {
   .game-shell-head h2 { font-size: 1.15rem; width: 100%; order: 3; }
   .game-result { padding: 18px 14px; }

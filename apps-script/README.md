@@ -5,8 +5,8 @@ Google Sheet fetches closes daily and stores them in the `StockPrices` tab
 (rows = dates, columns = tickers, values = close in the security's native
 currency; FX rates as `CUR:USDNOK`-style columns).
 
-Cadence: **held** stocks daily; **sold** stocks weekly for 6 months after the
-sale (`soldDate + 183 days`), then the ticker is marked `expired` and fetching
+Cadence: **held** stocks daily; **sold** stocks daily for ~13 months after the
+sale (`soldDate + 400 days`), then the ticker is marked `expired` and fetching
 stops. Sold-state is derived automatically by replaying the Nordnet
 transaction log.
 
@@ -63,7 +63,17 @@ and would not preserve history.
   fetching daily. Manual work only if Yahoo can't resolve the ISIN — the
   row then carries a REVIEW note until you type the ticker in.
 - **Stock sold** — automatic: the replay flips it to `sold` on the next
-  run, fetches weekly for 6 months, then marks it `expired` and stops.
+  run, fetches daily for ~13 months, then marks it `expired` and stops.
+  The tail is this long because the portal's Back Trading game judges a sell
+  at 5, 20, 60, 120 and 250 *trading* days after the exit — roughly 350
+  calendar days of closes. It used to be 183 days at weekly cadence, which
+  could not answer the longer horizons at all.
+
+  **After changing `SOLD_TAIL_DAYS`, run `backfill()` once.** It refetches
+  every non-expired security from its first transaction date, so the post-exit
+  history that was never captured is pulled in retroactively. Securities
+  already marked `expired` stay skipped — set their `status` back to `sold`
+  first if you want their tail filled in too.
 - **Fetch failures** land in `_log` and leave a hole in the matrix — safe,
   the portal forward-fills the last known close.
 - **Force-refresh sold state** — `dailyFetch` does it on every run; nothing

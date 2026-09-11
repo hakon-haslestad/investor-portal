@@ -65,6 +65,20 @@
       drinkingRule: 'Wrong guess drinks.',
       component: window.GameOddOneOut,
     },
+    {
+      id: 'back-trading',
+      name: 'Back trading',
+      icon: '⏪',
+      tagline: 'Was selling the right call? Replay the decision and find out.',
+      rules: `<p>A closed trade is shown as it looked on the day it was sold — entry, exit, and the chart up to that point. Nothing after.</p>
+              <p>Say whether you would have held. Then the rest of the chart appears, with the verdict: <strong>good sell</strong> if the price fell, <strong>sold too early</strong> if it ran, <strong>neutral</strong> in between.</p>
+              <p>The strip shows the verdict at 5, 20, 60, 120 and 250 trading days, so you can see it flip over time. Horizons with no data yet are left out rather than guessed.</p>`,
+      tags: ['skill', 'recurring'],
+      players: '1',
+      minTrades: 1,
+      drinkingRule: 'Sold too early? The seller drinks. Guessed wrong? You drink.',
+      component: window.GameBackTrading,
+    },
   ];
 
   window.Games = {
