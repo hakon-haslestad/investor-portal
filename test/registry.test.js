@@ -177,7 +177,14 @@ test('the play route exists and stays out of the nav bar', () => {
   assert.match(app, /filter\(\(r\) => !r\.hidden\)/, 'buildNav honours hidden, or Play shows in the nav');
 });
 
-test('the rooms endpoint is opt-in — an empty URL leaves everything single-device', () => {
+test('the rooms endpoint is either unset or a real deployed web app', () => {
   const cfg = fs.readFileSync(path.join(__dirname, '..', 'docs', 'js', 'config.js'), 'utf8');
-  assert.match(cfg, /ROOMS_URL: ''/, 'ships unset, so nothing calls out until it is deployed');
+  const m = /ROOMS_URL: '([^']*)'/.exec(cfg);
+  assert.ok(m, 'ROOMS_URL is declared');
+  const url = m[1];
+  if (!url) return;   // unset is valid: the games simply stay single-device
+  assert.match(url, /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/, url);
+  // The /dev URL only works for whoever is signed into the Apps Script
+  // editor, so a phone would fail against it with no useful error.
+  assert.ok(!url.endsWith('/dev'), 'a /dev URL works only for the script owner');
 });

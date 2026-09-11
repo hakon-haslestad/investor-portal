@@ -27,7 +27,7 @@ window.PORTAL_CONFIG = {
   // shared screen). Deploy the script in apps-script/Code.gs as a web app —
   // Execute as: me, Access: anyone — and paste its /exec URL here. Leave it
   // empty and the games simply stay single-device; nothing else breaks.
-  ROOMS_URL: '',
+  ROOMS_URL: 'https://script.google.com/macros/s/AKfycbwQ1q5xYepvGuwx9bucapgrobq1sL2HSTzwNiq-ZUpsfrq-dxZi1B8jiF6ZbDwk5EOykg/exec',
 
   // Sheet tab names.
   TABS: {
