@@ -429,6 +429,12 @@
       }
       return state.perSec.get(security);
     };
+    // Nordnet's running total after the row beats the replay, as in Positions
+    // (a conversion booked twice would otherwise double the share count and
+    // book the extra shares as profit). Share count only, never cost.
+    const snapQty = (slot, tx, weight) => {
+      if (tx.totalAfter != null && Number.isFinite(tx.totalAfter) && tx.totalAfter >= 0) slot.qty = tx.totalAfter * weight;
+    };
     // Conversion cost transfer (see deriveCostBasis) — buckets persist across
     // the pre-window and in-window passes since a pair can straddle `from`.
     const convBucket = new Map();
@@ -481,6 +487,7 @@
           }
           slot.qty = Math.max(0, slot.qty - q);
         }
+        snapQty(slot, tx, weight);
       }
     }
     for (const code of INVESTOR_CODES) {
@@ -541,6 +548,7 @@
             state.sellsInWindow += amt;
             state.sellTrades.add(tx); groupSells.add(tx);
           }
+          snapQty(slot, tx, weight);
         }
       } else if ((cat === 'BUY' || cat === 'SELL') && !isCashLeg(tx.type)) {
         // In-window corporate action: qty moves, no cost/realized/counters.
@@ -554,6 +562,7 @@
           convApply(state, slot, tx, q, code);
           if (cat === 'BUY') slot.qty += q;
           else slot.qty = Math.max(0, slot.qty - q);
+          snapQty(slot, tx, weight);
         }
       }
     }

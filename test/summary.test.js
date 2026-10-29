@@ -122,3 +122,15 @@ test('transactions but no prices: cash and invested stand, holdings are empty, n
   assert.strictEqual(s.value.cash, 5000);
   assert.strictEqual(s.top.length, 0);
 });
+
+test('profit.ytd follows Nordnet\'s running total when a conversion is booked twice', () => {
+  // A listing move: one row out, but the broker books the shares in twice.
+  // Nordnet's "Totalt antall" after each row says 0, 10, 10: still 10 held.
+  const swap = [
+    tx('Owned', 'BYTTE UTTAK VP', '2026-03-02', 10, 0, { totalAfter: 0 }),
+    tx('Owned', 'BYTE INLÄGG VP', '2026-03-05', 10, 0, { totalAfter: 10 }),
+    tx('Owned', 'BYTE INLÄGG VP', '2026-03-05', 10, 0, { totalAfter: 10 }),
+  ];
+  const plain = Portfolio.summary(mkStore(), NOW).profit.ytd;
+  assert.strictEqual(Portfolio.summary(mkStore(swap), NOW).profit.ytd, plain, 'the extra shares are not profit');
+});
