@@ -1,0 +1,177 @@
+// Price matrix — parses the `StockPrices` tab (rows = dates, columns =
+// tickers + CUR:<PAIR>NOK FX columns, values = close in native currency)
+// into forward-fillable per-column series.
+//
+// Every lookup forward-fills: priceOn(ticker, date) returns the last close
+// at or before `date`. Holes (weekends, failed fetches, weekly-only sold
+// stocks) are therefore harmless by construction.
+
+(function () {
+  const { excelDateToISO, numOrNull } = window.Parsers;
+
+  // rows → { dates: [iso…] ascending, series: Map(column → [{d, v}…]) }
+  function build(rows) {
+    const empty = { dates: [], series: new Map(), latestDate: null, hasData: false };
+    if (!rows || rows.length < 2) return empty;
+    const header = rows[0].map((h) => String(h || '').trim());
+    const parsed = [];
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      const d = excelDateToISO(row[0]);
+      if (!d) continue;
+      parsed.push({ d, row });
+    }
+    parsed.sort((a, b) => a.d.localeCompare(b.d));
+    const series = new Map();
+    for (let c = 1; c < header.length; c++) {
+      const col = header[c];
+      if (!col) continue;
+      const points = [];
+      for (const { d, row } of parsed) {
+        const v = numOrNull(row[c]);
+        if (v != null) points.push({ d, v });
+      }
+      if (points.length) series.set(col, points);
+    }
+    const dates = parsed.map((p) => p.d);
+    return {
+      dates,
+      series,
+      latestDate: dates.length ? dates[dates.length - 1] : null,
+      hasData: series.size > 0,
+    };
+  }
+
+  // Last value at or before `date` (binary search). Null when the series is
+  // empty or starts after `date`.
+  function valueOn(points, date) {
+    if (!points || !points.length) return null;
+    let lo = 0, hi = points.length - 1, best = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (points[mid].d <= date) { best = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    return best >= 0 ? points[best].v : null;
+  }
+
+  function priceOn(matrix, ticker, date) {
+    return valueOn(matrix.series.get(ticker), date);
+  }
+
+  // Like valueOn, but when the series starts AFTER `date`, returns its first
+  // value instead of null — for valuing dates before backfilled history
+  // (better the earliest known close than a phantom 0).
+  function valueAround(points, date) {
+    const v = valueOn(points, date);
+    if (v != null) return v;
+    return points && points.length ? points[0].v : null;
+  }
+
+  // Synthetic own-trade series: for securities the market no longer quotes
+  // (bankruptcies, buyouts — Yahoo deletes delisted symbols), Store.hydrate
+  // injects the club's actual NOK trade prices under 'TX:<name>'. Already
+  // NOK — no FX leg. Used for HISTORICAL valuation only, never for the
+  // current-holdings table.
+  function syntheticSeries(matrix, security) {
+    return security ? matrix.series.get('TX:' + security.name) : null;
+  }
+
+  // NOK price with the valueAround fallback on both the price and FX legs,
+  // then the own-trade synthetic series as a last resort.
+  function nokPriceAround(matrix, security, date) {
+    if (!security) return null;
+    if (security.ticker) {
+      const px = valueAround(matrix.series.get(security.ticker), date);
+      if (px != null) {
+        const cur = (security.currency || 'NOK').toUpperCase();
+        if (cur === 'NOK') return px;
+        const fx = valueAround(matrix.series.get('CUR:' + cur + 'NOK'), date);
+        if (fx != null && fx > 0) return px * fx;
+      }
+    }
+    const syn = syntheticSeries(matrix, security);
+    return syn ? valueAround(syn, date) : null;
+  }
+
+  // Historical NOK price: real matrix close (forward-filled) first, the
+  // own-trade synthetic series when the market has no data.
+  function nokPriceHist(matrix, security, date) {
+    const real = nokPriceOn(matrix, security, date);
+    if (real != null) return real;
+    const syn = syntheticSeries(matrix, security);
+    return syn ? valueOn(syn, date) : null;
+  }
+
+  function fxOn(matrix, currency, date) {
+    const cur = (currency || 'NOK').toUpperCase();
+    if (cur === 'NOK') return 1;
+    const rate = valueOn(matrix.series.get('CUR:' + cur + 'NOK'), date);
+    return rate != null && rate > 0 ? rate : null;
+  }
+
+  // NOK close for a security (registry entry) on a date. Null when either
+  // the price series or a needed FX series has no data yet.
+  function nokPriceOn(matrix, security, date) {
+    if (!security || !security.ticker) return null;
+    const px = priceOn(matrix, security.ticker, date);
+    if (px == null) return null;
+    const fx = fxOn(matrix, security.currency, date);
+    if (fx == null) return null;
+    return px * fx;
+  }
+
+  // Dates within [from, to] that have at least one value — the natural
+  // sampling grid for daily charts.
+  function datesBetween(matrix, from, to) {
+    return matrix.dates.filter((d) => d >= from && d <= to);
+  }
+
+  // Date of the last value at or before `date` for one column (null: none).
+  function lastDateOn(matrix, col, date) {
+    const pts = matrix.series.get(col);
+    if (!pts || !pts.length) return null;
+    let lo = 0, hi = pts.length - 1, best = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (pts[mid].d <= date) { best = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    return best >= 0 ? pts[best].d : null;
+  }
+
+  // Newest date of any FX column.
+  function fxLatestDate(matrix) {
+    let best = null;
+    for (const [col, pts] of matrix.series) {
+      if (!col.startsWith('CUR:') || !pts.length) continue;
+      const d = pts[pts.length - 1].d;
+      if (!best || d > best) best = d;
+    }
+    return best;
+  }
+
+  // Weekdays in (from, to]: a Friday close is 1 weekday old on Monday.
+  function weekdaysBetween(from, to) {
+    let n = 0;
+    const end = new Date(to + 'T00:00:00Z');
+    for (let d = new Date(from + 'T00:00:00Z'); ; ) {
+      d.setUTCDate(d.getUTCDate() + 1);
+      if (d > end) break;
+      const wd = d.getUTCDay();
+      if (wd !== 0 && wd !== 6) n++;
+    }
+    return n;
+  }
+
+  // Age of a price date as of `now` (ISO). Stale = more than 3 weekdays, so
+  // weekends and a short holiday gap never flag a price.
+  const STALE_WEEKDAYS = 3;
+  function ageInfo(priceDate, now) {
+    if (!priceDate) return { days: null, weekdays: null, stale: false };
+    const days = Math.round((new Date(now + 'T00:00:00Z') - new Date(priceDate + 'T00:00:00Z')) / 86400000);
+    const weekdays = weekdaysBetween(priceDate, now);
+    return { days, weekdays, stale: weekdays > STALE_WEEKDAYS };
+  }
+
+  window.Prices = { lastDateOn, fxLatestDate, weekdaysBetween, ageInfo, build, priceOn, fxOn, nokPriceOn, nokPriceAround, nokPriceHist, datesBetween, valueOn };
+})();

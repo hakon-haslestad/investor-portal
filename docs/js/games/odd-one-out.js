@@ -1,0 +1,286 @@
+// Odd One Out — four cards, three share a hidden property. Tap the one that
+// doesn't belong.
+//
+// The rule logic lives in odd-one-out-rules.js; this file is the board. Cards
+// mask whatever the active rule's hideFields names, so a round can never show
+// the player its own answer.
+
+(function () {
+  const { fmtNok, fmtPct, escapeHtml, pctClass } = window.Fmt;
+  const MASK = '<span class="ooo-hidden" title="hidden this round">▓▓▓</span>';
+
+  function mount(el, props) {
+    const { trades, players, soberMode, rng, history, competitionId, room } = props;
+    let dead = false;
+    let round = null;
+    let lastRuleId = null;
+    let answered = false;
+    let streak = 0;
+    let best = 0;
+    let correct = 0;
+    let played = 0;
+    let rounds = 0;
+    const scores = new Map();       // whole session: player code -> correct calls
+    // Hot-seat: one device passed around.
+    let turn = 0;
+    const roster = players && players.length ? players : [{ code: '', name: 'Player' }];
+
+    // One answer map for taps and phones alike. Rounds owns the room
+    // subscription and only calls back on a real change, so this game cannot
+    // repeat the crash where a room callback fired before its state existed.
+    const rnd = window.GameRounds.create({
+      room, roster,
+      onChange: ({ changed }) => {
+        if (dead || answered || !changed) return;
+        if (rnd.complete) resolveRound(); else render();
+      },
+    });
+    const picks = rnd.picks;
+
+    // Whoever is next to call it: the first player, from `turn`, who has not
+    // picked yet. `turn` advances each round so the same person does not
+    // always go first.
+    // Playing alone is the original game: no player row, no turn prompt, no
+    // "1/1 got it" — just the cards and a verdict. The multi-player chrome
+    // exists to show whose call is whose, which is noise with nobody to tell
+    // apart.
+    const solo = roster.length === 1;
+    // With a room open every phone knows who it is, so everybody answers at
+    // once. Turn order only exists so an on-screen tap has an owner.
+    const hosted = !!room;
+
+    function currentPlayer() {
+      for (let k = 0; k < roster.length; k++) {
+        const p = roster[(turn + k) % roster.length];
+        if (!picks.has(p.code)) return p;
+      }
+      return roster[turn % roster.length];
+    }
+
+    function cardFields(t, hide) {
+      const h = new Set(hide);
+      const rows = [];
+      if (!h.has('owner')) rows.push(['Who', escapeHtml(t.investorName)]);
+      else rows.push(['Who', MASK]);
+      if (!h.has('return')) {
+        rows.push(['P/L', `<span class="${pctClass(t.pnlNok)}">${fmtNok(t.pnlNok)} · ${fmtPct(t.pnlPct, true)}</span>`]);
+      } else rows.push(['P/L', MASK]);
+      if (!h.has('dates')) rows.push(['Opened', escapeHtml(t.firstDate || '—')]);
+      else rows.push(['Opened', MASK]);
+      if (!h.has('status')) rows.push(['Status', t.sold ? 'closed' : 'still held']);
+      else rows.push(['Status', MASK]);
+      return rows.map(([k, v]) =>
+        `<div class="ooo-field"><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+    }
+
+    // Facts on one line, the same strip Back Trading uses.
+    function factStrip(rows) {
+      return `<div class="game-facts">${rows.map(([label, value, cls]) => `
+        <div class="game-fact">
+          <dt>${escapeHtml(label)}</dt>
+          <dd class="${cls || ''}">${value}</dd>
+        </div>`).join('')}</div>`;
+    }
+
+    // Players across the page with their pick underneath. Cards are numbered,
+    // and a player's column shows the number they went for — so the room can
+    // see who has called it and who is still thinking.
+    function playerRow() {
+      if (solo) return '';
+      // Nobody is "next" when phones answer simultaneously.
+      const active = hosted ? null : currentPlayer();
+      return `<div class="game-players">${roster.map((p) => {
+        const pick = picks.get(p.code);
+        const isTurn = !answered && !!active && p.code === active.code;
+        const right = answered && pick != null ? pick === round.answer : null;
+        const cls = ['game-player',
+          right === true ? 'correct' : right === false ? 'wrong' : (pick != null ? 'in' : 'waiting'),
+          isTurn ? 'active' : ''].filter(Boolean).join(' ');
+        return `<div class="${cls}">
+          <div class="game-player-who">${escapeHtml(p.name)}</div>
+          <div class="ooo-pick">${pick != null
+            ? `${pick + 1}${right === true ? ' ✓' : right === false ? ' ✗' : ''}`
+            : (isTurn ? '<span class="ooo-pick-turn">your turn</span>' : '—')}</div>
+          <div class="ooo-tally">${scores.get(p.code) || 0}</div>
+        </div>`;
+      }).join('')}</div>`;
+    }
+
+    function render() {
+      if (dead) return;
+      if (!round) {
+        el.innerHTML = window.UI.emptyState(
+          'No round could be built from these trades',
+          'Every rule needs three stocks that share something and one that does not. Widen the period and try again.');
+        return;
+      }
+      const waiting = roster.length - picks.size;
+      el.innerHTML = `
+        <div class="ooo">
+          ${factStrip(solo ? [
+            ['Correct', `${correct}/${played}`, ''],
+            [soberMode ? 'Points' : 'Streak', String(streak), streak > 0 ? 'positive' : ''],
+            ['Best', String(best), ''],
+          ] : [
+            ['Round', String(rounds + 1), ''],
+            ['Correct', `${correct}/${played}`, ''],
+            [soberMode ? 'Points' : 'Streak', String(streak), streak > 0 ? 'positive' : ''],
+            ['Best', String(best), ''],
+          ])}
+          ${playerRow()}
+          <p class="ooo-prompt">${answered
+            ? 'Three of these belonged together.'
+            : `Three of these belong together. Which one doesn't? ${roster.length > 1
+              ? `<strong>${escapeHtml(currentPlayer().name)}</strong> to pick${waiting > 1 ? ` · ${waiting} still to call` : ''}.`
+              : ''}`}</p>
+          <div class="ooo-cards">
+            ${round.cards.map((t, i) => `
+              <button type="button" class="ooo-card" data-i="${i}" ${answered ? 'disabled' : ''}>
+                <span class="ooo-num">${i + 1}</span>
+                <span class="ooo-name">${escapeHtml(t.security)}</span>
+                <dl class="ooo-fields">${cardFields(t, round.hideFields)}</dl>
+              </button>`).join('')}
+          </div>
+          ${!answered && !solo ? `<div class="guess-actions">
+            <button type="button" class="btn game-spin" id="ooo-reveal" ${rnd.count ? '' : 'disabled'}>
+              ${rnd.count ? `Reveal 👀 (${rnd.count}/${roster.length} in)` : 'Waiting for a first answer'}
+            </button>
+            <span class="text-muted text-small">${hosted
+              ? 'Everyone answers on their own phone — reveal whenever you like.'
+              : 'Pass the screen round, or reveal early.'}</span>
+          </div>` : ''}
+          <div id="ooo-result"></div>
+        </div>`;
+      el.querySelectorAll('.ooo-card').forEach((btn) => {
+        btn.addEventListener('click', () => answer(Number(btn.getAttribute('data-i'))));
+      });
+      const revealBtn = el.querySelector('#ooo-reveal');
+      if (revealBtn) revealBtn.addEventListener('click', resolveNow);
+      if (answered) renderVerdict();
+    }
+
+    // One tap is one player's call. The board only reveals once everyone has
+    // had theirs, so nobody is answering with the answer already on screen.
+    // `code` says WHOSE answer this is. A local tap has no opinion, so it
+    // falls back to the turn pointer; a phone knows exactly who it is, which
+    // is the whole point of playing across devices.
+    function answer(i, code) {
+      if (answered || !round) return;
+      const who = code || currentPlayer().code;
+      if (!rnd.set(who, i)) return;                      // not in the room, or no such card
+      if (!rnd.complete) { render(); return; }
+      resolveRound();
+    }
+
+    function resolveNow() {
+      if (answered || !round || rnd.count === 0) return;
+      resolveRound();
+    }
+
+    // Everyone is in. Score it. Reached from a local tap, the last phone
+    // answering, or the host revealing early — all identical.
+    function resolveRound() {
+      if (answered || !round) return;
+      answered = true;
+      rounds += 1;
+      const won = {};
+      for (const [code, pick] of picks) {
+        played += 1;
+        if (pick === round.answer) { correct += 1; scores.set(code, (scores.get(code) || 0) + 1); won[code] = 1; }
+      }
+      if (window.GameSession) window.GameSession.award('odd-one-out', 'Odd one out', won, round);
+      // Only those who actually answered count towards the table streak.
+      const answeredCount = picks.size;
+      // The streak belongs to the table as a whole: a round counts when
+      // everyone got it.
+      const allRight = answeredCount > 0 && [...picks.values()].every((p) => p === round.answer);
+      if (allRight) { streak += 1; best = Math.max(best, streak); } else streak = 0;
+      render();
+    }
+
+    function renderVerdict() {
+      const mount = el.querySelector('#ooo-result');
+      if (!mount) return;
+      el.querySelectorAll('.ooo-card').forEach((btn, idx) => {
+        btn.disabled = true;
+        if (idx === round.answer) btn.classList.add('is-answer');
+        if (idx !== round.answer && [...picks.values()].includes(idx)) btn.classList.add('is-wrong');
+      });
+
+      const answeredBy = roster.filter((p) => picks.get(p.code) != null);
+      const wrong = answeredBy.filter((p) => picks.get(p.code) !== round.answer);
+      const rightOnes = answeredBy.filter((p) => picks.get(p.code) === round.answer);
+      const allRight = wrong.length === 0 && answeredBy.length > 0;
+      const drink = soberMode
+        ? (solo
+          ? (allRight ? '+1 point' : 'no point')
+          : `${rightOnes.length} point${rightOnes.length === 1 ? '' : 's'} awarded`)
+        : (allRight
+          ? (solo ? 'Nobody drinks' : 'Nobody drinks 🎉')
+          : (solo ? 'Drink 🍺' : `${wrong.map((p) => escapeHtml(p.name)).join(', ')} drink${wrong.length === 1 ? 's' : ''} 🍺`));
+
+      mount.innerHTML = `
+        <div class="game-result ${allRight ? 'win' : 'loss'} ooo-verdict">
+          <div class="verdict">${solo
+            ? (allRight ? 'Correct 🎯' : 'Wrong 💀')
+            : (allRight ? 'All correct 🎯' : `${rightOnes.length}/${answeredBy.length} got it`)}</div>
+          <div class="who-state">${escapeHtml(round.description)}</div>
+          <div class="pnl">${drink}</div>
+          <div style="margin-top:14px"><button class="btn game-spin" id="ooo-next">Next round</button></div>
+        </div>`;
+      mount.querySelector('#ooo-next').addEventListener('click', () => {
+        turn += 1;
+        newRound();
+      });
+    }
+
+    function newRound() {
+      if (dead) return;
+      round = window.OddOneOutRules.buildRound(trades, rng, lastRuleId);
+      if (round) lastRuleId = round.ruleId;
+      answered = false;
+      rnd.reset();
+      // Tell the phones there is a new question and how many buttons to show.
+      // This also clears last round's answers server-side, so a slow phone
+      // cannot answer a question it never saw.
+      if (round) {
+        rnd.open({
+          prompt: "Which one doesn't belong?",
+          // The real names, not bare numbers: a phone is a signed-in member,
+          // so there is nothing to hide from it, and "3" tells you nothing
+          // when you are looking down at your hand.
+          labels: round.cards.map((c) => c.security),
+          key: `${rounds}|${round.ruleId}|${round.cards.map((c) => c.security).join('|')}`,
+        });
+      }
+      render();
+    }
+
+    newRound();
+
+    return {
+      newRound,
+      destroy() {
+        dead = true;
+        rnd.destroy();
+        // One result per session, per the brief.
+        if (played > 0 && history) {
+          history.add({
+            gameId: 'odd-one-out',
+            competitionId: competitionId || '',
+            players: roster.map((p) => p.name),
+            summary: `${rounds} round${rounds === 1 ? '' : 's'} · ${correct}/${played} correct · best ${scoreWord(best)}`,
+            payload: {
+              rounds, played, correct, best, sober: soberMode,
+              scores: Object.fromEntries(scores),
+            },
+          });
+        }
+      },
+    };
+
+    function scoreWord(n) { return soberMode ? `${n} points` : `streak ${n}`; }
+  }
+
+  window.GameOddOneOut = { mount };
+})();

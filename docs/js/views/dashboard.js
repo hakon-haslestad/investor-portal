@@ -1,0 +1,437 @@
+// Dashboard view — SPA port of pages/dashboard.js.
+// The shell (app.js) has already authed, hydrated the store, and mounted
+// the nav; this module only renders into its view element.
+
+(function () {
+  window.Views = window.Views || {};
+
+  window.Views.dashboard = async function (el, ctx) {
+    const { store } = ctx;
+    const { fmtNok, fmtDec, fmtPct, fmtQty, pctClass, escapeHtml } = window.Fmt;
+    const ii = window.UI.infoIcon;
+
+    // The spreadsheet's own name, shown in the welcome heading. Best-effort.
+    let sheetName = '';
+    try { sheetName = await window.Sheet.spreadsheetTitle(); } catch (_e) { sheetName = ''; }
+
+
+    const PRESETS = [
+      { id: '1m', label: '1M' }, { id: '6m', label: '6M' },
+      { id: 'ytd', label: 'YTD' }, { id: '1y', label: '1Y' },
+      { id: 'all', label: 'All' }, { id: 'custom', label: 'Custom' },
+    ];
+
+    let stored = {};
+    try { stored = JSON.parse(localStorage.getItem('portal.range') || '{}') || {}; }
+    catch (_e) { /* corrupt stored range — fall back to defaults */ }
+    let current = {
+      preset: stored.preset || 'ytd',
+      from: stored.from || null,
+      to: stored.to || null,
+    };
+    let selectedCodes = (localStorage.getItem('portal.filter') || '')
+      .split(',').map((s) => s.trim()).filter(Boolean);
+
+    window.__clearFilter = () => { selectedCodes = []; localStorage.removeItem('portal.filter'); refresh(); };
+
+    // Aggregate per-investor values across the current selection.
+    // Club level (no filter) reads Portfolio.summary; a filter reads the
+    // per-investor figures.
+    function aggregateRn(d, sum) {
+      if (!selectedCodes.length) {
+        return { totalValue: sum.value.total, marketValue: sum.value.marketValue, cash: sum.value.cash, unrealized: sum.profit.unrealized };
+      }
+      if (selectedCodes.length === 1 && d.perInvestor[selectedCodes[0]]) return d.perInvestor[selectedCodes[0]];
+      const acc = { marketValue: 0, cash: 0, totalValue: 0, dividends: 0, realized: 0, unrealized: 0, invested: 0, netReturn: 0 };
+      for (const code of selectedCodes) {
+        const inv = d.perInvestor[code]; if (!inv) continue;
+        acc.marketValue += inv.marketValue || 0;
+        acc.cash += inv.cash || 0;
+        acc.totalValue += inv.totalValue || 0;
+        acc.dividends += inv.dividends || 0;
+        acc.realized += inv.realized || 0;
+        acc.unrealized += inv.unrealized || 0;
+        acc.invested += inv.invested || 0;
+        acc.netReturn += inv.netReturn || 0;
+      }
+      acc.portfolioReturnPct = acc.invested > 0 ? (acc.netReturn / acc.invested) * 100 : 0;
+      return acc;
+    }
+    function aggregateWin(wm) {
+      if (!selectedCodes.length) return wm.group;
+      if (selectedCodes.length === 1 && wm.perInvestor[selectedCodes[0]]) return wm.perInvestor[selectedCodes[0]];
+      const acc = { realizedInWindow: 0, dividendsInWindow: 0, buysInWindow: 0, sellsInWindow: 0,
+                    netPnlInWindow: 0, periodReturnPct: 0 };
+      // Each trade once (a trade shared by two selected investors is one trade);
+      // the return is total P/L over total basis, not an average of percentages.
+      const buys = new Set(), sells = new Set();
+      let basis = 0;
+      for (const code of selectedCodes) {
+        const w = wm.perInvestor[code]; if (!w) continue;
+        acc.realizedInWindow += w.realizedInWindow || 0;
+        acc.dividendsInWindow += w.dividendsInWindow || 0;
+        acc.buysInWindow += w.buysInWindow || 0;
+        acc.sellsInWindow += w.sellsInWindow || 0;
+        (w.buyTrades || []).forEach((t) => buys.add(t));
+        (w.sellTrades || []).forEach((t) => sells.add(t));
+        acc.netPnlInWindow += w.netPnlInWindow || 0;
+        basis += w.basis || 0;
+      }
+      acc.buyCount = buys.size; acc.sellCount = sells.size;
+      acc.periodReturnPct = basis > 0 ? (acc.netPnlInWindow / basis) * 100 : 0;
+      return acc;
+    }
+
+    function refresh() {
+      const opts = current.preset === 'custom' && current.from && current.to
+        ? { from: current.from, to: current.to }
+        : { preset: current.preset };
+      const d = window.Portfolio.buildDashboard(store, opts);
+      if (!current.from || !current.to) {
+        current.from = d.window.from;
+        current.to = d.window.to;
+      }
+      localStorage.setItem('portal.range', JSON.stringify(current));
+      paint(d, window.Portfolio.summary(store));
+    }
+
+    // Native-currency price return over a period, from the StockPrices
+    // matrix (currency cancels in the ratio). Null → the cell shows "—".
+    function periodReturnFor(security, fromDate) {
+      const sec = store.registry.forName(security);
+      if (!sec || !sec.ticker) return null;
+      const today = new Date().toISOString().slice(0, 10);
+      const base = window.Prices.priceOn(store.prices, sec.ticker, fromDate);
+      const nowPx = window.Prices.priceOn(store.prices, sec.ticker, today);
+      if (base == null || nowPx == null || !(base > 0)) return null;
+      // Only meaningful if the series actually starts on/before fromDate.
+      const series = store.prices.series.get(sec.ticker);
+      if (!series || series[0].d > fromDate) return null;
+      return ((nowPx - base) / base) * 100;
+    }
+
+    // Current portfolio table — replay-derived holdings priced by the matrix.
+    function renderLookThrough() {
+      if (!window.Portfolio.usePriceMatrix(store) || !(store.kpis || []).length) return '';
+      let multiple = 15;
+      try { multiple = Number(JSON.parse(localStorage.getItem('portal.fundamental.multiple') || '15')) || 15; } catch (_e) {}
+      const lt = window.Fundamentals.buildLookThrough(store, { multiple });
+      if (!lt.rows.length) return '';
+      const t = lt.totals;
+      const dash = '<span class="text-muted">—</span>';
+      const money = (v, cls) => (v == null ? dash : `<span class="${cls || ''}">${fmtNok(v)}</span>`);
+      const gapSub = t.gapPct == null ? '' :
+        `<span class="${pctClass(-t.gapPct)}">market trades ${fmtDec(t.gapPct, 0, true)}% ${t.gapPct >= 0 ? 'above' : 'below'}</span> the ×${multiple} value`;
+      return `
+        <div class="section-title">What the businesses earn you <span class="text-muted text-small">(look-through, latest annual figures × your live share counts)</span> ${ii('look-through')}</div>
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="label">Fundamental value <span class="text-muted">@ ×</span><input id="lt-multiple" type="number" min="1" max="60" step="1" value="${multiple}" aria-label="P/E multiple" style="width:64px;padding:4px 6px;font-size:0.9rem;display:inline-block" /></div>
+            <div class="value">${fmtNok(t.fundamentalValue)}</div><div class="sub">${gapSub}</div></div>
+          <div class="kpi-card"><div class="label">Your earnings /yr ${ii('look-through')}</div><div class="value ${pctClass(t.earnings)}">${fmtNok(t.earnings)}</div><div class="sub">Σ EPS × shares held</div></div>
+          <div class="kpi-card"><div class="label">Your revenue /yr</div><div class="value">${fmtNok(t.revenue)}</div><div class="sub">Σ revenue/share × shares held</div></div>
+          <div class="kpi-card"><div class="label">Portfolio P/E</div><div class="value">${t.portfolioPe != null ? fmtDec(t.portfolioPe, 1) : '—'}</div><div class="sub">${t.earningsYieldPct != null ? `earnings yield ${fmtDec(t.earningsYieldPct, 1)}%` : ''}</div></div>
+          ${t.book > 0 ? `<div class="kpi-card"><div class="label">Your book value</div><div class="value">${fmtNok(t.book)}</div><div class="sub">${t.pb != null ? `P/B ${fmtDec(t.pb, 2)}` : ''}</div></div>` : ''}
+        </div>
+        ${window.UI.table([
+          { label: 'Company', p: 1 },
+          { label: 'Qty', className: 'text-right', p: 3 },
+          { label: 'Earnings /yr', className: 'text-right', p: 2 },
+          { label: 'Revenue /yr', className: 'text-right', p: 3 },
+          { label: 'Book value', className: 'text-right', p: 3 },
+          { label: 'P/E', className: 'text-right text-muted', p: 2 },
+          { label: 'P/B', className: 'text-right text-muted', p: 3 },
+          { label: 'P/S', className: 'text-right text-muted', p: 3 },
+          { label: `Fundamental @×${multiple}`, className: 'text-right', p: 2 },
+          { label: 'Market value', className: 'text-right', p: 1 },
+          { label: 'Gap', className: 'text-right', p: 1 },
+        ], lt.rows.map((r, i) => ({
+          // The "no fundamentals yet" note rides along after the last row.
+          after: (i === lt.rows.length - 1 && lt.missing.length)
+            ? (span) => `<tr class="dimmed-row"><td colspan="${span}" class="text-small text-muted">No fundamentals row yet: ${lt.missing.map((m) => escapeHtml(m.security)).join(', ')} — add them to Offisielle nøkkeltall to include.</td></tr>`
+            : '',
+          cells: [
+            `<strong>${escapeHtml(r.security)}</strong> <span class="text-muted text-small">${escapeHtml(String(r.period).replace('.0',''))}${r.annualized ? ' ≈×4' : ''}</span>`,
+            fmtQty(r.qty),
+            r.earningsNok != null ? money(r.earningsNok, pctClass(r.earningsNok)) : money(r.earningsNok),
+            money(r.revenueNok),
+            money(r.bookNok),
+            r.pe != null ? fmtDec(r.pe, 1) : '—',
+            r.pb != null ? fmtDec(r.pb, 2) : '—',
+            r.ps != null ? fmtDec(r.ps, 2) : '—',
+            money(r.fundamentalValue),
+            `${r.approx ? '≈ ' : ''}${money(r.marketValueNok)}`,
+            r.gapPct != null ? `<span class="${pctClass(-r.gapPct)}">${fmtDec(r.gapPct, 0, true)}%</span>` : '—',
+          ],
+        })), { className: 'investor-table', wrapClass: 'sticky-first', caption: 'Look-through fundamentals' })}
+        </div>
+      `;
+    }
+
+    function renderCurrentPortfolio() {
+      const holds = (window.Portfolio.currentHoldings(store) || [])
+        .slice().sort((a, b) => (b.marketValueNok || 0) - (a.marketValueNok || 0));
+      if (!holds.length) {
+        return window.UI.emptyState('No open positions',
+          'Once the Nordnet transaction log has buys that are not fully sold, they show up here.');
+      }
+      const totalVal = holds.reduce((a, h) => a + (h.marketValueNok || 0), 0);
+      const totalGain = holds.reduce((a, h) => a + (h.returnNok || 0), 0);
+      const asOf = holds[0].snapshotDate ? ` · prices per ${holds[0].snapshotDate}` : '';
+      const NO_PRICE = '<span class="text-muted" title="No price data yet — check Securities tab">—</span>';
+
+      const now = new Date();
+      const ytdStart = `${now.getUTCFullYear()}-01-01`;
+      const y12 = new Date(now); y12.setUTCFullYear(y12.getUTCFullYear() - 1);
+      const y12Start = y12.toISOString().slice(0, 10);
+      const pctCellVal = (v) => v == null
+        ? '<span class="text-muted">—</span>'
+        : `<span class="${pctClass(v)}">${fmtPct(v)}</span>`;
+
+      // Native price with its ISO code; for a foreign security the NOK value
+      // per share sits beside it, so "1 108 kr next to 100 kr" cannot happen.
+      const priceCell = (h) => {
+        const cur = h.currency && h.currency !== 'NOK' ? h.currency : '';
+        if (!cur || h.currentPrice == null || !(h.qty > 0)) return fmtNok(h.currentPrice) + window.UI.staleChip(h);
+        return `${fmtQty(h.currentPrice)} ${escapeHtml(cur)} <span class="text-muted text-small">(${fmtNok(h.marketValueNok / h.qty)})</span>${window.UI.staleChip(h)}`;
+      };
+      const rows = holds.map((h) => {
+        const unpriced = h.priced === false;
+        const wgt = totalVal > 0 && !unpriced ? ((h.marketValueNok || 0) / totalVal) * 100 : null;
+        return {
+          attrs: `class="row-link" tabindex="0" role="button" aria-expanded="false" data-fx-sec="${escapeHtml(h.security)}"`,
+          // Row tap opens the security drill-down; the chevron (a separate
+          // button) reveals the hidden columns. They must not collide.
+          after: (span) => `<tr class="fx-detail" hidden><td colspan="${span}" data-fx-for="${escapeHtml(h.security)}"></td></tr>`,
+          cells: [
+            `<strong>${escapeHtml(h.security)}</strong> <span class="text-muted text-small">▸</span>`,
+            fmtQty(h.qty),
+            fmtNok(h.gav),
+            unpriced ? NO_PRICE : priceCell(h),
+            fmtNok((h.marketValueNok || 0) - (h.returnNok || 0)),
+            unpriced ? NO_PRICE : fmtNok(h.marketValueNok),
+            unpriced ? NO_PRICE : `<span class="${pctClass(h.returnNok)}">${fmtNok(h.returnNok)}</span>`,
+            unpriced ? NO_PRICE : `<span class="${pctClass(h.returnPct)}">${fmtPct(h.returnPct)}</span>`,
+            pctCellVal(periodReturnFor(h.security, ytdStart)),
+            pctCellVal(periodReturnFor(h.security, y12Start)),
+            wgt == null ? '—' : fmtDec(wgt, 1) + '%',
+          ],
+        };
+      });
+      return `
+        <div class="section-title">Current portfolio <span class="text-muted text-small">(${holds.length} positions${asOf}; YTD/12m are price return)</span> ${ii('holdings-table')}</div>
+        ${window.UI.table([
+          { label: 'Security', p: 1 },
+          { label: 'Qty', className: 'text-right', p: 2 },
+          { label: 'Avg cost (kr)', className: 'text-right text-muted', p: 3 },
+          { label: 'Price', className: 'text-right', p: 3 },
+          { label: 'Invested', className: 'text-right text-muted', p: 2 },
+          { label: 'Value', className: 'text-right', p: 1 },
+          { label: 'Gain/loss', className: 'text-right', p: 2 },
+          { label: 'Return', className: 'text-right', p: 1 },
+          { label: 'YTD', className: 'text-right', p: 3 },
+          { label: '12m', className: 'text-right', p: 3 },
+          { label: 'Weight', className: 'text-right text-muted', p: 3 },
+        ], rows, {
+          className: 'investor-table',
+          wrapClass: 'sticky-first',
+          caption: 'Current portfolio holdings',
+          foot: ['Total', '', '', '', fmtNok(totalVal - totalGain), fmtNok(totalVal),
+                 `<span class="${pctClass(totalGain)}">${fmtNok(totalGain)}</span>`, '', '', '', ''],
+        })}
+      `;
+    }
+
+    function priceFreshnessLine() {
+      if (!window.Portfolio.usePriceMatrix(store)) {
+        return `<div class="price-freshness stale">No price data — the StockPrices tab is empty. Install/run the Apps Script feed (see apps-script/README.md). ${ii('price-freshness')}</div>`;
+      }
+      const stale = window.Prices.ageInfo(store.prices.latestDate, new Date().toISOString().slice(0, 10)).stale;
+      return `<div class="price-freshness ${stale ? 'stale' : ''}">${window.UI.priceFreshness(store)} ${ii('price-freshness')}</div>`;
+    }
+
+    // Club return vs OSEBX: club-level only (deposits are split evenly, so a
+    // per-investor TWR does not exist). Returns the section HTML; the chart is
+    // drawn into #returns-chart by drawReturnsChart after the page is painted.
+    let returnsData = null;
+    function renderReturns(d, sum) {
+      returnsData = null;
+      const title = `<div class="section-title">Club return vs OSEBX <span class="text-muted text-small">${prettyRange(d.window)}</span> ${ii('twr')}</div>`;
+      if (selectedCodes.length) {
+        return `${title}<p class="text-muted text-small">Return vs OSEBX is club-level only: deposits are split evenly across the investors, so there is no per-investor time-weighted return.</p>`;
+      }
+      const club = window.Returns.clubSeries(store, d.window.from, d.window.to);
+      if (!club) return `${title}<p class="text-muted text-small">Not enough priced days in this window to measure a return.</p>`;
+      // Same base day as the club line: the first priced day inside the window.
+      const bench = window.Returns.benchmark(store, club.days[0].date, club.endDate);
+      returnsData = { club, bench };
+      const pct = (r) => (r == null ? '—' : fmtPct(r * 100));
+      // Annualising a few weeks blows small moves up into huge yearly rates.
+      const spanDays = (Date.parse(club.endDate) - Date.parse(club.days[0].date)) / 86400000;
+      const xirrShown = spanDays >= 90 ? club.xirr : null;
+      const cls = (r) => (r == null ? '' : pctClass(r * 100));
+      return `${title}
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="label">TWR ${ii('twr')}</div><div class="value ${cls(club.twr)}">${pct(club.twr)}</div><div class="sub">time-weighted, this window</div></div>
+          <div class="kpi-card"><div class="label">XIRR ${ii('xirr')}</div><div class="value ${cls(xirrShown)}">${pct(xirrShown)}</div><div class="sub">${xirrShown == null && club.xirr != null ? 'needs 90 days or more' : 'annualised, money-weighted'}</div></div>
+          <div class="kpi-card"><div class="label">Profit / total bought ${ii('return-pct')}</div><div class="value ${pctClass(sum.returnPct)}">${fmtPct(sum.returnPct)}</div><div class="sub">all time, not this window</div></div>
+          ${bench ? `<div class="kpi-card"><div class="label">OSEBX ${ii('benchmark')}</div><div class="value ${cls(bench.pct)}">${pct(bench.pct)}</div><div class="sub">same window</div></div>` : ''}
+        </div>
+        ${bench ? '' : '<p class="text-muted text-small">OSEBX: benchmark not available yet.</p>'}
+        <p class="text-small text-muted"><span aria-hidden="true" style="color:#1FE0CE">●</span> Club TWR index${bench ? ' · <span aria-hidden="true" style="color:#FF9F1C">●</span> OSEBX index' : ''}, both 100 at the window start</p>
+        <div id="returns-chart" class="chart-wrap"></div>
+        <p class="text-muted text-small">Club level only: deposits are split evenly across the investors, so a per-investor time-weighted return is not possible. Deposits count from the start of the day.</p>`;
+    }
+
+    function drawReturnsChart() {
+      const mount = el.querySelector('#returns-chart');
+      if (!returnsData || !mount || !window.Charts || !window.Charts.multiLine) return;
+      const { club, bench } = returnsData;
+      const series = [{ name: 'Club TWR', color: '#1FE0CE', points: club.index }];
+      if (bench) series.push({ name: 'OSEBX', color: '#FF9F1C', points: bench.points });
+      mount.appendChild(window.Charts.multiLine({ series, width: 1180, height: 260, fitY: true, title: `Club TWR index ${fmtPct(club.twr * 100)}${bench ? ` vs OSEBX ${fmtPct(bench.pct * 100)}` : ''}, both 100 at the window start` }));
+    }
+
+    function paint(d, sum) {
+      const wm = d.windowMetrics;
+      const rn = aggregateRn(d, sum);
+      const win = aggregateWin(wm);
+      const filterLabel = selectedCodes.length
+        ? `<span class="filter-chip">Filtered: <strong>${selectedCodes.join(', ')}</strong> <a href="#" onclick="event.preventDefault(); window.__clearFilter();">clear ×</a></span>`
+        : '';
+      const rnTitle = `Right now (${d.snapshotDate || '—'})`;
+      const winTitle = selectedCodes.length ? `In this window · ${selectedCodes.join(', ')}` : 'In this window';
+
+      const hasTx = (store.transactions || []).length > 0;
+      if (!hasTx) {
+        el.innerHTML = `
+          <div class="hero"><div><h2>Here's the book.</h2></div></div>
+          ${window.UI.emptyState('No transactions yet',
+            'The Nordnet transaction tab is empty — paste the export into "Rådata fra nordnet" and reload.')}`;
+        return;
+      }
+
+      el.innerHTML = `
+        <div class="hero">
+          <div>
+            <h2>${sheetName ? `Here is the books for "${escapeHtml(sheetName)}".` : 'Here\'s the book.'}</h2>
+            ${priceFreshnessLine()}
+          </div>
+          ${renderPicker(d.window)}
+        </div>
+        ${filterLabel ? `<div class="filter-row">${filterLabel}</div>` : ''}
+
+
+        <div class="section-title">${rnTitle}</div>
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="label">Total portfolio ${ii('total-value')}</div><div class="value">${fmtNok(rn.totalValue)}</div><div class="sub">positions + cash</div></div>
+          <div class="kpi-card"><div class="label">Holdings MV ${ii('market-value')}</div><div class="value">${fmtNok(rn.marketValue)}</div><div class="sub">active positions</div></div>
+          <div class="kpi-card"><div class="label">Dry powder ${ii('cash')}</div><div class="value">${fmtNok(rn.cash)}</div><div class="sub">${selectedCodes.length ? 'investor share' : 'uncommitted cash'}</div></div>
+          <div class="kpi-card"><div class="label">Unrealized P/L ${ii('unrealized')}</div><div class="value ${pctClass(rn.unrealized)}">${fmtNok(rn.unrealized)}</div><div class="sub">mark-to-market</div></div>
+        </div>
+        ${!selectedCodes.length && d.group.club ? window.UI.clubLine(d.group.club) : ''}
+
+        <div class="section-title">${winTitle} <span class="text-muted text-small">${prettyRange(d.window)}</span> ${ii('window-metrics')}</div>
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="label">Period return</div><div class="value ${pctClass(win.periodReturnPct)}">${fmtPct(win.periodReturnPct)}</div><div class="sub">realized + dividends + price delta</div></div>
+          <div class="kpi-card"><div class="label">Realized P/L</div><div class="value ${pctClass(win.realizedInWindow)}">${fmtNok(win.realizedInWindow)}</div><div class="sub">${win.sellCount || 0} sells</div></div>
+          <div class="kpi-card"><div class="label">Dividends</div><div class="value">${fmtNok(win.dividendsInWindow)}</div><div class="sub">received in window</div></div>
+          <div class="kpi-card"><div class="label">Capital deployed</div><div class="value">${fmtNok(win.buysInWindow)}</div><div class="sub">${win.buyCount || 0} buys</div></div>
+          <div class="kpi-card"><div class="label">Net P/L</div><div class="value ${pctClass(win.netPnlInWindow)}">${fmtNok(win.netPnlInWindow)}</div><div class="sub">realized + divs + unrealized Δ</div></div>
+        </div>
+
+        ${renderReturns(d, sum)}
+
+        ${renderLookThrough()}
+
+        ${renderCurrentPortfolio()}
+
+      `;
+      wirePicker();
+      drawReturnsChart();
+      const ltm = el.querySelector('#lt-multiple');
+      if (ltm) {
+        ltm.addEventListener('change', () => {
+          const v = Math.max(1, Math.min(60, Number(ltm.value) || 15));
+          localStorage.setItem('portal.fundamental.multiple', JSON.stringify(v));
+          refresh();
+        });
+      }
+      // Current-portfolio rows with fundamentals expand on click.
+      el.querySelectorAll('tr[data-fx-sec]').forEach((tr) => {
+        const toggle = () => {
+          const detail = window.UI.siblingRow(tr, 'fx-detail');
+          if (!detail) return;
+          const open = detail.hidden;
+          detail.hidden = !open;
+          tr.setAttribute('aria-expanded', String(open));
+          const cell = detail.querySelector('[data-fx-for]');
+          if (open && cell && !cell.dataset.rendered) {
+            cell.dataset.rendered = '1';
+            window.UI.renderSecurityDrilldown(cell, store, tr.dataset.fxSec);
+          }
+        };
+        tr.addEventListener('click', toggle);
+        tr.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+        });
+      });
+    }
+
+    function renderPicker(win) {
+      return `
+        <div class="range-picker" id="range-picker" role="group" aria-label="Time range">
+          ${PRESETS.map((p) => `
+            <button class="preset ${win.preset === p.id ? 'active' : ''}" data-preset="${p.id}" aria-pressed="${win.preset === p.id}">${p.label}</button>
+          `).join('')}
+          <span class="sep" id="custom-sep" style="display:${win.preset === 'custom' ? 'inline' : 'none'}">·</span>
+          <input type="date" id="date-from" aria-label="From date" value="${win.from || ''}" style="display:${win.preset === 'custom' ? 'inline-block' : 'none'}" />
+          <span class="sep" id="custom-sep2" style="display:${win.preset === 'custom' ? 'inline' : 'none'}">→</span>
+          <input type="date" id="date-to" aria-label="To date" value="${win.to || ''}" style="display:${win.preset === 'custom' ? 'inline-block' : 'none'}" />
+        </div>
+      `;
+    }
+
+    function wirePicker() {
+      el.querySelectorAll('#range-picker .preset').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const p = btn.dataset.preset;
+          if (p === 'custom') {
+            current.preset = 'custom';
+            el.querySelector('#custom-sep').style.display = 'inline';
+            el.querySelector('#custom-sep2').style.display = 'inline';
+            el.querySelector('#date-from').style.display = 'inline-block';
+            el.querySelector('#date-to').style.display = 'inline-block';
+            el.querySelectorAll('#range-picker .preset').forEach((b) => {
+              b.classList.toggle('active', b.dataset.preset === 'custom');
+              b.setAttribute('aria-pressed', String(b.dataset.preset === 'custom'));
+            });
+            return;
+          }
+          current.preset = p; current.from = null; current.to = null;
+          refresh();
+        });
+      });
+      const fromInput = el.querySelector('#date-from');
+      const toInput = el.querySelector('#date-to');
+      const onChange = () => {
+        const from = fromInput.value; const to = toInput.value;
+        if (!from || !to) return;
+        current.preset = 'custom'; current.from = from; current.to = to;
+        refresh();
+      };
+      fromInput.addEventListener('change', onChange);
+      toInput.addEventListener('change', onChange);
+    }
+
+    function prettyRange(win) {
+      const map = { '1m': 'last month', '6m': 'last 6 months', 'ytd': 'YTD', '1y': 'last year', 'all': 'all-time', 'custom': `${win.from} → ${win.to}` };
+      return map[win.preset] || `${win.from} → ${win.to}`;
+    }
+
+    refresh();
+
+    return function cleanup() {
+      delete window.__clearFilter;
+    };
+  };
+})();

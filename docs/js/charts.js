@@ -1,0 +1,945 @@
+// Pure-SVG chart helpers. No libraries, no canvas, no event handlers beyond
+// the browser-native <title> tooltip. Returns SVG elements ready to inject.
+//
+// All charts share:
+//   - viewBox-based responsiveness (width/height are intrinsic, scaled by CSS)
+//   - Inner padding for axis labels
+//   - Y axis auto-scaled with a small headroom; X axis date-driven with yearly
+//     gridlines.
+
+(function () {
+  const NS = 'http://www.w3.org/2000/svg';
+  // Y-axis labels sit on the RIGHT (matches the price-chart design), so the
+  // right pad is the wide one and the left pad is just a small gutter.
+  const PAD = { top: 16, right: 60, bottom: 30, left: 16 };
+
+  function svgEl(name, attrs) {
+    const el = document.createElementNS(NS, name);
+    if (attrs) for (const k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  // ── Fitting a chart to the viewport ──────────────────────────────────────
+  // Every font-size in these charts is expressed in viewBox units, and CSS
+  // scales the whole SVG to its container (.chart-wrap svg { width: 100% }).
+  // So on a 360px screen a 1180-unit-wide box renders its 22-unit axis labels
+  // at ~6.7px — unreadable. The fix is not bigger fonts but a smaller box:
+  // shrink the viewBox on narrow viewports and the scale factor moves back
+  // toward 1, restoring the text to roughly its intended size.
+  //
+  // baseFont is the smallest font-size the chart uses, in viewBox units; the
+  // box is shrunk until that would render at MIN_PX, and never past HARD_FLOOR
+  // of the original width (below that the layout stops making sense).
+  const MIN_PX = 11;
+  const HARD_FLOOR = 0.33;
+  function fitBox(width, height, baseFont) {
+    const vw = (typeof window !== 'undefined' && window.innerWidth) || width;
+    // Container padding: .container is 12px a side on mobile, plus .chart-wrap.
+    const avail = Math.max(260, vw - 52);
+    if (avail >= width) return { width, height };
+    const wanted = (avail * baseFont) / MIN_PX;
+    const w = Math.round(Math.max(width * HARD_FLOOR, Math.min(width, wanted)));
+    // Height is left alone: a proportionally taller chart reads better on a
+    // phone than a letterboxed one.
+    return { width: w, height };
+  }
+
+  function dateToTs(d) { return Date.parse(d); }
+  function tsToDate(t) { return new Date(t); }
+
+  let mlGradSeq = 0; // unique gradient ids for single-series area fills
+
+  function niceMax(v) {
+    if (v <= 0) return 1;
+    const exp = Math.pow(10, Math.floor(Math.log10(v)));
+    const f = v / exp;
+    let nice;
+    if (f <= 1) nice = 1; else if (f <= 2) nice = 2; else if (f <= 5) nice = 5; else nice = 10;
+    return nice * exp;
+  }
+  function niceMin(v) {
+    if (v >= 0) return 0;
+    return -niceMax(-v);
+  }
+
+  // Axis and label money: 5k, 1,2M. All number formatting lives in Fmt.
+  function fmtNok(n) {
+    return window.Fmt.fmtNokShort(n, 1000);
+  }
+
+  function axes(g, xMin, xMax, yMin, yMax, width, height) {
+    const w = width - PAD.left - PAD.right;
+    const h = height - PAD.top - PAD.bottom;
+
+    // Y gridlines + labels — 6 ticks, dashed for non-zero, solid for the zero line.
+    const yTicks = 6;
+    for (let i = 0; i <= yTicks; i++) {
+      const v = yMin + (yMax - yMin) * (i / yTicks);
+      const y = PAD.top + h - (h * (v - yMin)) / (yMax - yMin);
+      const isZero = Math.abs(v) < 1e-9 && yMin < 0;
+      const line = svgEl('line', {
+        x1: PAD.left, x2: PAD.left + w, y1: y, y2: y,
+        stroke: isZero ? '#525866' : '#2a2a2a',
+        'stroke-width': 1,
+        'shape-rendering': 'crispEdges',
+      });
+      g.appendChild(line);
+      // Labels on the right of the plot.
+      const label = svgEl('text', {
+        x: PAD.left + w + 8, y: y + 4, 'text-anchor': 'start',
+        fill: '#8a8a8a', 'font-size': 11, 'font-weight': 500,
+      });
+      // Under a 10-wide range whole numbers repeat (0 0 1 2 3 3), so show one decimal.
+      label.textContent = (yMax - yMin) < 10 && Math.abs(v) < 1e3 ? window.Fmt.fmtDec(v, 1) : fmtNok(v);
+      g.appendChild(label);
+    }
+
+    // X gridlines: monthly when the span is shorter than ~2 years, otherwise yearly.
+    const yearMs = 365.25 * 24 * 60 * 60 * 1000;
+    const span = xMax - xMin;
+    const ticks = [];
+    if (span <= 2 * yearMs) {
+      const start = tsToDate(xMin);
+      let cursor = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1);
+      // Density: skip months to keep <= ~12 ticks
+      const months = Math.round(span / (yearMs / 12)) + 1;
+      const maxTicks = width < 700 ? 5 : 8;
+      const step = months > maxTicks ? Math.ceil(months / maxTicks) : 1;
+      let i = 0;
+      while (cursor <= xMax) {
+        if (cursor >= xMin && (i % step === 0)) {
+          const d = new Date(cursor);
+          const lbl = window.Fmt.fmtMonth(d);
+          ticks.push({ t: cursor, lbl });
+        }
+        i++;
+        const next = new Date(cursor);
+        next.setUTCMonth(next.getUTCMonth() + 1);
+        cursor = next.getTime();
+      }
+    } else {
+      const startYear = tsToDate(xMin).getUTCFullYear();
+      const endYear = tsToDate(xMax).getUTCFullYear();
+      for (let y = startYear; y <= endYear; y++) {
+        const t = Date.parse(`${y}-01-01`);
+        if (t < xMin || t > xMax) continue;
+        ticks.push({ t, lbl: String(y) });
+      }
+    }
+    for (const { t, lbl } of ticks) {
+      const xPos = PAD.left + (w * (t - xMin)) / (xMax - xMin);
+      const line = svgEl('line', {
+        x1: xPos, x2: xPos, y1: PAD.top, y2: PAD.top + h,
+        stroke: '#2a2a2a', 'stroke-width': 1, 'shape-rendering': 'crispEdges',
+      });
+      g.appendChild(line);
+      // A tick near the left edge would be cut in half by the svg: start-anchor it.
+      const label = svgEl('text', {
+        x: xPos, y: PAD.top + h + 18, 'text-anchor': xPos < PAD.left + 24 ? 'start' : 'middle',
+        fill: '#8a8a8a', 'font-size': 11, 'font-weight': 500,
+      });
+      label.textContent = lbl;
+      g.appendChild(label);
+    }
+  }
+
+  function pathD(points) {
+    if (!points.length) return '';
+    return points.map((p, i) => (i === 0 ? `M${p.x} ${p.y}` : `L${p.x} ${p.y}`)).join(' ');
+  }
+
+  function areaD(points, baselineY) {
+    if (!points.length) return '';
+    const top = points.map((p, i) => (i === 0 ? `M${p.x} ${p.y}` : `L${p.x} ${p.y}`)).join(' ');
+    const last = points[points.length - 1];
+    const first = points[0];
+    return `${top} L${last.x} ${baselineY} L${first.x} ${baselineY} Z`;
+  }
+
+  // series: [{ name, color, points: [{date, y}] }]
+  // Renders one stacked area per series; points must share x dates.
+  function stackedArea({ series, width: _w = 900, height: _h = 240, title }) {
+    const { width, height } = fitBox(_w, _h, 11);
+    const svg = svgEl('svg', {
+      viewBox: `0 0 ${width} ${height}`, xmlns: NS,
+      role: 'img', 'aria-label': title || 'stacked area chart',
+    });
+    if (!series.length || !series[0].points.length) {
+      const t = svgEl('text', { x: width / 2, y: height / 2, fill: '#8a92a6', 'text-anchor': 'middle' });
+      t.textContent = 'No data';
+      svg.appendChild(t);
+      return svg;
+    }
+    const dates = series[0].points.map((p) => dateToTs(p.date));
+    const xMin = dates[0];
+    const xMax = dates[dates.length - 1];
+    // Compute stacked totals per index
+    const n = series[0].points.length;
+    const stacks = new Array(n).fill(0);
+    let yMax = 0;
+    for (const s of series) {
+      for (let i = 0; i < n; i++) {
+        stacks[i] += s.points[i].y;
+        if (stacks[i] > yMax) yMax = stacks[i];
+      }
+    }
+    yMax = niceMax(yMax);
+    const yMin = 0;
+
+    const w = width - PAD.left - PAD.right;
+    const h = height - PAD.top - PAD.bottom;
+    const xScale = (t) => PAD.left + (w * (t - xMin)) / (xMax - xMin || 1);
+    const yScale = (v) => PAD.top + h - (h * (v - yMin)) / (yMax - yMin || 1);
+
+    const g = svgEl('g');
+    svg.appendChild(g);
+    axes(g, xMin, xMax, yMin, yMax, width, height);
+
+    // Stack accumulator per index
+    const acc = new Array(n).fill(0);
+    for (const s of series) {
+      const top = [];
+      const bottom = [];
+      for (let i = 0; i < n; i++) {
+        const x = xScale(dates[i]);
+        const yBase = acc[i];
+        const yTop = yBase + s.points[i].y;
+        bottom.push({ x, y: yScale(yBase) });
+        top.push({ x, y: yScale(yTop) });
+        acc[i] = yTop;
+      }
+      const d = pathD(top.concat(bottom.slice().reverse())) + ' Z';
+      const path = svgEl('path', {
+        d, fill: s.color, opacity: 0.85, stroke: s.color, 'stroke-width': 0.5,
+      });
+      const t = svgEl('title');
+      const lastY = s.points[n - 1].y;
+      t.textContent = `${s.name}: ${fmtNok(lastY)} kr`;
+      path.appendChild(t);
+      g.appendChild(path);
+    }
+
+    if (title) {
+      const tEl = svgEl('text', {
+        x: PAD.left, y: 12, fill: '#e7e9ee', 'font-size': 12, 'font-weight': 600,
+      });
+      tEl.textContent = title;
+      svg.appendChild(tEl);
+    }
+    return svg;
+  }
+
+  function fmtNokFull(n) {
+    return window.Fmt.fmtNok(n);
+  }
+
+  // series: [{ name, color, points: [{date, y}] }]
+  // When interactive=true, hovering the chart shows a crosshair, per-series
+  // dots, and a floating tooltip listing every investor's value at that date.
+  function multiLine({ series, width: _w = 900, height: _h = 240, title, interactive = false, fitY = false }) {
+    const { width, height } = fitBox(_w, _h, 10);
+    const svg = svgEl('svg', {
+      viewBox: `0 0 ${width} ${height}`, xmlns: NS,
+      role: 'img', 'aria-label': title || 'line chart',
+    });
+    if (!series.length || !series[0].points.length) {
+      const t = svgEl('text', { x: width / 2, y: height / 2, fill: '#8a92a6', 'text-anchor': 'middle' });
+      t.textContent = 'No data';
+      svg.appendChild(t);
+      return svg;
+    }
+    let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+    for (const s of series) {
+      for (const p of s.points) {
+        const t = dateToTs(p.date);
+        if (t < xMin) xMin = t;
+        if (t > xMax) xMax = t;
+        if (p.y < yMin) yMin = p.y;
+        if (p.y > yMax) yMax = p.y;
+      }
+    }
+    if (fitY) {
+      // Index charts (both lines start at 100): zoom to the data, not to zero.
+      const pad = (yMax - yMin) * 0.1 || 1;
+      yMin = Math.floor(yMin - pad); yMax = Math.ceil(yMax + pad);
+    } else {
+      yMax = niceMax(yMax);
+      yMin = niceMin(yMin);
+    }
+    if (yMin === yMax) yMax = yMin + 1;
+
+    const w = width - PAD.left - PAD.right;
+    const h = height - PAD.top - PAD.bottom;
+    const xScale = (t) => PAD.left + (w * (t - xMin)) / (xMax - xMin || 1);
+    const yScale = (v) => PAD.top + h - (h * (v - yMin)) / (yMax - yMin || 1);
+
+    const g = svgEl('g');
+    svg.appendChild(g);
+    axes(g, xMin, xMax, yMin, yMax, width, height);
+
+    // All series share the same x dates (built from the same replay).
+    const dates = series[0].points.map((p) => p.date);
+    const xCoords = dates.map((d) => xScale(dateToTs(d)));
+    const seriesPts = series.map((s) =>
+      s.points.map((p) => ({ x: xScale(dateToTs(p.date)), y: yScale(p.y), raw: p }))
+    );
+
+    // Every timeline gets the price-chart area fill (series-color gradient
+    // under the line) so the whole portal shares one look. A single series
+    // uses the full design opacity; multi-series use a lighter fill so the
+    // overlapping areas don't muddy the comparison. Fills are drawn first so
+    // all lines stay crisp on top.
+    const fillTopOpacity = series.length === 1 ? '0.18' : '0.16';
+    for (let i = 0; i < series.length; i++) {
+      const gradId = `mlGrad${mlGradSeq++}`;
+      const defs = svgEl('defs');
+      const grad = svgEl('linearGradient', { id: gradId, x1: '0', y1: '0', x2: '0', y2: '1' });
+      grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': series[i].color, 'stop-opacity': fillTopOpacity }));
+      grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': series[i].color, 'stop-opacity': '0' }));
+      defs.appendChild(grad);
+      g.appendChild(defs);
+      g.appendChild(svgEl('path', { d: areaD(seriesPts[i], PAD.top + h), fill: `url(#${gradId})` }));
+    }
+
+    for (let i = 0; i < series.length; i++) {
+      const s = series[i];
+      const pts = seriesPts[i];
+      const path = svgEl('path', {
+        d: pathD(pts), fill: 'none', stroke: s.color, 'stroke-width': 2.5,
+        'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      });
+      g.appendChild(path);
+      const last = pts[pts.length - 1];
+      g.appendChild(svgEl('circle', { cx: last.x, cy: last.y, r: 4, fill: s.color, stroke: '#0e0f13', 'stroke-width': 1.5 }));
+    }
+
+    // Optional per-series trade markers — same design language as
+    // priceChart / The Game: blue = buy, red = sell, halo + solid dot,
+    // pinned to the series' value at the trade date.
+    const MBUY = '#2D5BFF', MSELL = '#FF3B3B';
+    for (let i = 0; i < series.length; i++) {
+      const s = series[i];
+      if (!s.markers || !s.markers.length) continue;
+      const pts = seriesPts[i];
+      for (const m of s.markers) {
+        let at = pts[0];
+        for (const p of pts) { if (p.raw.date <= m.date) at = p; else break; }
+        const color = m.type === 'sell' ? MSELL : MBUY;
+        const mx = xScale(dateToTs(m.date));
+        g.appendChild(svgEl('circle', { cx: mx, cy: at.y, r: 8, fill: color, opacity: '0.25' }));
+        g.appendChild(svgEl('circle', { cx: mx, cy: at.y, r: 4.5, fill: color, stroke: '#fff', 'stroke-width': 1.2 }));
+      }
+    }
+
+    if (title) {
+      const tEl = svgEl('text', {
+        x: PAD.left, y: 12, fill: '#e7e9ee', 'font-size': 12, 'font-weight': 600,
+      });
+      tEl.textContent = title;
+      svg.appendChild(tEl);
+    }
+
+    if (!interactive) return svg;
+
+    // Markers snapped to the nearest sampled index ≥ their date, so hovering
+    // a trade day lists the trades in the tooltip footer.
+    const markersByIdx = new Map();
+    for (const s2 of series) {
+      for (const m of s2.markers || []) {
+        let idx = dates.findIndex((d) => d >= m.date);
+        if (idx === -1) idx = dates.length - 1;
+        if (!markersByIdx.has(idx)) markersByIdx.set(idx, []);
+        markersByIdx.get(idx).push({ type: m.type, label: m.label || '', name: s2.name });
+      }
+    }
+    const MAX_TIP_EVENTS = 4;
+
+    // ─── Hover layer ─────────────────────────────────────────────────────
+    const hover = svgEl('g', { 'pointer-events': 'none', visibility: 'hidden' });
+    svg.appendChild(hover);
+
+    const crosshair = svgEl('line', {
+      x1: 0, x2: 0, y1: PAD.top, y2: PAD.top + h,
+      stroke: '#8a92a6', 'stroke-width': 1, 'stroke-dasharray': '3,3',
+    });
+    hover.appendChild(crosshair);
+
+    const dots = series.map((s) => {
+      const c = svgEl('circle', {
+        cx: 0, cy: 0, r: 5, fill: s.color, stroke: '#0e0f13', 'stroke-width': 2,
+      });
+      hover.appendChild(c);
+      return c;
+    });
+
+    // Tooltip box: date header + one row per investor (+ trade lines)
+    const TIP_PAD = 8;
+    const TIP_ROW_H = 14;
+    const TIP_W = Math.min(280, Math.round(width * 0.62));
+    const TIP_H = TIP_PAD * 2 + TIP_ROW_H * (series.length + 1) + 4;
+
+    const tipBg = svgEl('rect', {
+      x: 0, y: 0, width: TIP_W, height: TIP_H,
+      rx: 6, ry: 6, fill: '#181a22', stroke: '#262a36', 'stroke-width': 1,
+      opacity: 0.97,
+    });
+    hover.appendChild(tipBg);
+
+    const tipDate = svgEl('text', { x: 0, y: 0, fill: '#e7e9ee', 'font-size': 11, 'font-weight': 700 });
+    hover.appendChild(tipDate);
+
+    const rows = series.map((s) => {
+      const sw = svgEl('rect', { x: 0, y: 0, width: 8, height: 8, fill: s.color, rx: 1, ry: 1 });
+      hover.appendChild(sw);
+      const nm = svgEl('text', { x: 0, y: 0, fill: '#e7e9ee', 'font-size': 10 });
+      hover.appendChild(nm);
+      const vl = svgEl('text', { x: 0, y: 0, fill: '#e7e9ee', 'font-size': 10, 'font-weight': 600, 'text-anchor': 'end' });
+      hover.appendChild(vl);
+      return { sw, nm, vl };
+    });
+
+    // Footer lines for trades on the hovered date (▲ buy / ▼ sell).
+    const eventEls = [];
+    for (let i = 0; i < MAX_TIP_EVENTS; i++) {
+      const t = svgEl('text', { x: 0, y: 0, 'font-size': 10, 'font-weight': 600 });
+      hover.appendChild(t);
+      eventEls.push(t);
+    }
+
+    // Transparent overlay that captures pointer events across the plot area.
+    const overlay = svgEl('rect', {
+      x: PAD.left, y: PAD.top, width: w, height: h,
+      fill: 'transparent', 'pointer-events': 'all',
+    });
+    svg.appendChild(overlay);
+
+    function clientToSvg(evt) {
+      if (!svg.createSVGPoint || !svg.getScreenCTM) return { x: 0, y: 0 };
+      const pt = svg.createSVGPoint();
+      pt.x = evt.clientX; pt.y = evt.clientY;
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return { x: 0, y: 0 };
+      const out = pt.matrixTransform(ctm.inverse());
+      return { x: out.x, y: out.y };
+    }
+    function nearestIndex(xUser) {
+      let best = 0, bestDist = Math.abs(xCoords[0] - xUser);
+      for (let i = 1; i < xCoords.length; i++) {
+        const d = Math.abs(xCoords[i] - xUser);
+        if (d < bestDist) { bestDist = d; best = i; }
+      }
+      return best;
+    }
+    function show(idx) {
+      hover.setAttribute('visibility', 'visible');
+      const x = xCoords[idx];
+      crosshair.setAttribute('x1', x);
+      crosshair.setAttribute('x2', x);
+      for (let i = 0; i < series.length; i++) {
+        const pt = seriesPts[i][idx];
+        dots[i].setAttribute('cx', pt.x);
+        dots[i].setAttribute('cy', pt.y);
+      }
+      // Position tooltip right of crosshair unless that pushes it off-canvas.
+      let tipX = x + 12;
+      if (tipX + TIP_W > width - PAD.right) tipX = x - 12 - TIP_W;
+      if (tipX < PAD.left) tipX = PAD.left;
+      const tipY = PAD.top + 8;
+      tipBg.setAttribute('x', tipX);
+      tipBg.setAttribute('y', tipY);
+      tipDate.setAttribute('x', tipX + TIP_PAD);
+      tipDate.setAttribute('y', tipY + TIP_PAD + 10);
+      tipDate.textContent = dates[idx];
+      for (let i = 0; i < series.length; i++) {
+        const rowY = tipY + TIP_PAD + 10 + TIP_ROW_H * (i + 1) + 2;
+        const r = rows[i];
+        r.sw.setAttribute('x', tipX + TIP_PAD);
+        r.sw.setAttribute('y', rowY - 8);
+        r.nm.setAttribute('x', tipX + TIP_PAD + 14);
+        r.nm.setAttribute('y', rowY);
+        r.nm.textContent = series[i].name;
+        r.vl.setAttribute('x', tipX + TIP_W - TIP_PAD);
+        r.vl.setAttribute('y', rowY);
+        // Value + % change since the start of the visible series. When the
+        // series is rebased to 0 at the start (cumulative P/L), the value is
+        // itself the change, so the % is meaningless — show value only.
+        const yv = series[i].points[idx].y;
+        const base = series[i].points[0].y;
+        // A point may carry its own preformatted tooltip value (e.g. the
+        // competition curve shows net P/L in NOK + return %).
+        const p = series[i].points[idx];
+        if (p.tipValue != null) {
+          r.vl.textContent = p.tipValue;
+        } else {
+          let txt = fmtNokFull(yv);
+          if (Math.abs(base) >= 1) {
+            const pc = ((yv - base) / Math.abs(base)) * 100;
+            txt += `  ${window.Fmt.fmtPct(pc)}`;
+          }
+          r.vl.textContent = txt;
+        }
+      }
+      // Trades on this date → footer lines, tooltip grows to fit.
+      const events = (markersByIdx.get(idx) || []).slice(0, MAX_TIP_EVENTS);
+      const baseH = TIP_PAD * 2 + TIP_ROW_H * (series.length + 1) + 4;
+      tipBg.setAttribute('height', events.length ? baseH + 4 + TIP_ROW_H * events.length : baseH);
+      for (let i = 0; i < MAX_TIP_EVENTS; i++) {
+        const t = eventEls[i];
+        if (i < events.length) {
+          const ev = events[i];
+          const rowY = tipY + TIP_PAD + 10 + TIP_ROW_H * (series.length + 1) + 6 + TIP_ROW_H * i + 2;
+          t.setAttribute('x', tipX + TIP_PAD);
+          t.setAttribute('y', rowY);
+          t.setAttribute('fill', ev.type === 'sell' ? '#FF3B3B' : '#5B8CFF');
+          t.textContent = `${ev.type === 'sell' ? '▼' : '▲'} ${ev.label || (ev.type === 'sell' ? 'sale' : 'purchase')}`;
+        } else {
+          t.textContent = '';
+        }
+      }
+    }
+    function hide() { hover.setAttribute('visibility', 'hidden'); }
+
+    overlay.addEventListener('mousemove', (evt) => {
+      const { x } = clientToSvg(evt);
+      show(nearestIndex(x));
+    });
+    overlay.addEventListener('mouseleave', hide);
+    overlay.addEventListener('touchstart', (evt) => {
+      if (!evt.touches[0]) return;
+      const { x } = clientToSvg(evt.touches[0]);
+      show(nearestIndex(x));
+    }, { passive: true });
+    overlay.addEventListener('touchmove', (evt) => {
+      if (!evt.touches[0]) return;
+      const { x } = clientToSvg(evt.touches[0]);
+      show(nearestIndex(x));
+    }, { passive: true });
+    overlay.addEventListener('touchend', hide);
+    overlay.style.cursor = 'crosshair';
+
+    return svg;
+  }
+
+  // series: [{ code?, name, color, valueText? }]
+  // When onSelect + code are provided, each key becomes clickable. Keys whose
+  // code is in selectedCodes get the "selected" class; the rest get "dimmed"
+  // (when there's any selection at all). Supports multi-select.
+  function legend({ series, selectedCodes, onSelect }) {
+    const active = Array.isArray(selectedCodes) ? selectedCodes
+      : (selectedCodes ? [selectedCodes] : []);
+    const wrap = document.createElement('div');
+    wrap.className = 'chart-legend';
+    for (const s of series) {
+      const key = document.createElement('div');
+      key.className = 'key';
+      if (s.code) key.dataset.code = s.code;
+      if (active.length && s.code) {
+        key.classList.add(active.includes(s.code) ? 'selected' : 'dimmed');
+      }
+      if (onSelect && s.code) {
+        key.classList.add('clickable');
+        key.addEventListener('click', () => onSelect(s.code));
+      }
+      const sw = document.createElement('span');
+      sw.className = 'swatch';
+      sw.style.background = s.color;
+      const lbl = document.createElement('span');
+      lbl.className = 'name';
+      lbl.textContent = s.name;
+      key.appendChild(sw);
+      key.appendChild(lbl);
+      if (s.valueText) {
+        const v = document.createElement('span');
+        v.className = 'v';
+        v.textContent = s.valueText;
+        key.appendChild(v);
+      }
+      wrap.appendChild(key);
+    }
+    return wrap;
+  }
+
+  // Single-security price chart: teal area + angular line, right-side y-axis
+  // labels, and buy (blue) / sell (red) dot markers placed at their trade date.
+  // points:  [{ date, price }]  (sorted ascending by date)
+  // markers: [{ date, type: 'buy' | 'sell' }]
+  let priceGradSeq = 0;
+  function priceChart(opts) {
+    const {
+      points = [], markers = [],
+      width: _w = 1180, height: _h = 440,
+      line = '#1FE0CE', fillTop = 'rgba(31,224,206,0.16)', fillBottom = 'rgba(31,224,206,0)',
+      buy = '#2D5BFF', sell = '#FF3B3B',
+      yUnit = '', invested = null,
+    } = opts || {};
+    const { width, height } = fitBox(_w, _h, 17);
+    const PADP = { top: 30, right: 70, bottom: 48, left: 12 };
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    // When the series spans more than one calendar year, tack a 2-digit year
+    // onto each date label (e.g. "3 Mar '24") so the axis isn't ambiguous.
+    const yearOf = (iso) => Number(String(iso).slice(0, 4));
+    const crossesYears = points.length >= 2 && yearOf(points[0].date) !== yearOf(points[points.length - 1].date);
+    const fmtDate = (iso) => {
+      const d = new Date(iso);
+      const base = `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
+      return crossesYears ? `${base} '${String(d.getUTCFullYear()).slice(2)}` : base;
+    };
+    const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, xmlns: NS, role: 'img', 'aria-label': 'Price chart' });
+
+    if (points.length < 2) {
+      const t = svgEl('text', { x: width / 2, y: height / 2, fill: '#8a8a8a', 'text-anchor': 'middle' });
+      t.textContent = 'Not enough price history in this window';
+      svg.appendChild(t);
+      return svg;
+    }
+
+    const plotW = width - PADP.left - PADP.right;
+    const plotH = height - PADP.top - PADP.bottom;
+    const xMin = dateToTs(points[0].date);
+    const xMax = dateToTs(points[points.length - 1].date);
+    const prices = points.map((p) => p.price).filter((v) => Number.isFinite(v));
+    let lo = Math.min(...prices), hi = Math.max(...prices);
+    const pad = (hi - lo) * 0.12 || Math.abs(hi) * 0.05 || 1;
+    lo -= pad; hi += pad;
+
+    const xAt = (ts) => PADP.left + (xMax > xMin ? (ts - xMin) / (xMax - xMin) : 0) * plotW;
+    const yAt = (v) => PADP.top + (1 - (v - lo) / (hi - lo)) * plotH;
+
+    const linePath = points
+      .map((p, i) => `${i ? 'L' : 'M'}${xAt(dateToTs(p.date)).toFixed(2)},${yAt(p.price).toFixed(2)}`)
+      .join(' ');
+    const areaPath = `${linePath} L${xAt(xMax).toFixed(2)},${(PADP.top + plotH).toFixed(2)} `
+      + `L${PADP.left.toFixed(2)},${(PADP.top + plotH).toFixed(2)} Z`;
+
+    const gradId = `priceGrad${priceGradSeq++}`;
+    const defs = svgEl('defs');
+    const grad = svgEl('linearGradient', { id: gradId, x1: '0', y1: '0', x2: '0', y2: '1' });
+    grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': fillTop }));
+    grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': fillBottom }));
+    defs.appendChild(grad);
+    svg.appendChild(defs);
+
+    // Horizontal gridlines at each y tick (faint), drawn under the area.
+    for (let i = 0; i < 4; i++) {
+      const v = lo + ((hi - lo) * i) / 3;
+      svg.appendChild(svgEl('line', {
+        x1: PADP.left, x2: width - PADP.right, y1: yAt(v).toFixed(1), y2: yAt(v).toFixed(1),
+        stroke: '#2a2a2a', 'stroke-width': '1', 'shape-rendering': 'crispEdges',
+      }));
+    }
+
+    svg.appendChild(svgEl('path', { d: areaPath, fill: `url(#${gradId})` }));
+    svg.appendChild(svgEl('path', {
+      d: linePath, fill: 'none', stroke: line, 'stroke-width': '2.5',
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+    }));
+
+    // Y-axis labels on the right (stock value, 4 ticks).
+    for (let i = 0; i < 4; i++) {
+      const v = lo + ((hi - lo) * i) / 3;
+      const t = svgEl('text', {
+        x: width - PADP.right + 14, y: (yAt(v) + 8).toFixed(1),
+        fill: '#8a8a8a', 'font-size': '22', 'font-weight': '500',
+      });
+      t.textContent = Math.round(v).toString();
+      svg.appendChild(t);
+    }
+    if (yUnit) {
+      const u = svgEl('text', { x: width - PADP.right + 14, y: (PADP.top - 8).toFixed(1), fill: '#8a8a8a', 'font-size': '17', 'font-weight': '600' });
+      u.textContent = yUnit;
+      svg.appendChild(u);
+    }
+
+    // X-axis labels (time): up to 5 evenly spaced dates along the bottom —
+    // fewer once the box has been narrowed, or they collide.
+    const nLabels = Math.min(width < _w ? 3 : 5, points.length);
+    const baseY = PADP.top + plotH;
+    for (let k = 0; k < nLabels; k++) {
+      const ts = xMin + ((xMax - xMin) * k) / (nLabels - 1);
+      const cx = xAt(ts);
+      svg.appendChild(svgEl('line', {
+        x1: cx.toFixed(1), x2: cx.toFixed(1), y1: baseY + 6, y2: baseY + 12,
+        stroke: '#3a3a3a', 'stroke-width': '2',
+      }));
+      const anchor = k === 0 ? 'start' : (k === nLabels - 1 ? 'end' : 'middle');
+      const t = svgEl('text', {
+        x: cx.toFixed(1), y: baseY + 34, fill: '#8a8a8a', 'font-size': '22',
+        'font-weight': '500', 'text-anchor': anchor,
+      });
+      t.textContent = fmtDate(new Date(ts).toISOString().slice(0, 10));
+      svg.appendChild(t);
+    }
+
+    // Nearest price point for a given marker date (for the dot's y position).
+    const priceAt = (ts) => {
+      let best = points[0], bestD = Infinity;
+      for (const p of points) {
+        const d = Math.abs(dateToTs(p.date) - ts);
+        if (d < bestD) { bestD = d; best = p; }
+      }
+      return best.price;
+    };
+    for (const m of markers) {
+      const ts = dateToTs(m.date);
+      const cx = xAt(ts), cy = yAt(priceAt(ts));
+      const color = m.type === 'sell' ? sell : buy;
+      svg.appendChild(svgEl('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: '11', fill: color, opacity: '0.25' }));
+      svg.appendChild(svgEl('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: '7', fill: color, stroke: '#fff', 'stroke-width': '1.5' }));
+    }
+
+    // ─── Hover: crosshair + dot + tooltip (value & % change since start) ────
+    const xs = points.map((p) => xAt(dateToTs(p.date)));
+    const base = points[0].price;
+    const hover = svgEl('g', { 'pointer-events': 'none', visibility: 'hidden' });
+    svg.appendChild(hover);
+    const cross = svgEl('line', { y1: PADP.top, y2: PADP.top + plotH, stroke: '#8a8a8a', 'stroke-width': '1', 'stroke-dasharray': '4,4' });
+    hover.appendChild(cross);
+    const dot = svgEl('circle', { r: '6', fill: line, stroke: '#fff', 'stroke-width': '1.5' });
+    hover.appendChild(dot);
+    const hasInvested = invested != null && Number.isFinite(invested);
+    const TIPW = Math.min(300, Math.round(width * 0.62)), TIPH = hasInvested ? 128 : 96;
+    // Trades snapped to the nearest charted date so hovering a marker day
+    // lists them (label carries security/amount when the caller provides it).
+    const tradesByIdx = new Map();
+    for (const m of markers) {
+      let idx = points.findIndex((p) => p.date >= m.date);
+      if (idx === -1) idx = points.length - 1;
+      if (!tradesByIdx.has(idx)) tradesByIdx.set(idx, []);
+      tradesByIdx.get(idx).push(m);
+    }
+    const MAX_TRADE_LINES = 3;
+    const bg = svgEl('rect', { width: TIPW, height: TIPH, rx: '8', ry: '8', fill: '#181a22', stroke: '#262a36', 'stroke-width': '1', opacity: '0.97' });
+    hover.appendChild(bg);
+    const tDate = svgEl('text', { fill: '#8a8a8a', 'font-size': '20' }); hover.appendChild(tDate);
+    const tPrice = svgEl('text', { fill: '#e7e9ee', 'font-size': '26', 'font-weight': '700' }); hover.appendChild(tPrice);
+    const tPct = svgEl('text', { 'font-size': '22', 'font-weight': '600' }); hover.appendChild(tPct);
+    const tInv = hasInvested ? svgEl('text', { fill: '#8a8a8a', 'font-size': '19', 'font-weight': '500' }) : null;
+    if (tInv) hover.appendChild(tInv);
+    const tradeEls = [];
+    for (let i = 0; i < MAX_TRADE_LINES; i++) {
+      const t = svgEl('text', { 'font-size': '19', 'font-weight': '600' });
+      hover.appendChild(t);
+      tradeEls.push(t);
+    }
+    const overlay = svgEl('rect', { x: PADP.left, y: PADP.top, width: plotW, height: plotH, fill: 'transparent', 'pointer-events': 'all' });
+    svg.appendChild(overlay);
+
+    const toSvgX = (evt) => {
+      if (!svg.createSVGPoint || !svg.getScreenCTM) return 0;
+      const pt = svg.createSVGPoint();
+      pt.x = evt.clientX; pt.y = evt.clientY;
+      const m = svg.getScreenCTM();
+      if (!m) return 0;
+      return pt.matrixTransform(m.inverse()).x;
+    };
+    const nearest = (xu) => {
+      let b = 0, bd = Math.abs(xs[0] - xu);
+      for (let i = 1; i < xs.length; i++) { const d = Math.abs(xs[i] - xu); if (d < bd) { bd = d; b = i; } }
+      return b;
+    };
+    const show = (i) => {
+      hover.setAttribute('visibility', 'visible');
+      const p = points[i]; const x = xs[i]; const y = yAt(p.price);
+      cross.setAttribute('x1', x); cross.setAttribute('x2', x);
+      dot.setAttribute('cx', x); dot.setAttribute('cy', y);
+      let tx = x + 14;
+      if (tx + TIPW > width - PADP.right) tx = x - 14 - TIPW;
+      if (tx < PADP.left) tx = PADP.left;
+      const ty = PADP.top + 6;
+      bg.setAttribute('x', tx); bg.setAttribute('y', ty);
+      tDate.setAttribute('x', tx + 14); tDate.setAttribute('y', ty + 26); tDate.textContent = fmtDate(p.date);
+      tPrice.setAttribute('x', tx + 14); tPrice.setAttribute('y', ty + 56);
+      tPrice.textContent = window.Fmt.fmtPrice(p.price);
+      const pct = base ? ((p.price - base) / Math.abs(base)) * 100 : 0;
+      tPct.setAttribute('x', tx + 14); tPct.setAttribute('y', ty + 82);
+      tPct.setAttribute('fill', pct > 0.05 ? '#3ee07f' : pct < -0.05 ? '#ff7a7a' : '#8a8a8a');
+      tPct.textContent = `${window.Fmt.fmtPct(pct)} since start`;
+      if (tInv) { tInv.setAttribute('x', tx + 14); tInv.setAttribute('y', ty + 110); tInv.textContent = `Invested ${fmtNok(invested)}`; }
+      // Trades on this date: grow the tooltip and list them.
+      const evs = (tradesByIdx.get(i) || []).slice(0, MAX_TRADE_LINES);
+      const baseH = hasInvested ? 128 : 96;
+      bg.setAttribute('height', evs.length ? baseH + 8 + 26 * evs.length : baseH);
+      for (let k = 0; k < MAX_TRADE_LINES; k++) {
+        const t = tradeEls[k];
+        if (k < evs.length) {
+          const ev = evs[k];
+          t.setAttribute('x', tx + 14);
+          t.setAttribute('y', ty + baseH + 26 * (k + 1) - 6);
+          t.setAttribute('fill', ev.type === 'sell' ? '#FF3B3B' : '#5B8CFF');
+          t.textContent = `${ev.type === 'sell' ? '▼' : '▲'} ${ev.label || (ev.type === 'sell' ? 'sold' : 'bought')}`;
+        } else {
+          t.textContent = '';
+        }
+      }
+    };
+    const hide = () => hover.setAttribute('visibility', 'hidden');
+    overlay.addEventListener('mousemove', (e) => show(nearest(toSvgX(e))));
+    overlay.addEventListener('mouseleave', hide);
+    overlay.addEventListener('touchstart', (e) => { if (e.touches[0]) show(nearest(toSvgX(e.touches[0]))); }, { passive: true });
+    overlay.addEventListener('touchmove', (e) => { if (e.touches[0]) show(nearest(toSvgX(e.touches[0]))); }, { passive: true });
+    overlay.addEventListener('touchend', hide);
+    overlay.style.cursor = 'crosshair';
+
+    return svg;
+  }
+
+  // Trade timeline: every buy/sell as a dot over [from, to]. x = date,
+  // y = signed NOK (buys up / sells down) around a zero line, radius ∝ √amount.
+  // trades: [{ date, amount (abs NOK), type: 'buy'|'sell', label }]
+  function tradeScatter(opts) {
+    const {
+      trades = [], from, to, width: _w = 1100, height: _h = 420,
+      buy = '#2D5BFF', sell = '#FF3B3B',
+    } = opts || {};
+    const { width, height } = fitBox(_w, _h, 13);
+    const PADT = { top: 24, right: 70, bottom: 46, left: 12 };
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const fmtDate = (iso) => { const d = new Date(iso); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`; };
+    const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, xmlns: NS, role: 'img', 'aria-label': 'Trades' });
+
+    if (!trades.length) {
+      const t = svgEl('text', { x: width / 2, y: height / 2, fill: '#8a8a8a', 'text-anchor': 'middle', 'font-size': '20' });
+      t.textContent = 'No buys or sells in this period';
+      svg.appendChild(t);
+      return svg;
+    }
+
+    const plotW = width - PADT.left - PADT.right;
+    const plotH = height - PADT.top - PADT.bottom;
+    const xMin = dateToTs(from || trades[0].date);
+    const xMax = dateToTs(to || trades[trades.length - 1].date);
+    const maxAbs = Math.max(...trades.map((t) => Math.abs(t.amount) || 0), 1);
+    const yMax = niceMax(maxAbs);
+    const xAt = (ts) => PADT.left + (xMax > xMin ? (ts - xMin) / (xMax - xMin) : 0.5) * plotW;
+    const yAt = (v) => PADT.top + (1 - (v + yMax) / (2 * yMax)) * plotH; // [-yMax, +yMax]
+
+    // Gridlines + right-side NOK labels at -yMax, -½, 0, +½, +yMax.
+    for (const v of [yMax, yMax / 2, 0, -yMax / 2, -yMax]) {
+      svg.appendChild(svgEl('line', {
+        x1: PADT.left, x2: PADT.left + plotW, y1: yAt(v).toFixed(1), y2: yAt(v).toFixed(1),
+        stroke: v === 0 ? '#525866' : '#2a2a2a', 'stroke-width': '1', 'shape-rendering': 'crispEdges',
+      }));
+      const lbl = svgEl('text', {
+        x: width - PADT.right + 12, y: (yAt(v) + 5).toFixed(1), fill: '#8a8a8a',
+        'font-size': '17', 'font-weight': '500',
+      });
+      lbl.textContent = fmtNok(v);
+      svg.appendChild(lbl);
+    }
+
+    // X date ticks (up to 6; fewer on a narrowed box).
+    const nx = width < _w ? 4 : 6;
+    for (let k = 0; k < nx; k++) {
+      const ts = xMin + ((xMax - xMin) * k) / (nx - 1);
+      const cx = xAt(ts);
+      svg.appendChild(svgEl('line', { x1: cx.toFixed(1), x2: cx.toFixed(1), y1: PADT.top + plotH + 6, y2: PADT.top + plotH + 12, stroke: '#3a3a3a', 'stroke-width': '2' }));
+      const anchor = k === 0 ? 'start' : (k === nx - 1 ? 'end' : 'middle');
+      const t = svgEl('text', { x: cx.toFixed(1), y: PADT.top + plotH + 32, fill: '#8a8a8a', 'font-size': '17', 'font-weight': '500', 'text-anchor': anchor });
+      t.textContent = fmtDate(new Date(ts).toISOString().slice(0, 10));
+      svg.appendChild(t);
+    }
+
+    // Dots — larger amounts drawn first so small ones stay hoverable on top.
+    const sorted = trades.slice().sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+    const dotMeta = [];
+    for (const tr of sorted) {
+      const amt = Math.abs(tr.amount) || 0;
+      const cx = xAt(dateToTs(tr.date));
+      const cy = yAt(tr.type === 'buy' ? amt : -amt);
+      const r = Math.max(6, Math.min(22, Math.sqrt(amt / maxAbs) * 22));
+      const color = tr.type === 'sell' ? sell : buy;
+      const c = svgEl('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: r.toFixed(1), fill: color, 'fill-opacity': '0.8', stroke: '#fff', 'stroke-width': '1.2' });
+      svg.appendChild(c);
+      dotMeta.push({ x: cx, y: cy, r, tr, amt, color });
+    }
+
+    // ─── Hover: same UX as the line charts — crosshair, highlight ring,
+    // styled tooltip on the nearest dot ─────────────────────────────────────
+    const hover = svgEl('g', { 'pointer-events': 'none', visibility: 'hidden' });
+    svg.appendChild(hover);
+    const cross = svgEl('line', {
+      y1: PADT.top, y2: PADT.top + plotH,
+      stroke: '#8a92a6', 'stroke-width': 1, 'stroke-dasharray': '3,3',
+    });
+    hover.appendChild(cross);
+    const ring = svgEl('circle', { fill: 'none', stroke: '#fff', 'stroke-width': 2.5 });
+    hover.appendChild(ring);
+    const TIP_W = Math.min(300, Math.round(width * 0.62)), TIP_H = 78, TIP_PAD = 10;
+    const tipBg = svgEl('rect', {
+      width: TIP_W, height: TIP_H, rx: 6, ry: 6,
+      fill: '#181a22', stroke: '#262a36', 'stroke-width': 1, opacity: 0.97,
+    });
+    hover.appendChild(tipBg);
+    const tipHead = svgEl('text', { fill: '#e7e9ee', 'font-size': 15, 'font-weight': 700 });
+    hover.appendChild(tipHead);
+    const tipLabel = svgEl('text', { fill: '#e7e9ee', 'font-size': 14 });
+    hover.appendChild(tipLabel);
+    const tipSub = svgEl('text', { fill: '#8a92a6', 'font-size': 13 });
+    hover.appendChild(tipSub);
+
+    const overlay = svgEl('rect', {
+      x: PADT.left, y: PADT.top, width: plotW, height: plotH,
+      fill: 'transparent', 'pointer-events': 'all',
+    });
+    svg.appendChild(overlay);
+
+    function clientToSvg(evt) {
+      if (!svg.createSVGPoint || !svg.getScreenCTM) return { x: 0, y: 0 };
+      const pt = svg.createSVGPoint();
+      pt.x = evt.clientX; pt.y = evt.clientY;
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return { x: 0, y: 0 };
+      const out = pt.matrixTransform(ctm.inverse());
+      return { x: out.x, y: out.y };
+    }
+    function nearestDot(x, y) {
+      let best = null, bestD = Infinity;
+      for (const m of dotMeta) {
+        const d = Math.hypot(m.x - x, m.y - y) - m.r;
+        if (d < bestD) { bestD = d; best = m; }
+      }
+      return bestD <= 60 ? best : null;
+    }
+    function show(m) {
+      hover.setAttribute('visibility', 'visible');
+      cross.setAttribute('x1', m.x); cross.setAttribute('x2', m.x);
+      ring.setAttribute('cx', m.x); ring.setAttribute('cy', m.y); ring.setAttribute('r', m.r + 3);
+      ring.setAttribute('stroke', m.color);
+      let tx = m.x + 16;
+      if (tx + TIP_W > width - PADT.right) tx = m.x - 16 - TIP_W;
+      if (tx < PADT.left) tx = PADT.left;
+      let ty = m.y - TIP_H / 2;
+      ty = Math.max(PADT.top, Math.min(ty, PADT.top + plotH - TIP_H));
+      tipBg.setAttribute('x', tx); tipBg.setAttribute('y', ty);
+      tipHead.setAttribute('x', tx + TIP_PAD); tipHead.setAttribute('y', ty + TIP_PAD + 14);
+      tipHead.setAttribute('fill', m.color);
+      tipHead.textContent = `${m.tr.type === 'sell' ? '▼ Sold' : '▲ Bought'} · ${m.tr.date}`;
+      tipLabel.setAttribute('x', tx + TIP_PAD); tipLabel.setAttribute('y', ty + TIP_PAD + 36);
+      tipLabel.textContent = `${m.tr.label || ''} — ${fmtNok(m.amt)}`;
+      tipSub.setAttribute('x', tx + TIP_PAD); tipSub.setAttribute('y', ty + TIP_PAD + 56);
+      const qty = m.tr.qty != null ? `${Math.abs(m.tr.qty)} stk` : '';
+      const who = (m.tr.codes || []).join(', ');
+      tipSub.textContent = [qty, who].filter(Boolean).join(' · ');
+    }
+    function hide() { hover.setAttribute('visibility', 'hidden'); }
+    const onMove = (cx2, cy2) => {
+      const m = nearestDot(cx2, cy2);
+      if (m) show(m); else hide();
+    };
+    overlay.addEventListener('mousemove', (evt) => { const p = clientToSvg(evt); onMove(p.x, p.y); });
+    overlay.addEventListener('mouseleave', hide);
+    overlay.addEventListener('touchstart', (evt) => {
+      if (!evt.touches[0]) return;
+      const p = clientToSvg(evt.touches[0]); onMove(p.x, p.y);
+    }, { passive: true });
+    overlay.addEventListener('touchmove', (evt) => {
+      if (!evt.touches[0]) return;
+      const p = clientToSvg(evt.touches[0]); onMove(p.x, p.y);
+    }, { passive: true });
+    overlay.addEventListener('touchend', hide);
+    return svg;
+  }
+
+  window.Charts = {
+    fitBox, stackedArea, multiLine, legend, priceChart, tradeScatter };
+})();

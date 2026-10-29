@@ -1,0 +1,61 @@
+// Public config. Sheet ID and OAuth Client ID are NOT secrets — both are
+// safe to commit. Auth is enforced by Google Sign-In + sheet share list.
+
+window.PORTAL_CONFIG = {
+  // Google Sheet that holds all club data. Same one used by the old portal.
+  SHEET_ID: '1RIkvHAojO1E4B622Li04RdQM9lVZJfJ1oMoRg8sWyE4',
+
+  // One sheet (2026-10-28): the books are calculated from the portfolio
+  // sheet's raw data (DNB_raw, Rådata fra nordnet, StockPrices, Accounting
+  // inputs), so the separate accountant's workbook is no longer read. Put its
+  // id back here to show it again next to the calculated books (Books /
+  // Calculated switch and the per-account comparison on the Accounting tab).
+  ACCOUNTING_SHEET_ID: '',
+
+  // OAuth 2.0 Client ID (Web application) from Google Cloud Console.
+  // Paste yours here. See README for setup instructions.
+  OAUTH_CLIENT_ID: '872440185175-io8gmos8q04sq7jdt99ubeb16hbopv47.apps.googleusercontent.com',
+
+  // Scopes — read-only by default (members). Admin pages incrementally
+  // request the full read+write scope when needed. openid+email is
+  // needed either way so the page can look the user up in the Members tab.
+  // Accounting deliberately stays inside spreadsheets.readonly — no Drive scope.
+  OAUTH_SCOPE: 'openid email https://www.googleapis.com/auth/spreadsheets.readonly',
+  OAUTH_SCOPE_WRITE: 'openid email https://www.googleapis.com/auth/spreadsheets',
+
+  // Apps Script web-app URL for cross-device play (phones answering onto a
+  // shared screen). Deploy the script in apps-script/Code.gs as a web app —
+  // Execute as: me, Access: anyone — and paste its /exec URL here. Leave it
+  // empty and the games simply stay single-device; nothing else breaks.
+  ROOMS_URL: 'https://script.google.com/macros/s/AKfycbwQ1q5xYepvGuwx9bucapgrobq1sL2HSTzwNiq-ZUpsfrq-dxZi1B8jiF6ZbDwk5EOykg/exec',
+
+  // Sheet tab names.
+  TABS: {
+    transactions: 'Rådata fra nordnet',
+    kpis: 'Offisielle nøkkeltall',
+    dimValues: 'Dim-values',
+    members: 'Members',
+    competitions: 'Competitions',
+    participants: 'Competition_Participants',
+    // Written by the Apps Script price feed (see apps-script/README.md).
+    securities: 'Securities',
+    stockPrices: 'StockPrices',
+    priceLog: '_log',
+  },
+
+  // Cross-year tab names inside the accounting sheet. Per-year tabs
+  // (SB, HB, Nordnet) are discovered at runtime by pattern-matching the
+  // sheet's actual tab list — see Accounting.discoverYears.
+  ACCOUNTING_TABS: {
+    index: 'INDEX',
+    dnbRaw: 'DNB_raw',
+    nordnetRaw: 'Nordnet_raw',
+    shortChart: 'Kort kontoplan',
+    fullChart: 'Full kontoplan',
+  },
+
+  // Fallback default for the year picker if runtime discovery returns
+  // zero matching year-tabs. Bump this when rolling over to a new year
+  // if the sheet hasn't yet been populated.
+  ACCOUNTING_CURRENT_YEAR: 2025,
+};

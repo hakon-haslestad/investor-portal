@@ -1,0 +1,234 @@
+// Competition scoring engine — "in-window buys" rules.
+//
+//   • A position only enters the competition when KJØPT lands inside
+//     [start_date, end_date]. Stocks bought BEFORE the window don't count
+//     even if sold during it.
+//   • SALG during the window reduces in-window inventory only (LIFO-on-bucket:
+//     we treat all in-window buys as a single per-security bucket). The portion
+//     of a sell that exceeds in-window qty is ignored — it was selling
+//     pre-window shares, which aren't in the competition.
+//   • UTBYTTE / KUPONGSKATT during the window count if the participant still
+//     holds in-window inventory at that time.
+//   • End-of-window valuation uses the last StockPrices close
+//     on-or-before end_date (period-correct, not "now").
+//   • Budget is a recyclable pool: SALG proceeds free up capital to redeploy,
+//     so capital used = net invested = gross KJØPT − in-window SALG proceeds.
+//     Over-budget is flagged on net invested, not gross buys.
+//   • Return % = netPnl / buy-in (the competition amount), so the winner is
+//     whoever grew the budget they were given the most — not whoever invested
+//     least. Over-budget players are still divided by the buy-in (and flagged).
+//     Only with no buy-in set does it fall back to net invested (pctBase
+//     'invested'). Teams aggregate by team_label on the shared budget.
+//
+// Pure — takes hydrated `store` + competition + participants.
+
+(function () {
+  const { INVESTOR_CODES, classify, splitForSecurity, amountNok } = window.Ledger;
+  const { canonicalName, pricesAtDate } = window.Portfolio;
+
+  function scoreCompetition(store, competition, participants) {
+    const attrMap = store.attributionMap;
+    const txs = store.transactions;
+    const startDate = competition.start_date;
+    const endDate = competition.end_date;
+    const endPrices = pricesAtDate(store, endDate);
+    // Price date actually used (last StockPrices row on-or-before end_date).
+    const snapshotUsed = window.Portfolio.snapshotForDate(store, endDate);
+
+    const perParticipant = [];
+    // The transactions each participant traded in the window, so a team can
+    // count a trade its members share once.
+    const tradesOf = new Map();
+    for (const p of participants) {
+      const code = p.investor_code;
+
+      // Per-security lots, opened only by KJØPT in window
+      const lots = new Map();
+      const ensure = (sec) => {
+        if (!lots.has(sec)) {
+          lots.set(sec, {
+            qty: 0, costSum: 0,
+            divs: 0,
+            soldQty: 0, soldProceeds: 0,
+            realized: 0,
+            opened: false,
+          });
+        }
+        return lots.get(sec);
+      };
+
+      let grossBought = 0;   // sum of all KJØPT in window
+      let sellProceeds = 0;  // sum of in-window SALG proceeds (frees up budget)
+      let realized = 0;
+      let divsInWindow = 0;
+      const traded = new Set(); // in-window buys, and sells that hit in-window inventory
+
+      for (const tx of txs) {
+        if (!tx.security || !tx.tradeDate) continue;
+        if (tx.tradeDate < startDate || tx.tradeDate > endDate) continue;
+        const split = splitForSecurity(attrMap, tx.security);
+        const slot = split.find((s) => s.code === code);
+        if (!slot) continue;
+        const w = slot.weight;
+        const sec = canonicalName(tx.security);
+        const cat = classify(tx.type);
+
+        if (tx.type === 'KJØPT') {
+          const wq = (tx.qty || 0) * w;
+          const wa = Math.abs(amountNok(tx) * w);
+          const lot = ensure(sec);
+          lot.qty += wq;
+          lot.costSum += wa;
+          lot.opened = true;
+          grossBought += wa;
+          traded.add(tx);
+        } else if (tx.type === 'SALG') {
+          const lot = lots.get(sec);
+          // Pre-window-only positions: nothing to do for the competition.
+          if (!lot || !lot.opened || lot.qty <= 0) continue;
+          const wq = Math.abs((tx.qty || 0) * w);
+          const wa = amountNok(tx) * w; // positive proceeds (Nordnet)
+          const sold = Math.min(wq, lot.qty);
+          // Pro-rate the sell proceeds by how much of the sell hit in-window inventory.
+          const proceedsForSold = wq > 0 ? wa * (sold / wq) : 0;
+          const fracSold = lot.qty > 0 ? sold / lot.qty : 0;
+          const costForSold = lot.costSum * fracSold;
+          const pnl = proceedsForSold - costForSold;
+          lot.realized += pnl;
+          realized += pnl;
+          lot.qty -= sold;
+          lot.costSum -= costForSold;
+          lot.soldQty += sold;
+          lot.soldProceeds += proceedsForSold;
+          sellProceeds += proceedsForSold;
+          if (sold > 0) traded.add(tx);
+        } else if (cat === 'DIVIDEND' || cat === 'TAX') {
+          const lot = lots.get(sec);
+          if (!lot || !lot.opened || lot.qty <= 0) continue;
+          const wa = amountNok(tx) * w;
+          lot.divs += wa;
+          divsInWindow += wa;
+        }
+      }
+
+      // End-of-window valuation
+      let unrealizedAtEnd = 0, mvAtEnd = 0;
+      const breakdown = [];
+      for (const [sec, lot] of lots.entries()) {
+        if (!lot.opened) continue;
+        const px = endPrices.get(sec);
+        // Value in NOK. The price map's currentPrice is in the security's
+        // native currency (USD/SEK/…), but marketValueNok is already converted,
+        // so derive a NOK-per-share (marketValueNok / qty) — otherwise foreign
+        // holdings get marked ~FX-rate too low against their NOK cost basis.
+        // An UNPRICEABLE open lot (no close and no own-trade fallback) is
+        // valued AT COST — neutral — instead of at 0, which would fabricate
+        // a −100% loss on the position.
+        const endPrice = px
+          ? ((px.marketValueNok != null && px.qty) ? px.marketValueNok / px.qty : (px.price || 0))
+          : (lot.qty > 0 ? lot.costSum / lot.qty : 0);
+        const mv = lot.qty * (endPrice || 0);
+        const unrealized = mv - lot.costSum;
+        mvAtEnd += mv;
+        unrealizedAtEnd += unrealized;
+        breakdown.push({
+          security: sec,
+          qty: lot.qty,
+          costSum: lot.costSum,
+          endPrice,                  // close on-or-before end_date (forward-filled)
+          marketValueAtEnd: mv,      // qty × endPrice (only the in-window slice)
+          // Aliases kept for older slide renderers that referenced these names:
+          currentPrice: endPrice,
+          marketValue: mv,
+          unrealized,
+          divs: lot.divs,
+          realized: lot.realized,
+          soldQty: lot.soldQty,
+          soldProceeds: lot.soldProceeds,
+        });
+      }
+
+      const netPnl = realized + divsInWindow + unrealizedAtEnd;
+      // Budget is a recyclable pool: selling returns proceeds you can redeploy,
+      // so capital used = gross buys − sell proceeds (net invested). Floor at 0.
+      const amountSpent = Math.max(grossBought - sellProceeds, 0);
+      const buyIn = p.buy_in_nok || 0;
+      const { base, pctBase } = returnBase(buyIn, amountSpent, grossBought);
+      const pct = (netPnl / base) * 100;
+
+      perParticipant.push({
+        code,
+        teamLabel: p.team_label || code,
+        buyIn,
+        amountSpent,
+        grossBought,
+        sellProceeds,
+        breakdown,
+        realizedInWindow: realized,
+        divsInWindow,
+        unrealizedAtEnd,
+        mvAtEnd,
+        netPnl,
+        pct,
+        pctBase,
+        trades: traded.size,
+      });
+      tradesOf.set(code, traded);
+    }
+
+    const ranks = [...perParticipant].sort((a, b) => b.pct - a.pct);
+
+    // Team aggregation. buyIn is per-team — same value sits on each member's
+    // participant row. Use max (they're equal) to avoid double-counting.
+    const teamMap = new Map();
+    for (const p of perParticipant) {
+      const key = p.teamLabel;
+      if (!teamMap.has(key)) {
+        teamMap.set(key, {
+          label: key, members: [],
+          buyIn: 0, amountSpent: 0, grossBought: 0, netPnl: 0,
+          realized: 0, divs: 0, unrealized: 0, mvAtEnd: 0,
+          tradeSet: new Set(),
+        });
+      }
+      const t = teamMap.get(key);
+      t.members.push(p.code);
+      for (const tx of tradesOf.get(p.code)) t.tradeSet.add(tx);
+      t.buyIn = Math.max(t.buyIn, p.buyIn || 0); // de-double team budget
+      t.amountSpent += p.amountSpent; // net invested (buys − sell proceeds)
+      t.grossBought += p.grossBought;
+      t.netPnl += p.netPnl;
+      t.realized += p.realizedInWindow;
+      t.divs += p.divsInWindow;
+      t.unrealized += p.unrealizedAtEnd;
+      t.mvAtEnd += p.mvAtEnd;
+    }
+    const teams = Array.from(teamMap.values())
+      .map((t) => {
+        const { base, pctBase } = returnBase(t.buyIn, t.amountSpent, t.grossBought);
+        const { tradeSet, ...rest } = t;
+        return {
+          ...rest,
+          trades: tradeSet.size,
+          pct: (t.netPnl / base) * 100,
+          pctBase,
+          overSpent: t.buyIn > 0 && t.amountSpent > t.buyIn,
+          overSpentBy: t.buyIn > 0 ? Math.max(0, t.amountSpent - t.buyIn) : 0,
+        };
+      })
+      .sort((a, b) => b.pct - a.pct);
+
+    return { competition, ranks, teams, snapshotUsed };
+  }
+
+  // Return-% denominator: the buy-in when one is set. Without one, net
+  // invested — or gross buys if the participant net-sold (exited at a gain),
+  // so the % stays meaningful instead of exploding.
+  function returnBase(buyIn, amountSpent, grossBought) {
+    if (buyIn > 0) return { base: buyIn, pctBase: 'buyIn' };
+    const base = amountSpent > 0 ? amountSpent : (grossBought > 0 ? grossBought : 1);
+    return { base, pctBase: 'invested' };
+  }
+
+  window.CompetitionEngine = { scoreCompetition };
+})();
